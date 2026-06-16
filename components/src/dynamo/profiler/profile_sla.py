@@ -54,6 +54,7 @@ from dynamo.profiler.utils.profile_common import (
     determine_picking_mode,
     get_profiling_job_tolerations,
     inject_tolerations_into_dgd,
+    is_mocker_enabled,
     needs_profile_data,
     picked_config_from_row,
     resolve_model_path,
@@ -555,7 +556,10 @@ async def run_profile(
         # The injector uses per-service --model extraction so an
         # override-swapped model path is detected correctly; resolve_model_path
         # is used only as a fallback.
-        if final_config:
+        # Skip when mocker is enabled: mocker replaces the DGD with
+        # ``python -m dynamo.mocker`` workers whose argparse does not
+        # accept ``--trust-remote-code``.
+        if final_config and not is_mocker_enabled(dgdr):
             trc_target = (
                 final_config[-1] if isinstance(final_config, list) else final_config
             )

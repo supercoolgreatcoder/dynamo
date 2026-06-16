@@ -37,7 +37,10 @@ from dynamo.profiler.utils.aiperf import (
     get_prefill_ttft,
 )
 from dynamo.profiler.utils.config_modifiers import CONFIG_MODIFIERS
-from dynamo.profiler.utils.config_modifiers.protocol import apply_dgd_overrides
+from dynamo.profiler.utils.config_modifiers.protocol import (
+    apply_dgd_overrides,
+    auto_inject_trust_remote_code,
+)
 from dynamo.profiler.utils.dgdr_v1beta1_types import (
     DynamoGraphDeploymentRequestSpec,
     ModelCacheSpec,
@@ -432,10 +435,6 @@ async def run_thorough(
     # doesn't matter, but consistent with profile_sla.py).  Uses
     # per-candidate --model arg extraction so an override-swapped model is
     # detected correctly.
-    from dynamo.profiler.utils.config_modifiers.protocol import (
-        auto_inject_trust_remote_code,
-    )
-
     for candidate in prefill_candidates + decode_candidates:
         auto_inject_trust_remote_code(candidate.dgd_config, local_or_hf_model, backend)
 

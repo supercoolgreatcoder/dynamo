@@ -20,6 +20,8 @@ import logging
 from typing import Any, Protocol, Tuple
 from uuid import uuid4
 
+from dynamo.profiler.utils.model_info import model_has_auto_map
+
 from dynamo.planner.config.defaults import SubComponentType
 from dynamo.profiler.utils.config import (
     Config,
@@ -874,8 +876,9 @@ def auto_inject_trust_remote_code(
     service names that were modified.
 
     Per-service model detection: if a worker's ``mainContainer.args`` contains
-    ``--model <path>``, that path overrides the *model_name_or_path* fallback
-    for that service's ``auto_map`` check.  This ensures correctness when
+    ``--model <path>`` or ``--model-path <path>`` (including ``=`` forms),
+    that path overrides the *model_name_or_path* fallback for that service's
+    ``auto_map`` check.  This ensures correctness when
     ``apply_dgd_overrides`` has swapped the model in specific workers.
 
     Shell-form workers (``command: ["sh", "-c"]`` with a single-string args)
@@ -883,10 +886,6 @@ def auto_inject_trust_remote_code(
     than as a second list element (which would become ``$0`` and break the
     worker).
     """
-    # Local import to keep ``protocol`` free of a hard dep on model_info,
-    # which pulls in ``transformers``/``huggingface_hub``.
-    from dynamo.profiler.utils.model_info import model_has_auto_map
-
     if backend not in _TRUST_REMOTE_CODE_BACKENDS:
         return []
 
@@ -926,24 +925,40 @@ def auto_inject_trust_remote_code(
         if _TRUST_REMOTE_CODE_FLAG in tokens:
             continue
 
-        # Per-service model: prefer the --model arg in this container's args so
-        # that overrides which swap the model path are detected correctly.
+        # Per-service model: prefer the --model/--model-path arg in this
+        # container's args so that overrides which swap the model path are
+        # detected correctly.  Handles both ``--flag value`` and
+        # ``--flag=value`` forms.  SGLang uses ``--model-path``; vLLM uses
+        # ``--model``.
         effective_model = model_name_or_path
-        try:
-            model_idx = tokens.index("--model")
-            if model_idx + 1 < len(tokens):
-                effective_model = tokens[model_idx + 1]
-        except ValueError:
-            pass
+        for _flag in ("--model", "--model-path"):
+            _found = False
+            try:
+                _idx = tokens.index(_flag)
+                if _idx + 1 < len(tokens):
+                    effective_model = tokens[_idx + 1]
+                    _found = True
+            except ValueError:
+                pass
+            if not _found:
+                _prefix = _flag + "="
+                for _tok in tokens:
+                    if _tok.startswith(_prefix):
+                        effective_model = _tok[len(_prefix):]
+                        _found = True
+                        break
+            if _found:
+                break
 
         if not model_has_auto_map(effective_model, token=hf_token):
             continue
 
         # Inject the flag, preserving the shell-form shape when necessary.
         if is_shell_c and is_single_string_args:
-            import shlex
-
-            main_container["args"] = [shlex.join(tokens + [_TRUST_REMOTE_CODE_FLAG])]
+            # Append the flag to the original shell string instead of
+            # round-tripping via shlex.split/join, which would break shell
+            # syntax (&&, |, redirects, env expansion, etc.).
+            main_container["args"] = [args[0] + " " + _TRUST_REMOTE_CODE_FLAG]
         else:
             main_container["args"] = list(args) + [_TRUST_REMOTE_CODE_FLAG]
         modified.append(svc_name)
