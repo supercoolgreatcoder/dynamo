@@ -20,8 +20,6 @@ import logging
 from typing import Any, Protocol, Tuple
 from uuid import uuid4
 
-from dynamo.profiler.utils.model_info import model_has_auto_map
-
 from dynamo.planner.config.defaults import SubComponentType
 from dynamo.profiler.utils.config import (
     Config,
@@ -35,6 +33,7 @@ from dynamo.profiler.utils.config import (
     update_image,
 )
 from dynamo.profiler.utils.defaults import EngineType
+from dynamo.profiler.utils.model_info import model_has_auto_map
 
 logger = logging.getLogger(__name__)
 
@@ -944,7 +943,7 @@ def auto_inject_trust_remote_code(
                 _prefix = _flag + "="
                 for _tok in tokens:
                     if _tok.startswith(_prefix):
-                        effective_model = _tok[len(_prefix):]
+                        effective_model = _tok[len(_prefix) :]
                         _found = True
                         break
             if _found:
