@@ -35,7 +35,12 @@ from tensorrt_llm.scheduling_params import SchedulingParams
 
 from dynamo._core import Client, Context
 from dynamo.common.backend import logprobs as _shared_logprobs
+from dynamo.common.gms_failover import release_attached_gms_failover_lock
 from dynamo.common.utils.structural_tag import serialize_structural_tag
+from dynamo.gms_router_policy import (
+    maybe_fetch_gms_placement,
+    resolve_env_gms_daemon_socket,
+)
 from dynamo.health_check import HEALTH_CHECK_KEY
 from dynamo.llm.exceptions import EngineShutdown
 from dynamo.logits_processing.examples import HelloWorldLogitsProcessor
@@ -119,12 +124,20 @@ class TRTLLMEnginePauseController:
         """Call TRT-LLM collective_rpc for KV cache sleep/wake."""
         rpc = getattr(self._engine.llm, "_collective_rpc", None)
         if rpc is None:
-            logger.warning(
-                "TRT-LLM does not expose _collective_rpc; skipping %s", method
+            raise RuntimeError(
+                f"TRT-LLM does not expose _collective_rpc; cannot {method} KV cache"
             )
-            return
 
-        rpc(method, args=(rpc_tags,), kwargs={}, non_block=False)
+        try:
+            rpc(method, args=(rpc_tags,), kwargs={}, non_block=False)
+        except NotImplementedError as exc:
+            message = str(exc)
+            if "MPI collective_rpc only supports model_world_size == 1" in message:
+                raise RuntimeError(
+                    "TRT-LLM MPI executor does not support "
+                    f"collective_rpc({method}) for multi-rank KV cache control"
+                ) from exc
+            raise
 
     @staticmethod
     def _release_gms_weights() -> None:
@@ -349,16 +362,45 @@ class HandlerBase(BaseGenerativeHandler):
                 }
 
             try:
-                await self._set_reject_new_requests(True)
+                timeout_s = float(body.get("timeout_s", 30.0))
 
                 if self.generate_endpoint is not None:
                     await self.generate_endpoint.unregister_endpoint_instance()
 
-                timeout_s = float(body.get("timeout_s", 30.0))
+                if body.get("handoff"):
+                    settle_ms = float(
+                        body.get(
+                            "handoff_settle_ms",
+                            os.environ.get("DYN_TRTLLM_HANDOFF_ROUTE_SETTLE_MS", "250"),
+                        )
+                    )
+                    if settle_ms > 0:
+                        await asyncio.sleep(settle_ms / 1000.0)
+                    await self._set_reject_new_requests(True)
+                    lock_released = await release_attached_gms_failover_lock(
+                        self, backend_name="trtllm"
+                    )
+                    return {
+                        "status": "ok",
+                        "message": "Failover handoff released",
+                        "failover_lock_released": lock_released,
+                    }
+
+                await self._set_reject_new_requests(True)
                 await self._wait_for_inflight_requests(timeout_s)
                 await self._pause_controller.pause(tags)
 
-                return {"status": "ok", "message": "Memory released"}
+                lock_released = False
+                if body.get("release_failover_lock"):
+                    lock_released = await release_attached_gms_failover_lock(
+                        self, backend_name="trtllm"
+                    )
+
+                return {
+                    "status": "ok",
+                    "message": "Memory released",
+                    "failover_lock_released": lock_released,
+                }
             except Exception as exc:
                 logger.error("release_memory_occupation failed: %s", exc)
                 # Rollback: TRT-LLM has no pause_generation(), so we
@@ -966,6 +1008,16 @@ class HandlerBase(BaseGenerativeHandler):
 
         # Normalize OpenAI format to TRT-LLM internal format
         self._normalize_request_format(request)
+
+        await maybe_fetch_gms_placement(
+            request,
+            resolve_env_gms_daemon_socket(
+                "GMS_TRTLLM_DAEMON_SOCKET",
+                default_when_cross_node="/tmp/gms.sock",
+            ),
+            logger=logging.getLogger(__name__),
+            request_id=context.id(),
+        )
 
         # Setup disaggregated params based on PREFILL/DECODE mode
         (

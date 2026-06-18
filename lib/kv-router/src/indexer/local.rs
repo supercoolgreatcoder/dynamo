@@ -12,8 +12,8 @@ use tokio::sync::{Mutex as AsyncMutex, Notify, mpsc};
 use tokio_util::sync::CancellationToken;
 
 use super::{
-    GetWorkersRequest, KvIndexer, KvIndexerInterface, KvIndexerMetrics, KvRouterError,
-    LowerTierIndexer, ThreadPoolIndexer, WorkerKvQueryResponse,
+    GetWorkersRequest, GmsPlacementIndex, KvIndexer, KvIndexerInterface, KvIndexerMetrics,
+    KvRouterError, LowerTierIndexer, ThreadPoolIndexer, WorkerKvQueryResponse,
 };
 use crate::protocols::*;
 
@@ -207,6 +207,8 @@ pub struct LocalKvIndexer {
     indexer: KvIndexer,
     /// Lazily-created exact lower-tier indexes partitioned by storage tier.
     lower_tier_indexers: Arc<Mutex<HashMap<StorageTier, Arc<ThreadPoolIndexer<LowerTierIndexer>>>>>,
+    /// GMS placement metadata learned from the same KV event stream.
+    gms_placement_index: Arc<GmsPlacementIndex>,
     /// Circular buffer of recent events
     pub(super) event_buffer: Mutex<VecDeque<RouterEvent>>,
     /// Coordinates single-flight tree dumps and the cached recovery snapshot.
@@ -232,6 +234,7 @@ impl LocalKvIndexer {
         Self {
             indexer: KvIndexer::new(token, kv_block_size, metrics),
             lower_tier_indexers: Arc::new(Mutex::new(HashMap::new())),
+            gms_placement_index: Arc::new(GmsPlacementIndex::new()),
             event_buffer: Mutex::new(VecDeque::with_capacity(max_buffer_size)),
             recovery_cache: Arc::new(RecoverySnapshotCache::new()),
             max_buffer_size,
@@ -548,6 +551,7 @@ impl LocalKvIndexer {
         last_event_id: u64,
     ) -> tokio::task::JoinHandle<BuildTaskResult> {
         let indexer = self.indexer.clone();
+        let gms_placement_index = self.gms_placement_index.clone();
         let recovery_cache = self.recovery_cache.clone();
         #[cfg(test)]
         let build_delay = *self.dump_build_delay.lock().unwrap();
@@ -560,7 +564,8 @@ impl LocalKvIndexer {
                 tokio::time::sleep(delay).await;
             }
 
-            let build_output = Self::build_fresh_dump(indexer, last_event_id).await;
+            let build_output =
+                Self::build_fresh_dump(indexer, gms_placement_index, last_event_id).await;
             let notify = build.notify.clone();
             let result = recovery_cache.finish_build(&build, build_output).await;
 
@@ -569,9 +574,14 @@ impl LocalKvIndexer {
         })
     }
 
-    async fn build_fresh_dump(indexer: KvIndexer, last_event_id: u64) -> FreshDumpOutput {
+    async fn build_fresh_dump(
+        indexer: KvIndexer,
+        gms_placement_index: Arc<GmsPlacementIndex>,
+        last_event_id: u64,
+    ) -> FreshDumpOutput {
         match indexer.dump_events().await {
-            Ok(events) => {
+            Ok(mut events) => {
+                events.extend(gms_placement_index.dump_events());
                 let represented_blocks = events
                     .iter()
                     .map(|event| match &event.event.data {
@@ -662,6 +672,7 @@ impl LocalKvIndexer {
     }
 
     async fn apply_event_by_tier(&self, event: &RouterEvent) -> Result<(), KvRouterError> {
+        self.gms_placement_index.apply_event(event);
         match &event.event.data {
             KvCacheEventData::Cleared => {
                 self.apply_event_to_primary(event.clone()).await?;
@@ -726,6 +737,7 @@ impl KvIndexerInterface for LocalKvIndexer {
     }
 
     async fn remove_worker(&self, worker: WorkerId) {
+        self.gms_placement_index.remove_worker(worker);
         for indexer in self.all_lower_tier_indexers() {
             indexer.remove_worker(worker).await;
         }
@@ -733,6 +745,8 @@ impl KvIndexerInterface for LocalKvIndexer {
     }
 
     async fn remove_worker_dp_rank(&self, worker: WorkerId, dp_rank: DpRank) {
+        self.gms_placement_index
+            .remove_worker_dp_rank(WorkerWithDpRank::new(worker, dp_rank));
         for indexer in self.all_lower_tier_indexers() {
             KvIndexerInterface::remove_worker_dp_rank(&*indexer, worker, dp_rank).await;
         }
@@ -763,6 +777,8 @@ impl KvIndexerInterface for LocalKvIndexer {
                 }
             }
         }
+
+        events.extend(self.gms_placement_index.dump_events());
 
         Ok(events)
     }

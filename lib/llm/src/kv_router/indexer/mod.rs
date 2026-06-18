@@ -9,10 +9,10 @@ use dynamo_kv_router::{
     approx::PruneConfig,
     config::KvRouterConfig,
     indexer::{
-        KvIndexer, KvIndexerInterface, KvIndexerMetrics, KvRouterError, LowerTierIndexers,
-        ThreadPoolIndexer,
+        GmsPlacementIndex, KvIndexer, KvIndexerInterface, KvIndexerMetrics, KvRouterError,
+        LowerTierIndexers, ThreadPoolIndexer,
     },
-    protocols::{DpRank, RouterEvent, WorkerId},
+    protocols::{DpRank, RouterEvent, WorkerId, WorkerWithDpRank},
 };
 
 // Re-export tiered-match types so internal callers (`indexer::TieredMatchDetails`)
@@ -48,12 +48,14 @@ pub enum Indexer {
     KvIndexer {
         primary: KvIndexer,
         lower_tier: LowerTierIndexers,
+        gms_placement: Arc<GmsPlacementIndex>,
         approx: Option<SideIndexer>,
         primary_records_routing_decisions: bool,
     },
     Concurrent {
         primary: Arc<ThreadPoolIndexer<ConcurrentRadixTreeCompressed>>,
         lower_tier: LowerTierIndexers,
+        gms_placement: Arc<GmsPlacementIndex>,
         approx: Option<SideIndexer>,
         primary_records_routing_decisions: bool,
     },
@@ -123,6 +125,7 @@ impl Indexer {
                         kv_router_config.router_event_threads as usize,
                         block_size,
                     ),
+                    gms_placement: Arc::new(GmsPlacementIndex::new()),
                     approx: None,
                     primary_records_routing_decisions: true,
                 });
@@ -137,6 +140,7 @@ impl Indexer {
                     prune_config,
                 ),
                 lower_tier: LowerTierIndexers::new(1, block_size),
+                gms_placement: Arc::new(GmsPlacementIndex::new()),
                 approx: None,
                 primary_records_routing_decisions: true,
             });
@@ -157,6 +161,7 @@ impl Indexer {
                     kv_router_config.router_event_threads as usize,
                     block_size,
                 ),
+                gms_placement: Arc::new(GmsPlacementIndex::new()),
                 approx,
                 primary_records_routing_decisions: false,
             });
@@ -173,6 +178,7 @@ impl Indexer {
                 None,
             ),
             lower_tier: LowerTierIndexers::new(1, block_size),
+            gms_placement: Arc::new(GmsPlacementIndex::new()),
             approx,
             primary_records_routing_decisions: false,
         })
@@ -180,8 +186,24 @@ impl Indexer {
 
     pub(crate) async fn dump_events(&self) -> Result<Vec<RouterEvent>, KvRouterError> {
         match self {
-            Self::KvIndexer { primary, .. } => primary.dump_events().await,
-            Self::Concurrent { primary, .. } => primary.dump_events().await,
+            Self::KvIndexer {
+                primary,
+                gms_placement,
+                ..
+            } => {
+                let mut events = primary.dump_events().await?;
+                events.extend(gms_placement.dump_events());
+                Ok(events)
+            }
+            Self::Concurrent {
+                primary,
+                gms_placement,
+                ..
+            } => {
+                let mut events = primary.dump_events().await?;
+                events.extend(gms_placement.dump_events());
+                Ok(events)
+            }
             Self::Remote { .. } => Ok(Vec::new()),
             Self::None => {
                 panic!(
@@ -196,51 +218,59 @@ impl Indexer {
             Self::KvIndexer {
                 primary,
                 lower_tier,
+                gms_placement,
                 ..
-            } => match &event.event.data {
-                dynamo_kv_router::protocols::KvCacheEventData::Cleared => {
-                    if let Err(e) = primary.event_sender().send(event.clone()).await {
-                        tracing::warn!("Failed to send event to indexer: {e}");
-                    }
+            } => {
+                gms_placement.apply_event(&event);
+                match &event.event.data {
+                    dynamo_kv_router::protocols::KvCacheEventData::Cleared => {
+                        if let Err(e) = primary.event_sender().send(event.clone()).await {
+                            tracing::warn!("Failed to send event to indexer: {e}");
+                        }
 
-                    for indexer in lower_tier.all() {
-                        indexer.apply_event(event.clone()).await;
+                        for indexer in lower_tier.all() {
+                            indexer.apply_event(event.clone()).await;
+                        }
+                    }
+                    _ if event.storage_tier.is_gpu() => {
+                        if let Err(e) = primary.event_sender().send(event).await {
+                            tracing::warn!("Failed to send event to indexer: {e}");
+                        }
+                    }
+                    _ => {
+                        lower_tier
+                            .get_or_create(event.storage_tier)
+                            .apply_event(event)
+                            .await;
                     }
                 }
-                _ if event.storage_tier.is_gpu() => {
-                    if let Err(e) = primary.event_sender().send(event).await {
-                        tracing::warn!("Failed to send event to indexer: {e}");
-                    }
-                }
-                _ => {
-                    lower_tier
-                        .get_or_create(event.storage_tier)
-                        .apply_event(event)
-                        .await;
-                }
-            },
+            }
             Self::Concurrent {
                 primary,
                 lower_tier,
+                gms_placement,
                 ..
-            } => match &event.event.data {
-                dynamo_kv_router::protocols::KvCacheEventData::Cleared => {
-                    primary.apply_event(event.clone()).await;
+            } => {
+                gms_placement.apply_event(&event);
+                match &event.event.data {
+                    dynamo_kv_router::protocols::KvCacheEventData::Cleared => {
+                        primary.apply_event(event.clone()).await;
 
-                    for indexer in lower_tier.all() {
-                        indexer.apply_event(event.clone()).await;
+                        for indexer in lower_tier.all() {
+                            indexer.apply_event(event.clone()).await;
+                        }
+                    }
+                    _ if event.storage_tier.is_gpu() => {
+                        primary.apply_event(event).await;
+                    }
+                    _ => {
+                        lower_tier
+                            .get_or_create(event.storage_tier)
+                            .apply_event(event)
+                            .await;
                     }
                 }
-                _ if event.storage_tier.is_gpu() => {
-                    primary.apply_event(event).await;
-                }
-                _ => {
-                    lower_tier
-                        .get_or_create(event.storage_tier)
-                        .apply_event(event)
-                        .await;
-                }
-            },
+            }
             Self::Remote { .. } | Self::None => {}
         }
     }
@@ -250,9 +280,11 @@ impl Indexer {
             Self::KvIndexer {
                 primary,
                 lower_tier,
+                gms_placement,
                 approx,
                 ..
             } => {
+                gms_placement.remove_worker(worker_id);
                 for indexer in lower_tier.all() {
                     indexer.remove_worker(worker_id).await;
                 }
@@ -266,9 +298,11 @@ impl Indexer {
             Self::Concurrent {
                 primary,
                 lower_tier,
+                gms_placement,
                 approx,
                 ..
             } => {
+                gms_placement.remove_worker(worker_id);
                 for indexer in lower_tier.all() {
                     indexer.remove_worker(worker_id).await;
                 }
@@ -287,13 +321,16 @@ impl Indexer {
     }
 
     pub(crate) async fn remove_worker_dp_rank(&self, worker_id: WorkerId, dp_rank: DpRank) {
+        let worker = WorkerWithDpRank::new(worker_id, dp_rank);
         match self {
             Self::KvIndexer {
                 primary,
                 lower_tier,
+                gms_placement,
                 approx,
                 ..
             } => {
+                gms_placement.remove_worker_dp_rank(worker);
                 for indexer in lower_tier.all() {
                     KvIndexerInterface::remove_worker_dp_rank(&*indexer, worker_id, dp_rank).await;
                 }
@@ -305,9 +342,11 @@ impl Indexer {
             Self::Concurrent {
                 primary,
                 lower_tier,
+                gms_placement,
                 approx,
                 ..
             } => {
+                gms_placement.remove_worker_dp_rank(worker);
                 for indexer in lower_tier.all() {
                     KvIndexerInterface::remove_worker_dp_rank(&*indexer, worker_id, dp_rank).await;
                 }
@@ -412,7 +451,10 @@ mod tests {
     use dynamo_kv_router::{
         ConcurrentRadixTreeCompressed, ThreadPoolIndexer,
         approx::PruneConfig,
-        indexer::{KvIndexer, KvIndexerInterface, KvIndexerMetrics, RoutingDecisionHashes},
+        indexer::{
+            GmsPlacementIndex, KvIndexer, KvIndexerInterface, KvIndexerMetrics,
+            RoutingDecisionHashes,
+        },
         protocols::{
             BlockHashOptions, LocalBlockHash, StorageTier, TokensWithHashes, WorkerWithDpRank,
             compute_block_hash_for_seq, compute_seq_hash_for_block,
@@ -427,6 +469,7 @@ mod tests {
                 Arc::new(KvIndexerMetrics::new_unregistered()),
             ),
             lower_tier: LowerTierIndexers::new(1, 4),
+            gms_placement: Arc::new(GmsPlacementIndex::new()),
             approx: None,
             primary_records_routing_decisions: false,
         }
@@ -440,6 +483,7 @@ mod tests {
                 4,
             )),
             lower_tier: LowerTierIndexers::new(2, 4),
+            gms_placement: Arc::new(GmsPlacementIndex::new()),
             approx: None,
             primary_records_routing_decisions: false,
         }
@@ -456,6 +500,7 @@ mod tests {
                 },
             )),
             lower_tier: LowerTierIndexers::new(2, 4),
+            gms_placement: Arc::new(GmsPlacementIndex::new()),
             approx: None,
             primary_records_routing_decisions: true,
         }
@@ -765,6 +810,7 @@ mod tests {
         let indexer = Indexer::Concurrent {
             primary,
             lower_tier: LowerTierIndexers::new(2, 4),
+            gms_placement: Arc::new(GmsPlacementIndex::new()),
             approx: Some(super::SideIndexer::Concurrent(side)),
             primary_records_routing_decisions: false,
         };
@@ -896,6 +942,7 @@ mod tests {
         let indexer = Indexer::Concurrent {
             primary,
             lower_tier: LowerTierIndexers::new(2, 4),
+            gms_placement: Arc::new(GmsPlacementIndex::new()),
             approx: Some(super::SideIndexer::Concurrent(side)),
             primary_records_routing_decisions: false,
         };

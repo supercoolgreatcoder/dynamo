@@ -61,6 +61,26 @@ fn response_inactivity_timeout() -> Option<std::time::Duration> {
         .map(std::time::Duration::from_secs)
 }
 
+#[allow(dead_code)]
+fn no_instances_error(endpoint: &EndpointId) -> anyhow::Error {
+    DynamoError::builder()
+        .error_type(ErrorType::CannotConnect)
+        .message(format!("no instances found for endpoint {endpoint}"))
+        .build()
+        .into()
+}
+
+#[allow(dead_code)]
+fn no_selected_device_group_error(endpoint: &EndpointId) -> anyhow::Error {
+    DynamoError::builder()
+        .error_type(ErrorType::CannotConnect)
+        .message(format!(
+            "no instances in selected device group for endpoint {endpoint}"
+        ))
+        .build()
+        .into()
+}
+
 /// RAII handle for one in-flight unit of work charged against
 /// [`RoutingOccupancyState`]. The counter is incremented at construction; the
 /// matching decrement is emitted on drop (or by [`Self::into_tracked_stream`]).
@@ -370,12 +390,18 @@ fn spawn_instance_removal_watcher(
                             }
                             Some(Ok(_)) => {}
                             Some(Err(e)) => {
+                                if cancel_token.is_cancelled() {
+                                    break 'reconnect;
+                                }
                                 tracing::warn!(
                                     endpoint = %endpoint_name,
                                     "Instance removal watcher stream error: {e}"
                                 );
                             }
                             None => {
+                                if cancel_token.is_cancelled() {
+                                    break 'reconnect;
+                                }
                                 tracing::warn!(
                                     endpoint = %endpoint_name,
                                     "Instance removal watcher stream ended; reconnecting"
