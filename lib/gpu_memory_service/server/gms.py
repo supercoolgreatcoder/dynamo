@@ -121,6 +121,11 @@ class GMS:
         self._events: deque[GMSRuntimeEvent] = deque(maxlen=self._MAX_EVENTS)
         self._metadata: dict[str, MetadataEntry] = {}
         self._memory_layout_hash = ""
+        # Last-observed active persistent-claim count, used to project the
+        # persistent KV layout onto the FSM event history (rw_connected when
+        # the first claim establishes a KV layout; rw_aborted +
+        # allocations_cleared when the last claim is released on pause/crash).
+        self._persistent_layout_count = 0
         logger.info("GMS initialized: device=%d", device)
 
     @property
@@ -146,16 +151,46 @@ class GMS:
     def is_ready(self) -> bool:
         return self._sessions.snapshot().is_ready
 
+    def _sync_persistent_layout_events(self) -> None:
+        """Project persistent-claim transitions onto the FSM event history.
+
+        Persistent KV bypasses the single-writer FSM (RW_PERSISTENT grants
+        return immediately and never transition the lock state), so its layout
+        is otherwise invisible to layout assertions. Mirror the FSM vocabulary:
+        the first active claim opens an RW KV layout (``rw_connected``); losing
+        the last claim — on engine pause (``abort()``) or crash-cleanup — tears
+        it down (``rw_aborted`` + ``allocations_cleared``). Call after every
+        claim/release/disconnect so the projection stays edge-accurate.
+        """
+        now = self._persistent.active_claim_count
+        prev = self._persistent_layout_count
+        if prev == 0 and now > 0:
+            self._events.append(GMSRuntimeEvent(kind="rw_connected"))
+        elif prev > 0 and now == 0:
+            self._events.append(GMSRuntimeEvent(kind="rw_aborted"))
+            self._events.append(
+                GMSRuntimeEvent(kind="allocations_cleared", allocation_count=prev)
+            )
+        self._persistent_layout_count = now
+
     def get_runtime_state(self) -> GetRuntimeStateResponse:
         session = self._sessions.snapshot()
+        state = session.state
+        allocation_count = self._allocations.allocation_count
+        # Project the persistent KV layout onto the reported state when the
+        # FSM itself is idle (the kv_cache daemon never drives the weights FSM).
+        persistent_claims = self._persistent.active_claim_count
+        if persistent_claims > 0 and state == ServerState.EMPTY:
+            state = ServerState.RW
+            allocation_count = persistent_claims
         return GetRuntimeStateResponse(
-            state=session.state.name,
+            state=state.name,
             has_rw_session=session.has_rw_session,
             ro_session_count=session.ro_session_count,
             waiting_writers=session.waiting_writers,
             committed=session.committed,
             is_ready=session.is_ready,
-            allocation_count=self._allocations.allocation_count,
+            allocation_count=allocation_count,
             memory_layout_hash=self._memory_layout_hash,
         )
 
@@ -327,6 +362,7 @@ class GMS:
                     len(claims),
                     conn.session_id,
                 )
+                self._sync_persistent_layout_events()
             self._kv_lease_namespaces_by_session.pop(conn.session_id, None)
             self._kv_lease_owner_sessions = {
                 owner_id: session_id
@@ -545,6 +581,7 @@ class GMS:
                 conn.session_id,
                 set(),
             ).add((msg.engine_id, msg.tag))
+            self._sync_persistent_layout_events()
             return (
                 ClaimPersistentAllocationResponse(
                     allocation_id=alloc.allocation_id,
@@ -576,6 +613,7 @@ class GMS:
                 claims.discard((msg.engine_id, msg.tag))
                 if not claims:
                     self._persistent_claims_by_session.pop(conn.session_id, None)
+            self._sync_persistent_layout_events()
             return ReleasePersistentAllocationResponse(released=released), -1, False
 
         if msg_type is ExportPersistentAllocationRequest:
