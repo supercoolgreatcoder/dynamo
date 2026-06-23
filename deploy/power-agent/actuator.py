@@ -1069,11 +1069,13 @@ class DcgmActuator:
             # any post-reconnect retry (both go through `_with_reconnect`).
             # On the retry, `_discovered_gpu_ids` was rebuilt by `init()`,
             # so reading the UUID raw (no nested reconnect) tells us whether
-            # `gpu_idx` still hosts the GPU this cap was computed for. A
-            # PROVEN mismatch aborts the write; an unreadable identity is
-            # NOT proven, so we fall through and let the write proceed (the
-            # surrounding reconnect/retry machinery handles transient
-            # outages).
+            # `gpu_idx` still hosts the GPU this cap was computed for. Once an
+            # `expected_uuid` was captured at apply entry, BOTH a proven
+            # mismatch AND an unverifiable recheck abort the write: an apply
+            # writes a workload-derived cap, so we refuse rather than risk
+            # clobbering a re-enumerated GPU, and let the next reconcile cycle
+            # retry. (Entry-time unreadability yields `expected_uuid is None`
+            # — nothing to protect — and proceeds best-effort below.)
             if expected_uuid is not None:
                 try:
                     current_uuid = self._read_uuid_raw(gpu_idx)

@@ -390,7 +390,7 @@ deploy/helm/charts/power-agent/
 ├── values.yaml                         # see §4.2
 ├── .helmignore                         # copied verbatim from snapshot chart
 ├── templates/
-│   ├── _helpers.tpl                    # power-agent.{name,fullname,chart,labels,selectorLabels,serviceAccountName,validateImageTag,imageRef,validateMutex,validateActuator,validateEnforce,effectiveNamespaceRestricted}
+│   ├── _helpers.tpl                    # power-agent.{name,fullname,chart,labels,selectorLabels,serviceAccountName,validateImageTag,validateDevImageTag,imageRef,validateMutex,validateActuator,validateEnforce,effectiveNamespaceRestricted}
 │   ├── NOTES.txt                       # post-install hints (verify DS rollout, check metrics endpoint, kubectl logs)
 │   ├── serviceaccount.yaml             # gated on .Values.serviceAccount.create
 │   ├── role.yaml                       # Role OR ClusterRole based on power-agent.effectiveNamespaceRestricted
@@ -400,10 +400,11 @@ deploy/helm/charts/power-agent/
 └── tests/                              # helm-unittest suite — required validation gate as of v1.1.0
     ├── validate_actuator_test.yaml     # asserts validateActuator rejects unknown actuator strings at template time
     ├── validate_enforce_test.yaml      # asserts validateEnforce rejects non-allowlisted booleans (e.g. `treu`)
-    └── validate_image_tag_test.yaml    # (v1.2.0) asserts validateImageTag rejects unset / `latest` / digest-on-tag / non-`sha256:<64hex>` digest / whitespace, and that imageRef renders the canonical {repo}:{tag} or {repo}@{digest} forms
+    ├── validate_image_tag_test.yaml    # (v1.2.0) asserts validateImageTag rejects unset / `latest` / digest-on-tag / non-`sha256:<64hex>` digest / whitespace, and that imageRef renders the canonical {repo}:{tag} or {repo}@{digest} forms
+    └── validate_dev_image_tag_test.yaml # (v1.3.0) asserts validateDevImageTag rejects unset / `latest` (any case) / whitespace dev.image.tag, and that dev-pod.yaml renders the pinned {repo}:{tag}
 ```
 
-14 files total (7 templates + 3 helm-unittests + 4 root files: `Chart.yaml`,
+15 files total (7 templates + 4 helm-unittests + 4 root files: `Chart.yaml`,
 `README.md`, `values.yaml`, `.helmignore`). ~1,700 LOC across chart + tests
 for v1.2.0 (v1.0.0 baseline was ~880 LOC; v1.1.0 PR9790 added DCGM actuator
 wiring on `daemonset.yaml` / `dev-pod.yaml` / `_helpers.tpl` plus the
@@ -847,7 +848,7 @@ deploy/helm/charts/power-agent/tests/validate_enforce_test.yaml     ~128   (v1.1
 deploy/helm/charts/power-agent/tests/validate_image_tag_test.yaml   ~250   (v1.2.0)
 ```
 
-Chart-only layout: **14 files** (7 templates + 3 helm-unittests + 4 root files).
+Chart-only layout: **15 files** (7 templates + 4 helm-unittests + 4 root files).
 LOC totals drift across reviewer cycles, so use `find deploy/helm/charts/power-agent -type f | xargs wc -l` for the live count rather than chasing this list.
 
 **Removed (3 files; PR9682 only):**
@@ -1040,7 +1041,7 @@ Before the commit gets pushed to `pr1a/power-agent` (or to
 4. **`helm template`** with `--set image.tag=v1.2.0 --set daemonset.enabled=true --set dev.enabled=true` — must fail fast at template time with the `validateMutex` message.
 5. **`helm template`** with `--set image.tag=v1.2.0 --set agent.actuator=invalid` — must fail fast at template time with the `validateActuator` message (v1.1.0+).
 6. **`helm template`** with `--set image.tag=v1.2.0 --set agent.actuator=dcgm --set agent.dcgm.enforce=treu` — must fail fast with the `validateEnforce` message (v1.1.0+; mirrors `_parse_bool_strict`).
-7. **`helm unittest deploy/helm/charts/power-agent`** — required as of v1.1.0. The `tests/validate_actuator_test.yaml`, `tests/validate_enforce_test.yaml`, and (v1.2.0+) `tests/validate_image_tag_test.yaml` files in the chart exercise every positive/negative case for the template-time validators (see §4.4 closing paragraph). Snapshot of expected output: `24 passed` for the v1.1.0 chart, `46 passed` for the v1.2.0 chart, and **`49 passed, 0 failed` for the current v1.3.0 chart** (v1.2.0 added 22 cases across the image.tag/digest validator — tag/digest mutex, latest rejection, whitespace rejection, sha256-on-tag rejection, exactly-64-hex digest enforcement, repo@digest canonical-form rendering — and v1.3.0 added 3 more; verified via `helm unittest deploy/helm/charts/power-agent`).
+7. **`helm unittest deploy/helm/charts/power-agent`** — required as of v1.1.0. The `tests/validate_actuator_test.yaml`, `tests/validate_enforce_test.yaml`, (v1.2.0+) `tests/validate_image_tag_test.yaml`, and (v1.3.0+) `tests/validate_dev_image_tag_test.yaml` files in the chart exercise every positive/negative case for the template-time validators (see §4.4 closing paragraph). Snapshot of expected output: `24 passed` for the v1.1.0 chart, `46 passed` for the v1.2.0 chart, and **`56 passed, 0 failed` for the current v1.3.0 chart** across 4 suites (10 actuator + 14 enforce + 25 image-tag + 7 dev-image-tag). v1.2.0 added 22 cases across the image.tag/digest validator — tag/digest mutex, latest rejection, whitespace rejection, sha256-on-tag rejection, exactly-64-hex digest enforcement, repo@digest canonical-form rendering; v1.3.0 added 3 more image-tag cases plus the 7-case `validate_dev_image_tag_test.yaml` suite (dev.image.tag unset / `latest` any-case / whitespace rejection + pinned-tag render). Verified via `helm unittest deploy/helm/charts/power-agent`.
 8. **Pre-commit hooks pass on the chart files** — the same 8 hooks the v3.3 §7 checklist enforces (isort/black/flake8/codespell/end-of-file-fixer/trailing-whitespace/check-yaml/ruff). `check-yaml` is the relevant one for chart files; the rest don't touch YAML.
 9. **No CI regression** — planner-group jobs trigger and pass (the chart sits inside the planner-group path filter; same job set that already covers `deploy/power-agent/**`).
 
@@ -1155,15 +1156,15 @@ Mirror of `pr9369-split-plan.md` §7, scoped to this work:
 
 **Authoring:**
 
-- [ ] Author all 14 chart files following §4.1's layout (7 templates + 3 helm-unittests + 4 root files).
+- [ ] Author all 15 chart files following §4.1's layout (7 templates + 4 helm-unittests + 4 root files).
 - [ ] Cross-check every Helm value reference (`{{ .Values.xxx }}`) against the §4.2 values schema — no orphaned values, no missing defaults.
 - [ ] **Dead-knob audit (v1.2, risk register #9):** confirm every key in the chart's `values.yaml` traces to either a `{{ .Values.xxx }}` reference in `templates/*.yaml` or a CLI flag in `power_agent.py:main()`. If any key has no wiring, drop it from `values.yaml` rather than ship dead configuration surface. (Specifically: the v1.1 draft had `agent.reconcileIntervalSeconds` as such a dead knob — verify it does not reappear. Specifically for v1.1.0: `agent.actuator` traces to `--actuator`, `agent.dcgm.host` to `--dcgm-host`, `agent.dcgm.port` to `--dcgm-port`, `agent.dcgm.enforce` to `--dcgm-enforce` — all verified live in `power_agent.py:730-804`.)
 - [ ] **RBAC effective-scope audit (v1.2, helper):** confirm `templates/role.yaml` and `templates/rolebinding.yaml` reference `include "power-agent.effectiveNamespaceRestricted" .` rather than `.Values.rbac.namespaceRestricted` directly. Test `helm template --set dev.enabled=true --set dev.nodeName=foo` produces `Role` + `RoleBinding` (not `ClusterRole`).
-- [ ] **Validator coverage audit (v1.3, helpers):** confirm both `templates/daemonset.yaml` and `templates/dev-pod.yaml` open with all four `{{- include "power-agent.validate*" . -}}` lines (validateImageTag, validateMutex, validateActuator, validateEnforce). The dev-pod template was missing the actuator-validator pair pre-PR9790; the §5.4 helm-unittest gate catches regressions.
+- [ ] **Validator coverage audit (v1.3, helpers):** confirm both `templates/daemonset.yaml` and `templates/dev-pod.yaml` open with all four `{{- include "power-agent.validate*" . -}}` lines (validateMutex, validateActuator, validateEnforce plus the image-tag validator — daemonset.yaml uses `validateImageTag`, dev-pod.yaml its mirror `validateDevImageTag`). The dev-pod template was missing the actuator-validator pair pre-PR9790; the §5.4 helm-unittest gate catches regressions.
 - [ ] Run `helm lint` on the chart — zero errors.
 - [ ] Run the four `helm template` exercises from §5.4 (default / namespace-restricted / dev-mode / DCGM actuator) and confirm each renders to valid manifests.
 - [ ] Run the four negative-path `helm template` exercises (missing image tag, mutex violation, invalid actuator, invalid enforce) and confirm all four fail with the §4.4 helper messages.
-- [ ] Run `helm unittest deploy/helm/charts/power-agent` — expect `49 passed, 0 failed` on the v1.3.0 chart (46 from the v1.1.0/v1.2.0 actuator/enforce/image-tag validators + 3 added in v1.3.0). Run again whenever the test files change to refresh the expected number rather than hardcoding it across the doc.
+- [ ] Run `helm unittest deploy/helm/charts/power-agent` — expect `56 passed, 0 failed` on the v1.3.0 chart (10 actuator + 14 enforce + 25 image-tag + 7 dev-image-tag, across 4 suites). Run again whenever the test files change to refresh the expected number rather than hardcoding it across the doc.
 
 **Doc touch-up:**
 

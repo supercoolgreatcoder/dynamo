@@ -184,9 +184,10 @@ lockstep on digest handling.
   * `image.digest` set → `{repository}@{digest}` (OCI digest form)
   * else                → `{repository}:{tag}` (OCI tag form)
 
-Assumes `validateImageTag` has already run on the same value tree
-(both daemonset.yaml and dev-pod.yaml include it at the top of the
-file), so we don't re-validate here.
+Assumes the relevant tag validator has already run on the same value
+tree at the top of the including file: daemonset.yaml includes
+`validateImageTag`, dev-pod.yaml includes its mirror
+`validateDevImageTag`. So we don't re-validate here.
 
 Usage: `image: {{ include "power-agent.imageRef" (dict "repository"
 .Values.image.repository "tag" .Values.image.tag "digest"

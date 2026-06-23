@@ -219,8 +219,9 @@ dev:
   #   kubectl get pods -n $NAMESPACE -l nvidia.com/dynamo-component-type=worker \
   #     -o jsonpath='{.items[*].spec.nodeName}'
   nodeName: ""
-  # Name of an externally-created ConfigMap holding both power_agent.py
-  # AND actuator.py at the matching key names. See top-of-section recipe.
+  # Name of an externally-created ConfigMap holding power_agent.py,
+  # actuator.py AND managed_state.py at the matching key names (all three
+  # are required; see top-of-section recipe).
   scriptConfigMap: dynamo-power-agent-script
   # The dev pod uses vllm-runtime (already cached on every GPU node by
   # the quickstart DGDs) which ships with pynvml; the agent pip-installs
