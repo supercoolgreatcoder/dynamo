@@ -65,8 +65,12 @@ Create the name of the service account to use
 
 {{/*
 Validate the production image reference. Exactly one of `image.tag` or
-`image.digest` must be set. Rules per PR #9682 review (initial + two
-follow-ups):
+`image.digest` must be set — but only when the DaemonSet is the thing being
+installed (daemonset.enabled, the default). Dev-pod mode uses dev.image.*
+instead (validated by validateDevImageTag), so gating on daemonset.enabled
+avoids forcing a dummy --set image.tag/digest on dev-only installs.
+
+Rules per PR #9682 review (initial + two follow-ups):
 
   * Both empty       → fail. Chart removed the `:latest` fallback
                        deliberately; the operator must pin.
@@ -105,6 +109,7 @@ A passing chart install is guaranteed to render either
 `{repo}@sha256:<64 hex>` — both are valid OCI image references.
 */}}
 {{- define "power-agent.validateImageTag" -}}
+{{- if .Values.daemonset.enabled -}}
 {{- $tag := .Values.image.tag | toString -}}
 {{- $digest := .Values.image.digest | toString -}}
 {{- $appTag := printf "v%s" .Chart.AppVersion -}}
@@ -144,6 +149,18 @@ A passing chart install is guaranteed to render either
 {{- if not (regexMatch "^sha256:[0-9a-fA-F]{64}$" $digest) -}}
 {{- fail (printf "image.digest=%q is not a valid SHA-256 digest. Must match sha256:<64 hex chars> exactly (SHA-256 is 32 bytes = 64 nybbles). Anything shorter is a truncated digest; anything longer is a typo. Example: image.digest=sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855. PR #9682 follow-up tightened this from {32,} to {64}." $digest) -}}
 {{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Validate that dev.image.tag is set when dev-pod mode is enabled. Mirror of
+validateImageTag for the dev iteration image; keeps dev installs from silently
+falling back to a mutable tag.
+*/}}
+{{- define "power-agent.validateDevImageTag" -}}
+{{- if and .Values.dev.enabled (not .Values.dev.image.tag) -}}
+{{- fail "dev.image.tag is required when dev.enabled (pin the dev iteration image; :latest is not supported)" -}}
 {{- end -}}
 {{- end -}}
 

@@ -1,4 +1,4 @@
-{{- include "power-agent.validateImageTag" . -}}
+{{- include "power-agent.validateDevImageTag" . -}}
 {{- include "power-agent.validateMutex" . -}}
 {{- include "power-agent.validateActuator" . -}}
 {{- include "power-agent.validateEnforce" . -}}
@@ -14,9 +14,9 @@
 # with `MountVolume.SetUp failed`):
 #
 #   kubectl create configmap {{ .Values.dev.scriptConfigMap }} \
-#     --from-file=power_agent.py=components/power_agent/power_agent.py \
-#     --from-file=actuator.py=components/power_agent/actuator.py \
-#     --from-file=managed_state.py=components/power_agent/managed_state.py \
+#     --from-file=power_agent.py=deploy/power-agent/power_agent.py \
+#     --from-file=actuator.py=deploy/power-agent/actuator.py \
+#     --from-file=managed_state.py=deploy/power-agent/managed_state.py \
 #     -n {{ .Release.Namespace }}
 #
 # The actuator.py mount was added in chart v1.1.0 — power_agent.py

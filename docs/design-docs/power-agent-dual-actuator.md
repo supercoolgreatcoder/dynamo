@@ -360,7 +360,7 @@ clocks, or compute mode out from under the workload.
 
 > **Source of truth.** The Python listings in §6.1–§6.5 are the
 > design-time pseudo-code. The implementation lives in
-> `components/power_agent/actuator.py`; treat that file as
+> `deploy/power-agent/actuator.py`; treat that file as
 > authoritative on signatures, error handling, and clamp/persistence
 > ordering. The samples below are kept readable by omitting
 > non-load-bearing detail (logging, lazy imports, defensive
@@ -372,7 +372,7 @@ clocks, or compute mode out from under the workload.
 
 ### 6.1 The `Actuator` Protocol
 
-A new module `components/power_agent/actuator.py` defines:
+A new module `deploy/power-agent/actuator.py` defines:
 
 ```python
 from typing import Protocol
@@ -468,7 +468,7 @@ class Actuator(Protocol):
 ```
 
 This Protocol is **mechanically extractable** from today's
-`components/power_agent/power_agent.py`. The current module-level
+`deploy/power-agent/power_agent.py`. The current module-level
 functions `_clamp_to_constraints`, `_apply_cap`, `_nvml_uuid`,
 `_restore_orphaned_gpus_on_startup`, and the body of `_handle_sigterm`
 are precisely the methods listed above. No new logic needed for the
@@ -1460,13 +1460,13 @@ not violate this property — they're observers, not writers.
 The Power Agent cannot detect or enforce single-writer property on
 the node side; this is a deployment-hygiene constraint that falls on
 the operator. We document it in
-`components/power_agent/README.md` §"Actuator selection" with this
+`deploy/power-agent/README.md` §"Actuator selection" with this
 table so the failure-mode question gets a complete answer regardless
 of which library the operator's other tooling uses.
 
 ### 10.4 Documentation updates
 
-- `components/power_agent/README.md` — add §"Actuator selection" subsection including the §10.3 operator note about two-writer configurations.
+- `deploy/power-agent/README.md` — add §"Actuator selection" subsection including the §10.3 operator note about two-writer configurations.
 - `deploy/helm/charts/power-agent/README.md` — add `agent.actuator`, `agent.dcgm.*` values to the table.
 - `deploy/helm/charts/power-agent/templates/_helpers.tpl` — add `validateActuator` and `validateEnforce` guards (mirrors `validateImageTag`, `validateMutex`).
 
@@ -1510,10 +1510,10 @@ the discussion from scratch.
 ## 12. Reference material
 
 In-repo:
-- `components/power_agent/power_agent.py:208-258` — the existing `_clamp_to_constraints` + `_apply_cap` that becomes `NvmlActuator.apply_cap`.
-- `components/power_agent/power_agent.py:268-286` — `_handle_sigterm`'s restore block that becomes `NvmlActuator.restore_default`.
-- `components/power_agent/power_agent.py:294-324` — `_restore_orphaned_gpus_on_startup`, migrated in v1.5 onto the actuator surface. Now takes an `Actuator` arg and dispatches all six operations (`device_count`, `get_uuid`, `list_running_pids`, `current_w`, `default_w`, `restore_default`) through it. The two guards from the inline NVML version — UUID gating against `_previously_managed` and the `current_w < default_w` skip — are preserved verbatim. The `current_w` / `default_w` Protocol additions exist expressly to keep the second guard intact across the migration (see §6.1 v1.5 additions and v1.5 changelog Fix #5). On the DCGM path the orphan-restore write now flows through `nvidia-dcgm` as a `dcgmConfigSet`, so the hostengine's "target configuration" record stays consistent with the driver-level cap — pre-v1.5 raw-NVML write would have desynced them.
-- `components/power_agent/power_agent.py:399-431` — `PowerAgent.__init__`; gains an `Actuator` parameter.
+- `deploy/power-agent/power_agent.py:208-258` — the existing `_clamp_to_constraints` + `_apply_cap` that becomes `NvmlActuator.apply_cap`.
+- `deploy/power-agent/power_agent.py:268-286` — `_handle_sigterm`'s restore block that becomes `NvmlActuator.restore_default`.
+- `deploy/power-agent/power_agent.py:294-324` — `_restore_orphaned_gpus_on_startup`, migrated in v1.5 onto the actuator surface. Now takes an `Actuator` arg and dispatches all six operations (`device_count`, `get_uuid`, `list_running_pids`, `current_w`, `default_w`, `restore_default`) through it. The two guards from the inline NVML version — UUID gating against `_previously_managed` and the `current_w < default_w` skip — are preserved verbatim. The `current_w` / `default_w` Protocol additions exist expressly to keep the second guard intact across the migration (see §6.1 v1.5 additions and v1.5 changelog Fix #5). On the DCGM path the orphan-restore write now flows through `nvidia-dcgm` as a `dcgmConfigSet`, so the hostengine's "target configuration" record stays consistent with the driver-level cap — pre-v1.5 raw-NVML write would have desynced them.
+- `deploy/power-agent/power_agent.py:399-431` — `PowerAgent.__init__`; gains an `Actuator` parameter.
 - `deploy/helm/charts/power-agent/values.yaml:20-33` — `agent:` block that gains `actuator`, `dcgm.host`, `dcgm.port`, `dcgm.enforce`.
 - `deploy/helm/charts/power-agent/templates/daemonset.yaml:66-71` — `command:` block that gains the new flags.
 - `docs/design-docs/pr9369-split-plan.md` §2.1 — what shipped in PR9682 (the NVML-only Power Agent).

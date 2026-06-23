@@ -171,9 +171,9 @@ loop: edit the scripts locally, update the ConfigMap, restart the Pod.
 >
 > ```bash
 > kubectl create configmap dynamo-power-agent-script \
->   --from-file=power_agent.py=components/power_agent/power_agent.py \
->   --from-file=actuator.py=components/power_agent/actuator.py \
->   --from-file=managed_state.py=components/power_agent/managed_state.py \
+>   --from-file=power_agent.py=deploy/power-agent/power_agent.py \
+>   --from-file=actuator.py=deploy/power-agent/actuator.py \
+>   --from-file=managed_state.py=deploy/power-agent/managed_state.py \
 >   -n $NAMESPACE
 > ```
 >
@@ -209,11 +209,14 @@ Step 2: install in dev mode.
 ```bash
 helm install power-agent ./deploy/helm/charts/power-agent \
   --namespace $NAMESPACE \
-  --set image.tag=v1.2.0 \
   --set daemonset.enabled=false \
   --set dev.enabled=true \
   --set dev.nodeName=<gpu-node-name>
 ```
+
+Dev mode uses `dev.image.*` (defaults to `vllm-runtime:1.0.1`), so the
+production `image.tag` is not required here — set `dev.image.tag` instead if
+you need a different iteration image.
 
 `daemonset.enabled` and `dev.enabled` are mutually exclusive — the
 chart fails to render at `helm template` / `helm install` time if both
@@ -234,9 +237,9 @@ Update flow (after editing `power_agent.py`, `actuator.py`, or `managed_state.py
 
 ```bash
 kubectl create configmap dynamo-power-agent-script \
-  --from-file=power_agent.py=components/power_agent/power_agent.py \
-  --from-file=actuator.py=components/power_agent/actuator.py \
-  --from-file=managed_state.py=components/power_agent/managed_state.py \
+  --from-file=power_agent.py=deploy/power-agent/power_agent.py \
+  --from-file=actuator.py=deploy/power-agent/actuator.py \
+  --from-file=managed_state.py=deploy/power-agent/managed_state.py \
   -n $NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
 
 kubectl delete pod power-agent-dev -n $NAMESPACE
@@ -248,7 +251,7 @@ kubectl delete pod power-agent-dev -n $NAMESPACE
 | Key | Meaning | Default |
 |-----|---------|---------|
 | `image.repository` | Power Agent image registry path | `nvcr.io/nvidia/ai-dynamo/power-agent` |
-| `image.tag` | Release tag (e.g. `v1.2.0`). Set EITHER this OR `image.digest`. `latest` is rejected. | `""` |
+| `image.tag` | Release tag (e.g. `v1.2.0`). **Required for DaemonSet mode** — set EITHER this OR `image.digest` (no default); ignored in dev mode. `latest` is rejected. | `""` |
 | `image.digest` | Content-addressed digest (`sha256:<hex>`). When set, the image renders as `{repository}@{digest}` (canonical OCI form). Mutually exclusive with `image.tag`. | `""` |
 | `image.pullPolicy` | Image pull policy | `IfNotPresent` |
 | `imagePullSecrets` | Image pull secrets list | `[]` |
@@ -342,9 +345,9 @@ TGP on GPUs it previously managed but no longer sees.
 script ConfigMap doesn't exist. Run the `kubectl create configmap`
 recipe from the Dev install section above.
 
-**`Error: image.tag or image.digest is required ...`** at install time: pass `--set image.tag=<pinned>` OR `--set image.digest=sha256:<hex>` (mutually exclusive). The chart deliberately rejects unset / `:latest` tags to keep deployments reproducible.
+**`Error: image.tag or image.digest is required ...`** at install time (DaemonSet mode): pass `--set image.tag=<pinned>` OR `--set image.digest=sha256:<hex>` (mutually exclusive). The chart deliberately rejects unset / `:latest` tags to keep deployments reproducible. (Dev mode validates `dev.image.tag` instead.)
 
-**`Error: image.digest=... is not a valid OCI digest`**: digest values must match `sha256:<hex>`. Note `repo:sha256:...` is NOT a valid image reference — digests live on `image.digest`, not `image.tag`. PR #9682 added the separate field for this reason.
+**`Error: image.digest=... is not a valid SHA-256 digest`**: digest values must match `sha256:<64 hex chars>`. Note `repo:sha256:...` is NOT a valid image reference — digests live on `image.digest`, not `image.tag`. PR #9682 added the separate field for this reason.
 
 **`Error: image.tag and image.digest are mutually exclusive`**: pick one. Use the tag for human-readable release pinning, the digest for strict content-addressed reproducibility (e.g. in regulated environments where the image bytes must be auditable).
 
