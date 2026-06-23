@@ -1091,6 +1091,65 @@ class TestApplyCap(unittest.TestCase):
         # and restore the displaced GPU-A on shutdown.
         self.assertEqual(actuator.managed_uuids(), {"GPU-A", "GPU-B"})
 
+    def test_apply_cap_skips_write_on_reenumeration_during_write(self):
+        """Finding 2 (PR9790 review): identity-stable cap write.
+
+        If `gpu_idx` re-enumerates onto a DIFFERENT physical GPU between the
+        identity captured at `apply_cap` entry and the pre-`Set` re-check
+        (e.g. a hostengine reconnect inside `_with_reconnect` re-orders
+        indices), the cap — derived from the ORIGINAL GPU's workload — must
+        NOT be written to the new GPU. `apply_cap` skips the `Set`, ticks
+        `apply_failures_total`, records nothing as managed (no clobber), and
+        returns the effective watts; the next reconcile cycle re-attributes
+        and retries against the fresh enumeration.
+        """
+        metrics = MagicMock()
+        actuator, modules, handle, _ = _make_initialized_actuator(metrics=metrics)
+        self._seed_constraints_and_uuid(modules, handle, min_w=100, max_w=700)
+
+        # Both the entry identity capture (via get_uuid) and the pre-Set
+        # re-verification call `_read_uuid_raw`. Return GPU-A first (the
+        # identity the cap is computed for) then GPU-B (the re-enumerated
+        # occupant) so the guard fires.
+        with patch.object(
+            actuator, "_read_uuid_raw", side_effect=["GPU-A", "GPU-B"]
+        ):
+            with patch.dict(
+                "sys.modules", {**modules, "pynvml": MagicMock()}
+            ), patch("power_agent._persist_managed_gpus"):
+                result = actuator.apply_cap(0, 300)
+
+        # Effective watts still returned (Protocol §6.1), but NO cap write.
+        self.assertEqual(result, 300)
+        modules["pydcgm"].DcgmGroup.return_value.config.Set.assert_not_called()
+        metrics.apply_failures_total.inc.assert_called_once()
+        # Nothing tracked as managed — we refused to write, so there is no
+        # cap of ours on either GPU to track.
+        self.assertEqual(actuator.managed_uuids(), set())
+        self.assertNotIn(0, power_agent._managed_gpu_indices)
+
+    def test_apply_cap_proceeds_when_entry_identity_unreadable(self):
+        """Best-effort: if the identity can't be read at entry the mismatch
+        is NOT proven, so the write proceeds (and the reconnect/retry path
+        still protects the actual Set). Guards against the guard turning a
+        transient identity-read blip into a dropped cap."""
+        metrics = MagicMock()
+        actuator, modules, handle, _ = _make_initialized_actuator(metrics=metrics)
+        self._seed_constraints_and_uuid(modules, handle, min_w=100, max_w=700)
+
+        # get_uuid raises everywhere → expected_uuid is None → guard skipped.
+        with patch.object(
+            actuator, "get_uuid", side_effect=RuntimeError("transient identity blip")
+        ):
+            with patch.dict(
+                "sys.modules", {**modules, "pynvml": MagicMock()}
+            ), patch("power_agent._persist_managed_gpus"):
+                result = actuator.apply_cap(0, 300)
+
+        self.assertEqual(result, 300)
+        modules["pydcgm"].DcgmGroup.return_value.config.Set.assert_called_once()
+        metrics.apply_failures_total.inc.assert_not_called()
+
     def test_apply_cap_clamps_above_max(self):
         metrics = MagicMock()
         actuator, modules, handle, _ = _make_initialized_actuator(metrics=metrics)

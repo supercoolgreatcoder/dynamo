@@ -51,6 +51,7 @@ class TestProtocolSatisfaction(unittest.TestCase):
             "default_w",
             "apply_cap",
             "restore_default",
+            "restore_default_by_uuid",
         ):
             self.assertTrue(
                 callable(getattr(actuator, method, None)),
@@ -320,6 +321,86 @@ class TestRestoreDefault(unittest.TestCase):
         mock_nvml.nvmlDeviceSetPowerManagementLimit.assert_called_once_with(
             "handle_1", 700_000
         )
+
+
+class TestRestoreDefaultByUuid(unittest.TestCase):
+    """Identity-stable restore (PR9790 review). The target index is resolved
+    from the UUID at write time, and the `current_w < default_w` guard is
+    applied at the resolved index — mirroring DcgmActuator's contract so
+    orphan recovery and the SIGTERM sweep behave the same on both paths."""
+
+    def _nvml(self, uuids, current_mw, default_mw):
+        """Build a pynvml mock where index→UUID/current/default are dicts."""
+        mock_nvml = MagicMock()
+        mock_nvml.nvmlDeviceGetCount.return_value = len(uuids)
+        mock_nvml.nvmlDeviceGetHandleByIndex.side_effect = lambda idx: f"h{idx}"
+        mock_nvml.nvmlDeviceGetUUID.side_effect = lambda h: uuids[int(h[1:])].encode()
+        mock_nvml.nvmlDeviceGetPowerManagementLimit.side_effect = (
+            lambda h: current_mw[int(h[1:])]
+        )
+        mock_nvml.nvmlDeviceGetPowerManagementDefaultLimit.side_effect = (
+            lambda h: default_mw[int(h[1:])]
+        )
+        return mock_nvml
+
+    def test_restores_at_resolved_index_when_below_default(self):
+        # UUID 'GPU-b' lives at index 1; capped below default → restore there.
+        mock_nvml = self._nvml(
+            uuids={0: "GPU-a", 1: "GPU-b"},
+            current_mw={0: 700_000, 1: 400_000},
+            default_mw={0: 700_000, 1: 700_000},
+        )
+        with patch.dict("sys.modules", {"pynvml": mock_nvml}):
+            with patch.object(power_agent, "pynvml", mock_nvml):
+                result = NvmlActuator().restore_default_by_uuid("GPU-b")
+        self.assertTrue(result)
+        # The default-limit write landed on index 1's handle, not index 0.
+        mock_nvml.nvmlDeviceSetPowerManagementLimit.assert_called_once_with(
+            "h1", 700_000
+        )
+
+    def test_returns_none_when_already_at_default(self):
+        mock_nvml = self._nvml(
+            uuids={0: "GPU-a"},
+            current_mw={0: 700_000},
+            default_mw={0: 700_000},
+        )
+        with patch.dict("sys.modules", {"pynvml": mock_nvml}):
+            with patch.object(power_agent, "pynvml", mock_nvml):
+                result = NvmlActuator().restore_default_by_uuid("GPU-a")
+        self.assertIsNone(result)
+        mock_nvml.nvmlDeviceSetPowerManagementLimit.assert_not_called()
+
+    def test_returns_none_when_uuid_absent_on_clean_scan(self):
+        mock_nvml = self._nvml(
+            uuids={0: "GPU-a"},
+            current_mw={0: 400_000},
+            default_mw={0: 700_000},
+        )
+        with patch.dict("sys.modules", {"pynvml": mock_nvml}):
+            with patch.object(power_agent, "pynvml", mock_nvml):
+                result = NvmlActuator().restore_default_by_uuid("GPU-missing")
+        self.assertIsNone(result)
+        mock_nvml.nvmlDeviceSetPowerManagementLimit.assert_not_called()
+
+    def test_returns_false_when_scan_inconclusive(self):
+        """A probe raising mid-scan (transient outage) before any match must
+        return False (indeterminate) so the caller keeps the UUID."""
+        mock_nvml = self._nvml(
+            uuids={0: "GPU-a", 1: "GPU-b"},
+            current_mw={0: 400_000, 1: 400_000},
+            default_mw={0: 700_000, 1: 700_000},
+        )
+
+        def boom(h):
+            raise RuntimeError("transient NVML failure")
+
+        mock_nvml.nvmlDeviceGetUUID.side_effect = boom
+        with patch.dict("sys.modules", {"pynvml": mock_nvml}):
+            with patch.object(power_agent, "pynvml", mock_nvml):
+                result = NvmlActuator().restore_default_by_uuid("GPU-b")
+        self.assertFalse(result)
+        mock_nvml.nvmlDeviceSetPowerManagementLimit.assert_not_called()
 
 
 class TestPowerAgentBindsNvmlActuatorByDefault(unittest.TestCase):

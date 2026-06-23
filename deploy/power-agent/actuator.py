@@ -50,6 +50,21 @@ logger = logging.getLogger("power_agent.actuator")
 T = TypeVar("T")
 
 
+class _GpuIdentityMismatch(Exception):
+    """Raised inside the DCGM cap-write path when the physical GPU at the
+    target index no longer matches the UUID captured at `apply_cap` entry.
+
+    A DCGM hostengine reconnect inside `apply_cap` (the `_with_reconnect`
+    retry) can re-enumerate GPU indices, so the index the cap was derived
+    for may now host a different physical GPU. Writing then would apply a
+    cap computed from GPU-A's workload onto GPU-B. This is deliberately NOT
+    a `DCGMError`, so `_with_reconnect` does not try to recover from it; it
+    propagates to `apply_cap`, which skips the write (no clobber), records
+    `apply_failures_total`, and lets the next reconcile cycle re-attribute
+    and retry against the fresh enumeration.
+    """
+
+
 @runtime_checkable
 class Actuator(Protocol):
     """Protocol implemented by every power-cap actuator.
@@ -140,6 +155,28 @@ class Actuator(Protocol):
         Return False only when the restore was intentionally skipped because
         the managed physical GPU is no longer visible; None/True mean the
         restore path completed.
+        """
+        ...
+
+    def restore_default_by_uuid(self, uuid: str) -> Optional[bool]:
+        """Restore the factory-default TGP for the GPU carrying `uuid`.
+
+        Identity-stable peer of `restore_default`: the target index is
+        resolved from `uuid` at write time, so a driver/hostengine
+        re-enumeration between the caller's UUID probe and the write
+        cannot land the restore (and the caller's subsequent prune) on a
+        different physical GPU. Cold-start orphan recovery and the SIGTERM
+        sweep use this instead of the index-keyed `restore_default`, which
+        is only safe once `apply_cap` has recorded the index→UUID mapping.
+
+        Returns:
+          * ``True``  - a live below-default cap was restored.
+          * ``None``  - the UUID resolved but the GPU is already at/above
+            default (nothing of ours to restore), or a clean scan proved
+            the GPU is no longer present.
+          * ``False`` - the UUID could not be located conclusively (a probe
+            raised, e.g. a transient outage), so the GPU may still carry our
+            cap; the caller must keep the UUID and retry later.
         """
         ...
 
@@ -294,6 +331,42 @@ class NvmlActuator:
         default_mw = pynvml.nvmlDeviceGetPowerManagementDefaultLimit(handle)
         pynvml.nvmlDeviceSetPowerManagementLimit(handle, default_mw)
         return True
+
+    def restore_default_by_uuid(self, uuid: str) -> Optional[bool]:
+        """Identity-stable restore for the NVML path.
+
+        NVML's per-process index ordering is stable (unlike DCGM, which can
+        re-enumerate after a hostengine reconnect), but the orphan-recovery
+        and SIGTERM callers are actuator-agnostic and rely on the Protocol
+        contract, so we resolve `uuid` to its current index here and apply
+        the same `current_w < default_w` guard `DcgmActuator` does. Returns
+        ``True`` / ``None`` / ``False`` per the Protocol.
+        """
+        scan_complete = True
+        match_idx: Optional[int] = None
+        for idx in range(self.device_count()):
+            try:
+                if self.get_uuid(idx) == uuid:
+                    match_idx = idx
+                    break
+            except Exception as e:
+                scan_complete = False
+                logger.warning(
+                    "NVML: failed to inspect GPU index %d while resolving "
+                    "managed UUID %s: %s",
+                    idx,
+                    uuid,
+                    e,
+                )
+        if match_idx is None:
+            # Clean scan with no match -> GPU gone (safe to prune). Incomplete
+            # scan -> indeterminate; keep the UUID for the next attempt.
+            return None if scan_complete else False
+        if self.current_w(match_idx) < self.default_w(match_idx):
+            self.restore_default(match_idx)
+            return True
+        # Visible and already at/above default: nothing of ours to restore.
+        return None
 
 
 class DcgmActuator:
@@ -615,13 +688,21 @@ class DcgmActuator:
         hostengine the moment GPU discovery completes.
         """
 
-        def _op() -> str:
-            gpu_id = self._discovered_gpu_ids[gpu_idx]
-            attrs = self._system.discovery.GetGpuAttributes(gpu_id)
-            raw = attrs.identifiers.uuid
-            return self._normalize_uuid(raw, source=f"DCGM gpu_id={gpu_id}")
+        return self._with_reconnect(lambda: self._read_uuid_raw(gpu_idx))
 
-        return self._with_reconnect(_op)
+    def _read_uuid_raw(self, gpu_idx: int) -> str:
+        """UUID read WITHOUT the `_with_reconnect` wrapper.
+
+        `get_uuid` wraps this for external callers. The cap-write identity
+        guard (`_apply_cap_inner._write_set`) is itself already running
+        inside `_with_reconnect`, so it calls this directly to avoid
+        nesting reconnect logic; a `CONNECTION_NOT_VALID` here propagates to
+        the enclosing `_with_reconnect`, which handles the single retry.
+        """
+        gpu_id = self._discovered_gpu_ids[gpu_idx]
+        attrs = self._system.discovery.GetGpuAttributes(gpu_id)
+        raw = attrs.identifiers.uuid
+        return self._normalize_uuid(raw, source=f"DCGM gpu_id={gpu_id}")
 
     def list_running_pids(self, gpu_idx: int) -> list[int]:
         """Snapshot of compute PIDs on the GPU — via NVML, even on the DCGM path.
@@ -880,6 +961,26 @@ class DcgmActuator:
                 "construct as DcgmActuator(..., metrics=power_agent_metrics)."
             )
 
+        # Capture the identity of the GPU we are about to cap, BEFORE the
+        # write. A DCGM hostengine reconnect inside `_apply_cap_inner`
+        # (the `_with_reconnect` retry after CONNECTION_NOT_VALID) can
+        # re-enumerate indices, so the write must verify that `gpu_idx`
+        # still hosts this same UUID — otherwise a cap derived from this
+        # GPU's workload could land on whatever GPU took over the index.
+        # Best-effort: if the identity is unreadable here the mismatch is
+        # NOT proven, so we proceed and let the write attempt happen
+        # (mirrors `_resolve_managed_idx`'s "unproven mismatch" stance).
+        try:
+            expected_uuid: Optional[str] = self.get_uuid(gpu_idx)
+        except Exception as e:
+            logger.warning(
+                "Could not read GPU %d identity before cap write; "
+                "proceeding without the re-enumeration guard: %s",
+                gpu_idx,
+                e,
+            )
+            expected_uuid = None
+
         # Clamp against the SKU range. constraints_w handles its own
         # stale-handle recovery, so we don't re-wrap it here.
         min_w, max_w = self.constraints_w(gpu_idx)
@@ -895,7 +996,23 @@ class DcgmActuator:
         import dcgm_structs
 
         try:
-            return self._apply_cap_inner(gpu_idx, effective_w)
+            return self._apply_cap_inner(
+                gpu_idx, effective_w, expected_uuid=expected_uuid
+            )
+        except _GpuIdentityMismatch as e:
+            # The target index re-enumerated onto a different GPU during the
+            # write. Skip rather than clobber the unrelated GPU; the next
+            # reconcile cycle re-attributes pods against the fresh
+            # enumeration and retries. Counts as an apply failure so the
+            # skipped cap surfaces on `apply_failures_total`.
+            logger.error(
+                "Skipping DCGM cap write for GPU %d → %d W: %s",
+                gpu_idx,
+                effective_w,
+                e,
+            )
+            self._metrics.apply_failures_total.inc()
+            return effective_w
         except dcgm_structs.DCGMError as e:
             # Narrow on purpose (PR9790 review): only DCGM write errors
             # are part of the "cap-write failed, log + bump metric +
@@ -916,10 +1033,19 @@ class DcgmActuator:
             self._metrics.apply_failures_total.inc()
             return effective_w
 
-    def _apply_cap_inner(self, gpu_idx: int, effective_w: int) -> int:
+    def _apply_cap_inner(
+        self, gpu_idx: int, effective_w: int, expected_uuid: Optional[str] = None
+    ) -> int:
         """Inner cap-write path that propagates Set failures as exceptions.
 
         Precondition: `effective_w` is already clamped to SKU range.
+
+        `expected_uuid` (set only by `apply_cap`, never by the restore
+        paths which do their own index relocation) is the GPU identity
+        captured before the write. It is re-checked inside `_write_set`
+        AFTER any `_with_reconnect` re-init, so a re-enumeration that moved
+        `gpu_idx` onto a different GPU raises `_GpuIdentityMismatch` instead
+        of writing this GPU's cap onto the wrong one.
         Bookkeeping (`_managed_gpu_indices`, UUID persistence,
         `applied_limit_watts`) runs immediately after a successful
         Set — even if the optional Enforce that follows fails. The
@@ -938,6 +1064,39 @@ class DcgmActuator:
             import pydcgm
 
             gpu_id = self._discovered_gpu_ids[gpu_idx]
+
+            # Re-enumeration guard. This runs on the FIRST attempt and on
+            # any post-reconnect retry (both go through `_with_reconnect`).
+            # On the retry, `_discovered_gpu_ids` was rebuilt by `init()`,
+            # so reading the UUID raw (no nested reconnect) tells us whether
+            # `gpu_idx` still hosts the GPU this cap was computed for. A
+            # PROVEN mismatch aborts the write; an unreadable identity is
+            # NOT proven, so we fall through and let the write proceed (the
+            # surrounding reconnect/retry machinery handles transient
+            # outages).
+            if expected_uuid is not None:
+                try:
+                    current_uuid = self._read_uuid_raw(gpu_idx)
+                except dcgm_structs.DCGMError:
+                    # Surface to `_with_reconnect` (CONNECTION_NOT_VALID ->
+                    # reconnect + retry; anything else -> apply_cap's
+                    # DCGMError handler). Identity not proven wrong.
+                    raise
+                except Exception as e:
+                    logger.warning(
+                        "Could not re-verify GPU %d identity before cap "
+                        "write (mismatch not proven; proceeding): %s",
+                        gpu_idx,
+                        e,
+                    )
+                    current_uuid = expected_uuid
+                if current_uuid != expected_uuid:
+                    raise _GpuIdentityMismatch(
+                        f"GPU index {gpu_idx} now hosts UUID {current_uuid} "
+                        f"but the cap was computed for UUID {expected_uuid} "
+                        "(DCGM re-enumeration during the cap write)"
+                    )
+
             grp = self._groups.get(gpu_idx)
             if grp is None:
                 grp = pydcgm.DcgmGroup(

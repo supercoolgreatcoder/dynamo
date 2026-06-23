@@ -750,12 +750,31 @@ def _restore_orphaned_gpus_on_startup(actuator: Actuator) -> None:
             current_w = actuator.current_w(gpu_idx)
             default_w = actuator.default_w(gpu_idx)
             if current_w < default_w:
-                restore_result = actuator.restore_default(gpu_idx)
-                if restore_result is False:
+                # UUID-stable restore. The cheap guards above (managed,
+                # idle, below-default) are read at `gpu_idx`, but the WRITE
+                # must resolve identity from the UUID we just confirmed: a
+                # DCGM hostengine reconnect/re-enumeration inside the restore
+                # write can move `gpu_idx` onto a different physical GPU, and
+                # `_managed_uuid_by_idx` is empty at cold start so the index-
+                # keyed `restore_default` cannot self-verify here. Writing by
+                # index would then restore (and the discard below would prune)
+                # the wrong GPU, clobbering an unrelated cap and leaking ours.
+                # `restore_default_by_uuid` re-resolves the index at write time
+                # so both land on the GPU that actually carries `uuid`.
+                restore_result = actuator.restore_default_by_uuid(uuid)
+                if not restore_result:
+                    # None  -> nothing of ours to restore (already at/above
+                    #          default, or the GPU is gone on a clean scan).
+                    # False -> location inconclusive (a probe raised, e.g. a
+                    #          transient outage); the GPU may still carry our
+                    #          cap. Either way keep the UUID and retry on the
+                    #          next startup rather than prematurely pruning it.
                     continue
                 logger.info(
-                    "Restored orphaned cap on idle GPU %d (%d W → %d W).",
+                    "Restored orphaned cap for idle managed GPU "
+                    "(index %d at probe time, UUID %s, %d W → %d W).",
                     gpu_idx,
+                    uuid,
                     current_w,
                     default_w,
                 )

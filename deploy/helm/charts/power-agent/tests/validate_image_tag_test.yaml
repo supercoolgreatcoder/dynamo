@@ -286,4 +286,3 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].image
           value: nvcr.io/nvidia/ai-dynamo/power-agent@sha256:ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890
-

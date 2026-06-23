@@ -159,8 +159,20 @@ validateImageTag for the dev iteration image; keeps dev installs from silently
 falling back to a mutable tag.
 */}}
 {{- define "power-agent.validateDevImageTag" -}}
-{{- if and .Values.dev.enabled (not .Values.dev.image.tag) -}}
-{{- fail "dev.image.tag is required when dev.enabled (pin the dev iteration image; :latest is not supported)" -}}
+{{- if .Values.dev.enabled -}}
+{{- $tag := .Values.dev.image.tag | toString -}}
+{{- if not $tag -}}
+{{- fail "dev.image.tag is required when dev.enabled (pin the dev iteration image to a release tag; :latest is not supported)" -}}
+{{- end -}}
+{{/* Mirror the production validateImageTag guards: the error text above
+    promises ":latest is not supported", so actually enforce it (and reject
+    whitespace) rather than accepting any non-empty string. */}}
+{{- if regexMatch "\\s" $tag -}}
+{{- fail (printf "dev.image.tag=%q contains whitespace; OCI tags do not permit whitespace and rendering it verbatim would produce an invalid image reference. Fix the --set / values.yaml input." $tag) -}}
+{{- end -}}
+{{- if eq (lower $tag) "latest" -}}
+{{- fail (printf "dev.image.tag=%q is not supported. Pin the dev iteration image to a concrete release tag; the :latest tag is rejected to keep dev installs reproducible (mirrors the production image.tag guard)." $tag) -}}
+{{- end -}}
 {{- end -}}
 {{- end -}}
 

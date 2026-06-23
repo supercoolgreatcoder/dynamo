@@ -104,11 +104,15 @@ class TestUuidGating(_OrphanTestBase):
         _restore_orphaned_gpus_on_startup(actuator)
 
         # GPU-a (managed) → restore attempted (it'll proceed because
-        # current<default and no PIDs).
-        # GPU-b (unmanaged) → restore_default NEVER called.
-        restore_calls = [c.args for c in actuator.restore_default.call_args_list]
-        self.assertIn((0,), restore_calls)
-        self.assertNotIn((1,), restore_calls)
+        # current<default and no PIDs). The write goes through the
+        # UUID-stable path, so it is keyed by UUID, not loop index.
+        # GPU-b (unmanaged) → restore NEVER attempted.
+        restore_calls = [c.args for c in actuator.restore_default_by_uuid.call_args_list]
+        self.assertIn(("GPU-a",), restore_calls)
+        self.assertNotIn(("GPU-b",), restore_calls)
+        # The index-keyed restore_default must NOT be used by cold-start
+        # orphan recovery (it can't self-verify before apply_cap runs).
+        actuator.restore_default.assert_not_called()
 
     def test_no_managed_uuids_means_no_writes(self):
         """Empty managed_gpus.json → no GPU touched, regardless of state."""
@@ -121,6 +125,7 @@ class TestUuidGating(_OrphanTestBase):
 
         _restore_orphaned_gpus_on_startup(actuator)
 
+        actuator.restore_default_by_uuid.assert_not_called()
         actuator.restore_default.assert_not_called()
 
 
@@ -144,6 +149,7 @@ class TestWorkloadBusySkip(_OrphanTestBase):
 
         _restore_orphaned_gpus_on_startup(actuator)
 
+        actuator.restore_default_by_uuid.assert_not_called()
         actuator.restore_default.assert_not_called()
         # current_w / default_w must not have been queried either —
         # the busy check is the cheap exit.
@@ -175,7 +181,9 @@ class TestCurrentVsDefaultGuard(_OrphanTestBase):
 
         _restore_orphaned_gpus_on_startup(actuator)
 
-        actuator.restore_default.assert_called_once_with(0)
+        # UUID-stable: resolved from the confirmed UUID, not the loop index.
+        actuator.restore_default_by_uuid.assert_called_once_with("GPU-a")
+        actuator.restore_default.assert_not_called()
 
     def test_current_equal_to_default_skips_restore(self):
         """Cap already at default → no write, no audit-log churn."""
@@ -188,6 +196,7 @@ class TestCurrentVsDefaultGuard(_OrphanTestBase):
 
         _restore_orphaned_gpus_on_startup(actuator)
 
+        actuator.restore_default_by_uuid.assert_not_called()
         actuator.restore_default.assert_not_called()
 
     def test_current_above_default_skips_restore(self):
@@ -205,6 +214,7 @@ class TestCurrentVsDefaultGuard(_OrphanTestBase):
 
         _restore_orphaned_gpus_on_startup(actuator)
 
+        actuator.restore_default_by_uuid.assert_not_called()
         actuator.restore_default.assert_not_called()
 
 
@@ -237,9 +247,9 @@ class TestPerGpuExceptionIsolation(_OrphanTestBase):
 
         _restore_orphaned_gpus_on_startup(actuator)
 
-        # GPU 0 never reached restore_default (exception aborted its iteration).
-        # GPU 1 was handled normally.
-        actuator.restore_default.assert_called_once_with(1)
+        # GPU 0 never reached the restore (exception aborted its iteration).
+        # GPU 1 was handled normally — restored by its UUID.
+        actuator.restore_default_by_uuid.assert_called_once_with("GPU-b")
 
 
 # ---------------------------------------------------------------------------
@@ -278,6 +288,64 @@ class TestManagedSetPruning(_OrphanTestBase):
 
         _restore_orphaned_gpus_on_startup(actuator)
 
+        self.assertIn("GPU-a", power_agent._previously_managed)
+
+
+# ---------------------------------------------------------------------------
+# UUID-stable restore: prune decision follows the by-UUID return contract
+# ---------------------------------------------------------------------------
+
+
+class TestUuidStableRestoreReturn(_OrphanTestBase):
+    """The PR9790-review fix: the write resolves identity from the UUID at
+    write time (so a DCGM reconnect/re-enumeration between probe and write
+    can't restore/prune the wrong GPU), and the prune decision keys off the
+    by-UUID return value, not the loop index.
+    """
+
+    def _capped_actuator(self):
+        # Managed, idle, below-default at the probe index → the loop reaches
+        # the restore_default_by_uuid call.
+        self._managed_uuids = {"GPU-a"}
+        return _make_actuator(
+            uuids={0: "GPU-a"},
+            current_w={0: 400},
+            default_w={0: 700},
+        )
+
+    def test_true_return_discards_uuid(self):
+        """A live cap was restored at the resolved index → prune the UUID."""
+        actuator = self._capped_actuator()
+        actuator.restore_default_by_uuid.return_value = True
+
+        _restore_orphaned_gpus_on_startup(actuator)
+
+        actuator.restore_default_by_uuid.assert_called_once_with("GPU-a")
+        self.assertNotIn("GPU-a", power_agent._previously_managed)
+
+    def test_none_return_retains_uuid(self):
+        """None = nothing of ours to restore (already at default, or the GPU
+        moved/left on a clean scan). Do NOT prune — leave it for the next
+        boot to re-check rather than dropping a UUID we might still own."""
+        actuator = self._capped_actuator()
+        actuator.restore_default_by_uuid.return_value = None
+
+        _restore_orphaned_gpus_on_startup(actuator)
+
+        actuator.restore_default_by_uuid.assert_called_once_with("GPU-a")
+        self.assertIn("GPU-a", power_agent._previously_managed)
+
+    def test_false_return_retains_uuid(self):
+        """False = the UUID could not be located conclusively (a probe raised,
+        e.g. a transient DCGM outage), so the GPU may still carry our cap.
+        Keep the UUID so cold-start orphan recovery retries on the next boot
+        instead of leaking the cap by pruning prematurely."""
+        actuator = self._capped_actuator()
+        actuator.restore_default_by_uuid.return_value = False
+
+        _restore_orphaned_gpus_on_startup(actuator)
+
+        actuator.restore_default_by_uuid.assert_called_once_with("GPU-a")
         self.assertIn("GPU-a", power_agent._previously_managed)
 
 
