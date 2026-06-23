@@ -936,6 +936,7 @@ mod tests {
             DirectRequest {
                 tokens: vec![1; 4],
                 max_output_tokens: 2,
+                output_token_ids: None,
                 uuid: Some(Uuid::from_u128(11)),
                 dp_rank: 0,
                 arrival_timestamp_ms: Some(100.0),
@@ -944,6 +945,7 @@ mod tests {
             DirectRequest {
                 tokens: vec![2; 8],
                 max_output_tokens: 4,
+                output_token_ids: None,
                 uuid: Some(Uuid::from_u128(22)),
                 dp_rank: 0,
                 arrival_timestamp_ms: Some(101.0),
@@ -952,6 +954,7 @@ mod tests {
             DirectRequest {
                 tokens: vec![3; 12],
                 max_output_tokens: 2,
+                output_token_ids: None,
                 uuid: Some(Uuid::from_u128(33)),
                 dp_rank: 0,
                 arrival_timestamp_ms: Some(500.0),
@@ -1177,6 +1180,7 @@ mod tests {
         DirectRequest {
             tokens: (base..base + prompt_tokens).collect(),
             max_output_tokens: max_output,
+            output_token_ids: None,
             uuid: Some(Uuid::from_u128(uuid)),
             dp_rank: 0,
             arrival_timestamp_ms: Some(0.0),
@@ -1391,6 +1395,7 @@ mod tests {
             DirectRequest {
                 tokens: [vec![11; 64], vec![21; 32]].concat(),
                 max_output_tokens: 2,
+                output_token_ids: None,
                 uuid: Some(Uuid::from_u128(111)),
                 dp_rank: 0,
                 arrival_timestamp_ms: Some(0.0),
@@ -1399,6 +1404,7 @@ mod tests {
             DirectRequest {
                 tokens: [vec![11; 64], vec![22; 32]].concat(),
                 max_output_tokens: 2,
+                output_token_ids: None,
                 uuid: Some(Uuid::from_u128(222)),
                 dp_rank: 0,
                 arrival_timestamp_ms: Some(500.0),
@@ -1489,6 +1495,7 @@ mod tests {
                     DirectRequest {
                         tokens: vec![11; 64],
                         max_output_tokens: 8,
+                        output_token_ids: None,
                         uuid: Some(Uuid::from_u128(11)),
                         dp_rank: 0,
                         arrival_timestamp_ms: Some(0.0),
@@ -1497,6 +1504,7 @@ mod tests {
                     DirectRequest {
                         tokens: vec![22; 64],
                         max_output_tokens: 8,
+                        output_token_ids: None,
                         uuid: Some(Uuid::from_u128(22)),
                         dp_rank: 0,
                         arrival_timestamp_ms: Some(0.0),
@@ -1505,6 +1513,7 @@ mod tests {
                     DirectRequest {
                         tokens: vec![11; 64],
                         max_output_tokens: 2,
+                        output_token_ids: None,
                         uuid: Some(Uuid::from_u128(33)),
                         dp_rank: 0,
                         arrival_timestamp_ms: Some(0.1),
@@ -1583,6 +1592,7 @@ mod tests {
                     DirectRequest {
                         tokens: vec![11; 64],
                         max_output_tokens: 8,
+                        output_token_ids: None,
                         uuid: Some(Uuid::from_u128(1)),
                         dp_rank: 0,
                         arrival_timestamp_ms: Some(0.0),
@@ -1591,6 +1601,7 @@ mod tests {
                     DirectRequest {
                         tokens: vec![22; 64],
                         max_output_tokens: 8,
+                        output_token_ids: None,
                         uuid: Some(Uuid::from_u128(2)),
                         dp_rank: 0,
                         arrival_timestamp_ms: Some(0.0),
@@ -1635,6 +1646,7 @@ mod tests {
                 DirectRequest {
                     tokens: vec![1, 1, 1, 1, 2, 2, 2, 2],
                     max_output_tokens: 4,
+                    output_token_ids: None,
                     uuid: Some(Uuid::from_u128(11)),
                     dp_rank: 0,
                     arrival_timestamp_ms: Some(100.0),
@@ -1643,6 +1655,7 @@ mod tests {
                 DirectRequest {
                     tokens: vec![3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 6, 6, 6, 6],
                     max_output_tokens: 2,
+                    output_token_ids: None,
                     uuid: Some(Uuid::from_u128(22)),
                     dp_rank: 0,
                     arrival_timestamp_ms: Some(100.0),
@@ -1651,6 +1664,7 @@ mod tests {
                 DirectRequest {
                     tokens: vec![5, 5, 5, 5, 6, 6, 6, 6],
                     max_output_tokens: 2,
+                    output_token_ids: None,
                     uuid: Some(Uuid::from_u128(33)),
                     dp_rank: 0,
                     arrival_timestamp_ms: Some(101.0),
@@ -1659,6 +1673,7 @@ mod tests {
                 DirectRequest {
                     tokens: vec![7, 7, 7, 7, 8, 8, 8, 8],
                     max_output_tokens: 2,
+                    output_token_ids: None,
                     uuid: Some(Uuid::from_u128(44)),
                     dp_rank: 0,
                     arrival_timestamp_ms: Some(101.0),
@@ -1698,6 +1713,7 @@ mod tests {
                 DirectRequest {
                     tokens: vec![1; 8],
                     max_output_tokens: 1,
+                    output_token_ids: None,
                     uuid: Some(Uuid::from_u128(1)),
                     dp_rank: 0,
                     arrival_timestamp_ms: Some(0.0),
@@ -1706,6 +1722,7 @@ mod tests {
                 DirectRequest {
                     tokens: vec![2; 8],
                     max_output_tokens: 1,
+                    output_token_ids: None,
                     uuid: Some(Uuid::from_u128(2)),
                     dp_rank: 0,
                     arrival_timestamp_ms: Some(0.0),
@@ -1714,6 +1731,7 @@ mod tests {
                 DirectRequest {
                     tokens: vec![3; 8],
                     max_output_tokens: 1,
+                    output_token_ids: None,
                     uuid: Some(Uuid::from_u128(3)),
                     dp_rank: 0,
                     arrival_timestamp_ms: Some(0.0),
@@ -1722,6 +1740,7 @@ mod tests {
                 DirectRequest {
                     tokens: vec![4; 8],
                     max_output_tokens: 1,
+                    output_token_ids: None,
                     uuid: Some(Uuid::from_u128(4)),
                     dp_rank: 0,
                     arrival_timestamp_ms: Some(0.0),
@@ -1730,6 +1749,7 @@ mod tests {
                 DirectRequest {
                     tokens: vec![5; 8],
                     max_output_tokens: 1,
+                    output_token_ids: None,
                     uuid: Some(Uuid::from_u128(5)),
                     dp_rank: 0,
                     arrival_timestamp_ms: Some(0.0),
@@ -1752,6 +1772,7 @@ mod tests {
                 DirectRequest {
                     tokens: vec![1; 64],
                     max_output_tokens: 2,
+                    output_token_ids: None,
                     uuid: Some(Uuid::from_u128(901)),
                     dp_rank: 0,
                     arrival_timestamp_ms: Some(0.0),
@@ -1760,6 +1781,7 @@ mod tests {
                 DirectRequest {
                     tokens: vec![2; 64],
                     max_output_tokens: 2,
+                    output_token_ids: None,
                     uuid: Some(Uuid::from_u128(902)),
                     dp_rank: 0,
                     arrival_timestamp_ms: Some(5.0),
@@ -1785,6 +1807,7 @@ mod tests {
                 DirectRequest {
                     tokens: vec![7; 64],
                     max_output_tokens: 2,
+                    output_token_ids: None,
                     uuid: Some(Uuid::from_u128(911)),
                     dp_rank: 0,
                     arrival_timestamp_ms: Some(0.0),
@@ -1793,6 +1816,7 @@ mod tests {
                 DirectRequest {
                     tokens: vec![7; 64],
                     max_output_tokens: 2,
+                    output_token_ids: None,
                     uuid: Some(Uuid::from_u128(912)),
                     dp_rank: 0,
                     arrival_timestamp_ms: Some(500.0),
@@ -1822,6 +1846,7 @@ mod tests {
                 DirectRequest {
                     tokens: vec![1, 1, 1, 1, 2, 2, 2, 2],
                     max_output_tokens: 2,
+                    output_token_ids: None,
                     uuid: Some(Uuid::from_u128(11)),
                     dp_rank: 0,
                     arrival_timestamp_ms: Some(900.0),
@@ -1830,6 +1855,7 @@ mod tests {
                 DirectRequest {
                     tokens: vec![3, 3, 3, 3, 4, 4, 4, 4],
                     max_output_tokens: 4,
+                    output_token_ids: None,
                     uuid: Some(Uuid::from_u128(22)),
                     dp_rank: 0,
                     arrival_timestamp_ms: Some(1000.0),
@@ -1838,6 +1864,7 @@ mod tests {
                 DirectRequest {
                     tokens: vec![5, 5, 5, 5, 6, 6, 6, 6],
                     max_output_tokens: 2,
+                    output_token_ids: None,
                     uuid: Some(Uuid::from_u128(33)),
                     dp_rank: 0,
                     arrival_timestamp_ms: Some(100.0),
@@ -1874,6 +1901,7 @@ mod tests {
                 DirectRequest {
                     tokens: vec![11; 64],
                     max_output_tokens: 2,
+                    output_token_ids: None,
                     uuid: Some(Uuid::from_u128(11)),
                     dp_rank: 0,
                     arrival_timestamp_ms: Some(0.0),
@@ -1882,6 +1910,7 @@ mod tests {
                 DirectRequest {
                     tokens: vec![22; 64],
                     max_output_tokens: 2,
+                    output_token_ids: None,
                     uuid: Some(Uuid::from_u128(22)),
                     dp_rank: 0,
                     arrival_timestamp_ms: Some(0.0),
@@ -1890,6 +1919,7 @@ mod tests {
                 DirectRequest {
                     tokens: vec![11; 64],
                     max_output_tokens: 2,
+                    output_token_ids: None,
                     uuid: Some(Uuid::from_u128(33)),
                     dp_rank: 0,
                     arrival_timestamp_ms: Some(2.0),
@@ -1898,6 +1928,7 @@ mod tests {
                 DirectRequest {
                     tokens: vec![22; 64],
                     max_output_tokens: 2,
+                    output_token_ids: None,
                     uuid: Some(Uuid::from_u128(44)),
                     dp_rank: 0,
                     arrival_timestamp_ms: Some(2.0),
@@ -1927,6 +1958,7 @@ mod tests {
                 DirectRequest {
                     tokens: vec![9; 64],
                     max_output_tokens: 1,
+                    output_token_ids: None,
                     uuid: Some(Uuid::from_u128(9)),
                     dp_rank: 0,
                     arrival_timestamp_ms: Some(0.0),
@@ -1935,6 +1967,7 @@ mod tests {
                 DirectRequest {
                     tokens: vec![8; 64],
                     max_output_tokens: 2,
+                    output_token_ids: None,
                     uuid: Some(Uuid::from_u128(8)),
                     dp_rank: 0,
                     arrival_timestamp_ms: Some(0.0),
@@ -1958,6 +1991,7 @@ mod tests {
                 DirectRequest {
                     tokens: vec![1; 64],
                     max_output_tokens: 8,
+                    output_token_ids: None,
                     uuid: Some(Uuid::from_u128(1)),
                     dp_rank: 0,
                     arrival_timestamp_ms: Some(0.0),
@@ -1966,6 +2000,7 @@ mod tests {
                 DirectRequest {
                     tokens: vec![2; 64],
                     max_output_tokens: 8,
+                    output_token_ids: None,
                     uuid: Some(Uuid::from_u128(2)),
                     dp_rank: 0,
                     arrival_timestamp_ms: Some(0.0),
@@ -1974,6 +2009,7 @@ mod tests {
                 DirectRequest {
                     tokens: vec![3; 64],
                     max_output_tokens: 2,
+                    output_token_ids: None,
                     uuid: Some(Uuid::from_u128(3)),
                     dp_rank: 0,
                     arrival_timestamp_ms: Some(0.1),
@@ -2004,6 +2040,7 @@ mod tests {
             DirectRequest {
                 tokens: vec![10; 64],
                 max_output_tokens: 8,
+                output_token_ids: None,
                 uuid: Some(Uuid::from_u128(10)),
                 dp_rank: 0,
                 arrival_timestamp_ms: Some(0.0),
@@ -2012,6 +2049,7 @@ mod tests {
             DirectRequest {
                 tokens: vec![20; 64],
                 max_output_tokens: 8,
+                output_token_ids: None,
                 uuid: Some(Uuid::from_u128(20)),
                 dp_rank: 0,
                 arrival_timestamp_ms: Some(0.0),
@@ -2020,6 +2058,7 @@ mod tests {
             DirectRequest {
                 tokens: vec![30; 64],
                 max_output_tokens: 1,
+                output_token_ids: None,
                 uuid: Some(Uuid::from_u128(30)),
                 dp_rank: 0,
                 arrival_timestamp_ms: Some(0.1),
@@ -2028,6 +2067,7 @@ mod tests {
             DirectRequest {
                 tokens: vec![40; 64],
                 max_output_tokens: 1,
+                output_token_ids: None,
                 uuid: Some(Uuid::from_u128(40)),
                 dp_rank: 0,
                 arrival_timestamp_ms: Some(0.2),
@@ -2070,6 +2110,7 @@ mod tests {
             DirectRequest {
                 tokens: vec![10; 64],
                 max_output_tokens: 8,
+                output_token_ids: None,
                 uuid: Some(Uuid::from_u128(10)),
                 dp_rank: 0,
                 arrival_timestamp_ms: Some(0.0),
@@ -2078,6 +2119,7 @@ mod tests {
             DirectRequest {
                 tokens: vec![20; 128],
                 max_output_tokens: 8,
+                output_token_ids: None,
                 uuid: Some(Uuid::from_u128(20)),
                 dp_rank: 0,
                 arrival_timestamp_ms: Some(0.0),
@@ -2086,6 +2128,7 @@ mod tests {
             DirectRequest {
                 tokens: vec![30; 64],
                 max_output_tokens: 1,
+                output_token_ids: None,
                 uuid: Some(Uuid::from_u128(30)),
                 dp_rank: 0,
                 arrival_timestamp_ms: Some(0.1),
@@ -2094,6 +2137,7 @@ mod tests {
             DirectRequest {
                 tokens: vec![40; 64],
                 max_output_tokens: 1,
+                output_token_ids: None,
                 uuid: Some(Uuid::from_u128(40)),
                 dp_rank: 0,
                 arrival_timestamp_ms: Some(0.2),
@@ -2136,6 +2180,7 @@ mod tests {
                 DirectRequest {
                     tokens: vec![1; 64],
                     max_output_tokens: 2,
+                    output_token_ids: None,
                     uuid: Some(Uuid::from_u128(1)),
                     dp_rank: 0,
                     arrival_timestamp_ms: None,
@@ -2144,6 +2189,7 @@ mod tests {
                 DirectRequest {
                     tokens: vec![2; 64],
                     max_output_tokens: 2,
+                    output_token_ids: None,
                     uuid: Some(Uuid::from_u128(2)),
                     dp_rank: 0,
                     arrival_timestamp_ms: None,
@@ -2152,6 +2198,7 @@ mod tests {
                 DirectRequest {
                     tokens: vec![1; 64],
                     max_output_tokens: 2,
+                    output_token_ids: None,
                     uuid: Some(Uuid::from_u128(3)),
                     dp_rank: 0,
                     arrival_timestamp_ms: None,
@@ -2160,6 +2207,7 @@ mod tests {
                 DirectRequest {
                     tokens: vec![2; 64],
                     max_output_tokens: 2,
+                    output_token_ids: None,
                     uuid: Some(Uuid::from_u128(4)),
                     dp_rank: 0,
                     arrival_timestamp_ms: None,
@@ -2183,6 +2231,7 @@ mod tests {
                 DirectRequest {
                     tokens: vec![1; 64],
                     max_output_tokens: 2,
+                    output_token_ids: None,
                     uuid: Some(Uuid::from_u128(11)),
                     dp_rank: 0,
                     arrival_timestamp_ms: None,
@@ -2191,6 +2240,7 @@ mod tests {
                 DirectRequest {
                     tokens: vec![2; 64],
                     max_output_tokens: 4,
+                    output_token_ids: None,
                     uuid: Some(Uuid::from_u128(22)),
                     dp_rank: 0,
                     arrival_timestamp_ms: None,
@@ -2199,6 +2249,7 @@ mod tests {
                 DirectRequest {
                     tokens: vec![3; 64],
                     max_output_tokens: 2,
+                    output_token_ids: None,
                     uuid: Some(Uuid::from_u128(33)),
                     dp_rank: 0,
                     arrival_timestamp_ms: None,
@@ -2246,6 +2297,7 @@ mod tests {
             DirectRequest {
                 tokens: vec![1, 1, 1, 1, 2, 2, 2, 2],
                 max_output_tokens: 2,
+                output_token_ids: None,
                 uuid: Some(Uuid::from_u128(11)),
                 dp_rank: 0,
                 arrival_timestamp_ms: Some(100.0),
@@ -2254,6 +2306,7 @@ mod tests {
             DirectRequest {
                 tokens: vec![1, 1, 1, 1, 2, 2, 2, 2],
                 max_output_tokens: 2,
+                output_token_ids: None,
                 uuid: Some(Uuid::from_u128(22)),
                 dp_rank: 0,
                 arrival_timestamp_ms: Some(101.0),
@@ -2262,6 +2315,7 @@ mod tests {
             DirectRequest {
                 tokens: vec![9, 9, 9, 9, 8, 8, 8, 8],
                 max_output_tokens: 2,
+                output_token_ids: None,
                 uuid: Some(Uuid::from_u128(33)),
                 dp_rank: 0,
                 arrival_timestamp_ms: Some(500.0),
@@ -2375,6 +2429,7 @@ mod tests {
             DirectRequest {
                 tokens: vec![1, 1, 1, 1, 2, 2, 2, 2],
                 max_output_tokens: 2,
+                output_token_ids: None,
                 uuid: Some(Uuid::from_u128(11)),
                 dp_rank: 0,
                 arrival_timestamp_ms: Some(900.0),
@@ -2383,6 +2438,7 @@ mod tests {
             DirectRequest {
                 tokens: vec![3, 3, 3, 3, 4, 4, 4, 4],
                 max_output_tokens: 4,
+                output_token_ids: None,
                 uuid: Some(Uuid::from_u128(22)),
                 dp_rank: 0,
                 arrival_timestamp_ms: Some(1000.0),
@@ -2391,6 +2447,7 @@ mod tests {
             DirectRequest {
                 tokens: vec![5, 5, 5, 5, 6, 6, 6, 6],
                 max_output_tokens: 2,
+                output_token_ids: None,
                 uuid: Some(Uuid::from_u128(33)),
                 dp_rank: 0,
                 arrival_timestamp_ms: Some(100.0),
@@ -2438,6 +2495,7 @@ mod tests {
             .map(|i| DirectRequest {
                 tokens: vec![1; 64],
                 max_output_tokens: 2,
+                output_token_ids: None,
                 uuid: Some(Uuid::from_u128(i as u128 + 1)),
                 dp_rank: 0,
                 arrival_timestamp_ms: Some(i as f64 * arrival_interval_ms),
@@ -2527,6 +2585,7 @@ mod tests {
         let requests = VecDeque::from([DirectRequest {
             tokens: vec![1; 64],
             max_output_tokens: 2,
+            output_token_ids: None,
             uuid: Some(Uuid::from_u128(1)),
             dp_rank: 0,
             arrival_timestamp_ms: Some(1000.0),
@@ -2637,6 +2696,7 @@ mod tests {
         DirectRequest {
             tokens: vec![1; 64],
             max_output_tokens: 2,
+            output_token_ids: None,
             uuid: Some(Uuid::from_u128(uuid)),
             dp_rank: 0,
             arrival_timestamp_ms: Some(arrival_ms),

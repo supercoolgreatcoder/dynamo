@@ -440,6 +440,37 @@ mod core_behavior {
     use super::*;
 
     #[test]
+    fn test_planned_output_tokens_are_emitted_exactly() {
+        let mut core = VllmCore::new(make_args());
+        let uuid = Uuid::from_u128(0xA11CE);
+        let planned = vec![101, 202, 303];
+        core.receive(DirectRequest {
+            tokens: vec![1, 2],
+            max_output_tokens: planned.len(),
+            output_token_ids: Some(planned.clone()),
+            uuid: Some(uuid),
+            dp_rank: 0,
+            arrival_timestamp_ms: None,
+            ..Default::default()
+        });
+
+        let mut collector = crate::replay::TraceCollector::default();
+        let mut emitted = Vec::new();
+        for step in 0..planned.len() {
+            let pass = core.execute_pass(&mut collector, step as f64);
+            emitted.extend(
+                pass.output_signals
+                    .into_iter()
+                    .filter(|signal| signal.uuid == uuid)
+                    .map(|signal| signal.token_id.expect("planned token should be present")),
+            );
+        }
+
+        assert_eq!(emitted, planned);
+        assert!(core.is_empty());
+    }
+
+    #[test]
     fn test_unified_pass_keeps_partial_prefill_in_running() {
         let args = MockEngineArgs::builder()
             .block_size(4)
@@ -457,6 +488,7 @@ mod core_behavior {
         core.receive(DirectRequest {
             tokens: (0..8).collect(),
             max_output_tokens: 2,
+            output_token_ids: None,
             uuid: Some(r1),
             dp_rank: 0,
             arrival_timestamp_ms: None,
@@ -465,6 +497,7 @@ mod core_behavior {
         core.receive(DirectRequest {
             tokens: (100..108).collect(),
             max_output_tokens: 2,
+            output_token_ids: None,
             uuid: Some(r2),
             dp_rank: 0,
             arrival_timestamp_ms: None,
@@ -522,6 +555,7 @@ mod core_behavior {
         core.receive(DirectRequest {
             tokens: (0..8).collect(),
             max_output_tokens: 2,
+            output_token_ids: None,
             uuid: Some(r1),
             dp_rank: 0,
             arrival_timestamp_ms: None,
@@ -530,6 +564,7 @@ mod core_behavior {
         core.receive(DirectRequest {
             tokens: (100..108).collect(),
             max_output_tokens: 2,
+            output_token_ids: None,
             uuid: Some(r2),
             dp_rank: 0,
             arrival_timestamp_ms: None,
@@ -567,6 +602,7 @@ mod core_behavior {
             core.receive(DirectRequest {
                 tokens,
                 max_output_tokens: 1,
+                output_token_ids: None,
                 uuid: Some(uuid),
                 dp_rank: 0,
                 arrival_timestamp_ms: None,
@@ -627,6 +663,7 @@ mod core_behavior {
         core.receive(DirectRequest {
             tokens: vec![1; 8],
             max_output_tokens: 1,
+            output_token_ids: None,
             uuid: Some(Uuid::from_u128(81)),
             dp_rank: 0,
             arrival_timestamp_ms: None,
@@ -651,6 +688,7 @@ mod core_behavior {
         core.receive(DirectRequest {
             tokens: (0..8).collect(),
             max_output_tokens: 2,
+            output_token_ids: None,
             uuid: Some(uuid),
             dp_rank: 0,
             arrival_timestamp_ms: None,
@@ -694,6 +732,7 @@ mod core_behavior {
             core.receive(DirectRequest {
                 tokens: range.collect(),
                 max_output_tokens: 8,
+                output_token_ids: None,
                 uuid: Some(uuid),
                 dp_rank: 0,
                 arrival_timestamp_ms: None,
@@ -740,6 +779,7 @@ mod core_behavior {
         core.receive(DirectRequest {
             tokens: (0..16).collect(),
             max_output_tokens: 1,
+            output_token_ids: None,
             uuid: Some(holder),
             dp_rank: 0,
             arrival_timestamp_ms: None,
@@ -748,6 +788,7 @@ mod core_behavior {
         core.receive(DirectRequest {
             tokens: (100..112).collect(),
             max_output_tokens: 1,
+            output_token_ids: None,
             uuid: Some(blocked),
             dp_rank: 0,
             arrival_timestamp_ms: None,
@@ -756,6 +797,7 @@ mod core_behavior {
         core.receive(DirectRequest {
             tokens: (200..204).collect(),
             max_output_tokens: 1,
+            output_token_ids: None,
             uuid: Some(follower),
             dp_rank: 0,
             arrival_timestamp_ms: None,
@@ -827,6 +869,7 @@ mod core_behavior {
             core.receive(DirectRequest {
                 tokens: range.collect(),
                 max_output_tokens: 1,
+                output_token_ids: None,
                 uuid: Some(uuid),
                 dp_rank: 0,
                 arrival_timestamp_ms: None,
@@ -916,6 +959,7 @@ mod core_behavior {
             core.receive(DirectRequest {
                 tokens: (0..8).collect(),
                 max_output_tokens: 2,
+                output_token_ids: None,
                 uuid: Some(uuid),
                 dp_rank: 0,
                 arrival_timestamp_ms: None,
@@ -952,6 +996,7 @@ mod core_behavior {
         core.receive(DirectRequest {
             tokens: (0..4).collect(),
             max_output_tokens: 5,
+            output_token_ids: None,
             uuid: Some(short),
             dp_rank: 0,
             arrival_timestamp_ms: None,
@@ -960,6 +1005,7 @@ mod core_behavior {
         core.receive(DirectRequest {
             tokens: (100..104).collect(),
             max_output_tokens: 8,
+            output_token_ids: None,
             uuid: Some(long),
             dp_rank: 0,
             arrival_timestamp_ms: None,
@@ -1014,6 +1060,7 @@ mod core_behavior {
         core.receive(DirectRequest {
             tokens: (0..3).collect(),
             max_output_tokens: 5,
+            output_token_ids: None,
             uuid: Some(uuid),
             dp_rank: 0,
             arrival_timestamp_ms: None,
@@ -1043,6 +1090,7 @@ mod router_events {
         core.receive(DirectRequest {
             tokens: (0..8).collect(),
             max_output_tokens: 2,
+            output_token_ids: None,
             uuid: Some(Uuid::from_u128(71)),
             dp_rank: 0,
             arrival_timestamp_ms: None,
@@ -1072,6 +1120,7 @@ mod router_events {
         core.receive(DirectRequest {
             tokens: (0..8).collect(),
             max_output_tokens: 4,
+            output_token_ids: None,
             uuid: Some(Uuid::from_u128(41)),
             dp_rank: 0,
             arrival_timestamp_ms: None,
@@ -1116,6 +1165,7 @@ mod router_events {
             core.receive(DirectRequest {
                 tokens: range.collect(),
                 max_output_tokens: 8,
+                output_token_ids: None,
                 uuid: Some(uuid),
                 dp_rank: 0,
                 arrival_timestamp_ms: None,
@@ -1193,6 +1243,7 @@ mod router_events {
             core.receive(DirectRequest {
                 tokens: tokens.collect(),
                 max_output_tokens: 7,
+                output_token_ids: None,
                 uuid: Some(uuid),
                 dp_rank: 0,
                 arrival_timestamp_ms: None,
@@ -1454,6 +1505,7 @@ mod live_scheduler {
         scheduler.receive(DirectRequest {
             tokens: (0..256).collect(),
             max_output_tokens: 200,
+            output_token_ids: None,
             uuid: None,
             dp_rank: 0,
             arrival_timestamp_ms: None,
@@ -1513,6 +1565,7 @@ mod live_scheduler {
         scheduler.receive(DirectRequest {
             tokens: (0..8).collect(),
             max_output_tokens: 1,
+            output_token_ids: None,
             uuid: Some(Uuid::from_u128(72)),
             dp_rank: 0,
             arrival_timestamp_ms: None,
@@ -1570,6 +1623,7 @@ mod live_scheduler {
             scheduler.receive(DirectRequest {
                 tokens: vec![42; 8],
                 max_output_tokens: 4,
+                output_token_ids: None,
                 uuid: None,
                 dp_rank: 0,
                 arrival_timestamp_ms: None,
@@ -1631,6 +1685,7 @@ mod forward_pass_metrics {
         core.receive(DirectRequest {
             tokens: (0..8).collect(),
             max_output_tokens: 1,
+            output_token_ids: None,
             uuid: Some(Uuid::from_u128(1)),
             dp_rank: 0,
             arrival_timestamp_ms: None,
@@ -1659,6 +1714,7 @@ mod forward_pass_metrics {
         core.receive(DirectRequest {
             tokens: (0..4).collect(),
             max_output_tokens: 3,
+            output_token_ids: None,
             uuid: Some(r1),
             dp_rank: 0,
             arrival_timestamp_ms: None,
@@ -1678,6 +1734,7 @@ mod forward_pass_metrics {
         core.receive(DirectRequest {
             tokens: (100..104).collect(),
             max_output_tokens: 3,
+            output_token_ids: None,
             uuid: Some(r2),
             dp_rank: 0,
             arrival_timestamp_ms: None,
@@ -1708,6 +1765,7 @@ mod forward_pass_metrics {
         core.receive(DirectRequest {
             tokens: (0..4).collect(),
             max_output_tokens: 1,
+            output_token_ids: None,
             uuid: Some(r1),
             dp_rank: 0,
             arrival_timestamp_ms: None,
@@ -1748,6 +1806,7 @@ mod forward_pass_metrics {
         core.receive(DirectRequest {
             tokens: (0..4).collect(),
             max_output_tokens: 2,
+            output_token_ids: None,
             uuid: Some(r1),
             dp_rank: 0,
             arrival_timestamp_ms: None,
@@ -1793,6 +1852,7 @@ mod forward_pass_metrics {
         core.receive(DirectRequest {
             tokens: (0..8).collect(),
             max_output_tokens: 1,
+            output_token_ids: None,
             uuid: Some(r1),
             dp_rank: 0,
             arrival_timestamp_ms: None,
@@ -1801,6 +1861,7 @@ mod forward_pass_metrics {
         core.receive(DirectRequest {
             tokens: (100..108).collect(),
             max_output_tokens: 1,
+            output_token_ids: None,
             uuid: Some(r2),
             dp_rank: 0,
             arrival_timestamp_ms: None,
@@ -1839,6 +1900,7 @@ mod forward_pass_metrics {
         core.receive(DirectRequest {
             tokens: (0..4).collect(), // prompt_len = 4
             max_output_tokens: 1,
+            output_token_ids: None,
             uuid: Some(Uuid::from_u128(1)),
             dp_rank: 0,
             arrival_timestamp_ms: None,
@@ -1847,6 +1909,7 @@ mod forward_pass_metrics {
         core.receive(DirectRequest {
             tokens: (100..112).collect(), // prompt_len = 12
             max_output_tokens: 1,
+            output_token_ids: None,
             uuid: Some(Uuid::from_u128(2)),
             dp_rank: 0,
             arrival_timestamp_ms: None,
@@ -1886,6 +1949,7 @@ mod forward_pass_metrics {
         core.receive(DirectRequest {
             tokens: (0..16).collect(),
             max_output_tokens: 2,
+            output_token_ids: None,
             uuid: Some(Uuid::from_u128(1)),
             dp_rank: 0,
             arrival_timestamp_ms: None,
@@ -1956,6 +2020,7 @@ mod forward_pass_metrics {
         core.receive(DirectRequest {
             tokens: (0..4).collect(),
             max_output_tokens: 20,
+            output_token_ids: None,
             uuid: Some(Uuid::from_u128(1)),
             dp_rank: 0,
             arrival_timestamp_ms: None,
@@ -1971,6 +2036,7 @@ mod forward_pass_metrics {
         core.receive(DirectRequest {
             tokens: (100..116).collect(), // 16 tokens — will pressure KV
             max_output_tokens: 5,
+            output_token_ids: None,
             uuid: Some(Uuid::from_u128(2)),
             dp_rank: 0,
             arrival_timestamp_ms: None,
@@ -2032,6 +2098,7 @@ mod forward_pass_metrics {
         scheduler.receive(DirectRequest {
             tokens: (0..8).collect(),
             max_output_tokens: 2,
+            output_token_ids: None,
             uuid: Some(Uuid::from_u128(1)),
             dp_rank: 0,
             arrival_timestamp_ms: None,
@@ -2153,6 +2220,7 @@ mod offload {
         core.receive(DirectRequest {
             tokens: (0..4).collect(),
             max_output_tokens: 2,
+            output_token_ids: None,
             uuid: Some(uuid),
             dp_rank: 0,
             arrival_timestamp_ms: None,
@@ -2228,6 +2296,7 @@ mod offload {
         core.receive(DirectRequest {
             tokens: (0..4).collect(),
             max_output_tokens: 2,
+            output_token_ids: None,
             uuid: Some(hit_uuid),
             dp_rank: 0,
             arrival_timestamp_ms: None,
@@ -2237,6 +2306,7 @@ mod offload {
         core.receive(DirectRequest {
             tokens: (4..8).collect(),
             max_output_tokens: 2,
+            output_token_ids: None,
             uuid: Some(cold_uuid),
             dp_rank: 0,
             arrival_timestamp_ms: None,
@@ -2318,6 +2388,7 @@ mod offload {
         core.receive(DirectRequest {
             tokens: (0..4).collect(),
             max_output_tokens: 2,
+            output_token_ids: None,
             uuid: Some(uuid),
             dp_rank: 0,
             arrival_timestamp_ms: None,
@@ -2388,6 +2459,7 @@ mod offload {
         core.receive(DirectRequest {
             tokens: (0..(block_size * 3) as u32).collect(),
             max_output_tokens: 2,
+            output_token_ids: None,
             uuid: Some(uuid),
             dp_rank: 0,
             arrival_timestamp_ms: None,
@@ -2456,6 +2528,7 @@ mod offload {
         core.receive(DirectRequest {
             tokens: (0..4).collect(),
             max_output_tokens: 2,
+            output_token_ids: None,
             uuid: Some(first_hit),
             dp_rank: 0,
             arrival_timestamp_ms: None,
@@ -2465,6 +2538,7 @@ mod offload {
         core.receive(DirectRequest {
             tokens: (4..8).collect(),
             max_output_tokens: 2,
+            output_token_ids: None,
             uuid: Some(second_hit),
             dp_rank: 0,
             arrival_timestamp_ms: None,
@@ -2474,6 +2548,7 @@ mod offload {
         core.receive(DirectRequest {
             tokens: (8..12).collect(),
             max_output_tokens: 2,
+            output_token_ids: None,
             uuid: Some(cold),
             dp_rank: 0,
             arrival_timestamp_ms: None,
@@ -2566,6 +2641,7 @@ mod offload {
         core.receive(DirectRequest {
             tokens: (0..(block_size * 4) as u32).collect(),
             max_output_tokens: 2,
+            output_token_ids: None,
             uuid: Some(uuid),
             dp_rank: 0,
             arrival_timestamp_ms: None,
@@ -2707,6 +2783,7 @@ mod offload {
                 core.receive(DirectRequest {
                     tokens: shared_tokens.clone(),
                     max_output_tokens: 2,
+                    output_token_ids: None,
                     uuid: Some(uuid),
                     dp_rank: 0,
                     arrival_timestamp_ms: None,
@@ -2718,6 +2795,7 @@ mod offload {
             core.receive(DirectRequest {
                 tokens: ((TOKENS_PER_REQ as u32)..(2 * TOKENS_PER_REQ as u32)).collect(),
                 max_output_tokens: 2,
+                output_token_ids: None,
                 uuid: Some(r4),
                 dp_rank: 0,
                 arrival_timestamp_ms: None,

@@ -1333,6 +1333,7 @@ mod tests {
         DirectRequest {
             tokens: vec![1; prompt_tokens],
             max_output_tokens: output_tokens,
+            output_token_ids: None,
             uuid: Some(Uuid::from_u128(uuid)),
             dp_rank: 0,
             arrival_timestamp_ms: Some(arrival_ms),
@@ -1518,6 +1519,7 @@ mod tests {
             DirectRequest {
                 tokens: vec![1; 128],
                 max_output_tokens: 3,
+                output_token_ids: None,
                 uuid: Some(Uuid::from_u128(1)),
                 dp_rank: 0,
                 arrival_timestamp_ms: None,
@@ -1526,6 +1528,7 @@ mod tests {
             DirectRequest {
                 tokens: vec![2; 128],
                 max_output_tokens: 3,
+                output_token_ids: None,
                 uuid: Some(Uuid::from_u128(2)),
                 dp_rank: 0,
                 arrival_timestamp_ms: None,

@@ -47,6 +47,7 @@ def make_args(**overrides):
         "durable_kv_events": False,
         "kv_transfer_bandwidth": 64.0,
         "reasoning": None,
+        "response_replay_trace_path": None,
         "sglang_schedule_policy": None,
         "sglang_page_size": None,
         "sglang_max_prefill_tokens": None,
@@ -88,6 +89,7 @@ def test_build_runtime_config_uses_normalized_sglang_page_size_alias():
     assert runtime_config.total_kv_blocks == 16384
     assert runtime_config.max_num_seqs == 256
     assert runtime_config.max_num_batched_tokens == 8192
+    assert runtime_config.runtime_data["output_replay_consumer"] is True
 
 
 def test_build_mocker_engine_args_rejects_mismatched_sglang_sizes():
