@@ -627,9 +627,7 @@ class TestSigtermDcgmUuidSweep(_SigtermTestBase):
             # On the class (not the instance) so `hasattr(type(actuator),
             # ...)` matches it exactly as it does the real NvmlActuator.
             def restore_default_by_uuid(self, uuid):  # pragma: no cover
-                raise AssertionError(
-                    "UUID sweep must not run on the NVML actuator"
-                )
+                raise AssertionError("UUID sweep must not run on the NVML actuator")
 
             def __init__(self):
                 self.restore_default = MagicMock(return_value=True)

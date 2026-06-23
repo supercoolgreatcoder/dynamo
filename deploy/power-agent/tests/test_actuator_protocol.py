@@ -335,9 +335,9 @@ class TestRestoreDefaultByUuid(unittest.TestCase):
         mock_nvml.nvmlDeviceGetCount.return_value = len(uuids)
         mock_nvml.nvmlDeviceGetHandleByIndex.side_effect = lambda idx: f"h{idx}"
         mock_nvml.nvmlDeviceGetUUID.side_effect = lambda h: uuids[int(h[1:])].encode()
-        mock_nvml.nvmlDeviceGetPowerManagementLimit.side_effect = (
-            lambda h: current_mw[int(h[1:])]
-        )
+        mock_nvml.nvmlDeviceGetPowerManagementLimit.side_effect = lambda h: current_mw[
+            int(h[1:])
+        ]
         mock_nvml.nvmlDeviceGetPowerManagementDefaultLimit.side_effect = (
             lambda h: default_mw[int(h[1:])]
         )

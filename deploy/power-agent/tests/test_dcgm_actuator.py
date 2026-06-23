@@ -1111,12 +1111,10 @@ class TestApplyCap(unittest.TestCase):
         # re-verification call `_read_uuid_raw`. Return GPU-A first (the
         # identity the cap is computed for) then GPU-B (the re-enumerated
         # occupant) so the guard fires.
-        with patch.object(
-            actuator, "_read_uuid_raw", side_effect=["GPU-A", "GPU-B"]
-        ):
-            with patch.dict(
-                "sys.modules", {**modules, "pynvml": MagicMock()}
-            ), patch("power_agent._persist_managed_gpus"):
+        with patch.object(actuator, "_read_uuid_raw", side_effect=["GPU-A", "GPU-B"]):
+            with patch.dict("sys.modules", {**modules, "pynvml": MagicMock()}), patch(
+                "power_agent._persist_managed_gpus"
+            ):
                 result = actuator.apply_cap(0, 300)
 
         # Effective watts still returned (Protocol §6.1), but NO cap write.
@@ -1141,9 +1139,9 @@ class TestApplyCap(unittest.TestCase):
         with patch.object(
             actuator, "get_uuid", side_effect=RuntimeError("transient identity blip")
         ):
-            with patch.dict(
-                "sys.modules", {**modules, "pynvml": MagicMock()}
-            ), patch("power_agent._persist_managed_gpus"):
+            with patch.dict("sys.modules", {**modules, "pynvml": MagicMock()}), patch(
+                "power_agent._persist_managed_gpus"
+            ):
                 result = actuator.apply_cap(0, 300)
 
         self.assertEqual(result, 300)
@@ -1172,9 +1170,9 @@ class TestApplyCap(unittest.TestCase):
             "_read_uuid_raw",
             side_effect=["GPU-A", RuntimeError("identity read failed at recheck")],
         ):
-            with patch.dict(
-                "sys.modules", {**modules, "pynvml": MagicMock()}
-            ), patch("power_agent._persist_managed_gpus"):
+            with patch.dict("sys.modules", {**modules, "pynvml": MagicMock()}), patch(
+                "power_agent._persist_managed_gpus"
+            ):
                 result = actuator.apply_cap(0, 300)
 
         self.assertEqual(result, 300)

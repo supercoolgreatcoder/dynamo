@@ -107,7 +107,9 @@ class TestUuidGating(_OrphanTestBase):
         # current<default and no PIDs). The write goes through the
         # UUID-stable path, so it is keyed by UUID, not loop index.
         # GPU-b (unmanaged) → restore NEVER attempted.
-        restore_calls = [c.args for c in actuator.restore_default_by_uuid.call_args_list]
+        restore_calls = [
+            c.args for c in actuator.restore_default_by_uuid.call_args_list
+        ]
         self.assertIn(("GPU-a",), restore_calls)
         self.assertNotIn(("GPU-b",), restore_calls)
         # The index-keyed restore_default must NOT be used by cold-start
