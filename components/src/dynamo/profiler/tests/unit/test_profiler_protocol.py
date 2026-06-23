@@ -779,7 +779,8 @@ def test_auto_inject_trust_remote_code_appends_for_vllm_with_auto_map() -> None:
 
     cfg = _make_dgd_with_workers("VllmDecodeWorker")
     with patch(
-        "dynamo.profiler.utils.config_modifiers.protocol.model_has_auto_map", return_value=True
+        "dynamo.profiler.utils.config_modifiers.protocol.model_has_auto_map",
+        return_value=True,
     ):
         modified = auto_inject_trust_remote_code(cfg, "some/model", "vllm")
 
@@ -803,7 +804,8 @@ def test_auto_inject_trust_remote_code_appends_for_sglang_with_auto_map() -> Non
 
     cfg = _make_dgd_with_workers("SglangDecodeWorker", "SglangPrefillWorker")
     with patch(
-        "dynamo.profiler.utils.config_modifiers.protocol.model_has_auto_map", return_value=True
+        "dynamo.profiler.utils.config_modifiers.protocol.model_has_auto_map",
+        return_value=True,
     ):
         modified = auto_inject_trust_remote_code(cfg, "some/model", "sglang")
 
@@ -820,7 +822,8 @@ def test_auto_inject_trust_remote_code_skips_when_no_auto_map() -> None:
 
     cfg = _make_dgd_with_workers("VllmDecodeWorker")
     with patch(
-        "dynamo.profiler.utils.config_modifiers.protocol.model_has_auto_map", return_value=False
+        "dynamo.profiler.utils.config_modifiers.protocol.model_has_auto_map",
+        return_value=False,
     ):
         modified = auto_inject_trust_remote_code(cfg, "some/model", "vllm")
 
@@ -840,7 +843,8 @@ def test_auto_inject_trust_remote_code_skips_trtllm_backend() -> None:
     cfg = _make_dgd_with_workers("TRTLLMDecodeWorker")
     # Even with auto_map=True the trtllm backend must not get the CLI flag.
     with patch(
-        "dynamo.profiler.utils.config_modifiers.protocol.model_has_auto_map", return_value=True
+        "dynamo.profiler.utils.config_modifiers.protocol.model_has_auto_map",
+        return_value=True,
     ):
         modified = auto_inject_trust_remote_code(cfg, "some/model", "trtllm")
 
@@ -855,7 +859,8 @@ def test_auto_inject_trust_remote_code_is_idempotent() -> None:
 
     cfg = _make_dgd_with_workers("VllmDecodeWorker")
     with patch(
-        "dynamo.profiler.utils.config_modifiers.protocol.model_has_auto_map", return_value=True
+        "dynamo.profiler.utils.config_modifiers.protocol.model_has_auto_map",
+        return_value=True,
     ):
         auto_inject_trust_remote_code(cfg, "some/model", "vllm")
         modified_second = auto_inject_trust_remote_code(cfg, "some/model", "vllm")
@@ -880,7 +885,8 @@ def test_auto_inject_trust_remote_code_respects_user_override() -> None:
     ].append("--trust-remote-code")
 
     with patch(
-        "dynamo.profiler.utils.config_modifiers.protocol.model_has_auto_map", return_value=True
+        "dynamo.profiler.utils.config_modifiers.protocol.model_has_auto_map",
+        return_value=True,
     ):
         modified = auto_inject_trust_remote_code(cfg, "some/model", "vllm")
 
@@ -901,7 +907,8 @@ def test_auto_inject_trust_remote_code_excludes_frontend_and_planner() -> None:
         "extraPodSpec": {"mainContainer": {"args": ["--interval", "30"]}},
     }
     with patch(
-        "dynamo.profiler.utils.config_modifiers.protocol.model_has_auto_map", return_value=True
+        "dynamo.profiler.utils.config_modifiers.protocol.model_has_auto_map",
+        return_value=True,
     ):
         modified = auto_inject_trust_remote_code(cfg, "some/model", "vllm")
 
@@ -939,7 +946,8 @@ def test_auto_inject_trust_remote_code_shell_form_worker() -> None:
         }
     }
     with patch(
-        "dynamo.profiler.utils.config_modifiers.protocol.model_has_auto_map", return_value=True
+        "dynamo.profiler.utils.config_modifiers.protocol.model_has_auto_map",
+        return_value=True,
     ):
         modified = auto_inject_trust_remote_code(cfg, "some/model", "vllm")
 
@@ -952,7 +960,8 @@ def test_auto_inject_trust_remote_code_shell_form_worker() -> None:
     assert result_args[0].endswith("--trust-remote-code")
     # Idempotency: calling again must not duplicate the flag.
     with patch(
-        "dynamo.profiler.utils.config_modifiers.protocol.model_has_auto_map", return_value=True
+        "dynamo.profiler.utils.config_modifiers.protocol.model_has_auto_map",
+        return_value=True,
     ):
         modified2 = auto_inject_trust_remote_code(cfg, "some/model", "vllm")
     assert modified2 == []
@@ -1105,7 +1114,8 @@ def test_auto_inject_trust_remote_code_shell_form_preserves_syntax() -> None:
         }
     }
     with patch(
-        "dynamo.profiler.utils.config_modifiers.protocol.model_has_auto_map", return_value=True
+        "dynamo.profiler.utils.config_modifiers.protocol.model_has_auto_map",
+        return_value=True,
     ):
         modified = auto_inject_trust_remote_code(cfg, "some/model", "vllm")
 
