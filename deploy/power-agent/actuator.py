@@ -1083,13 +1083,20 @@ class DcgmActuator:
                     # DCGMError handler). Identity not proven wrong.
                     raise
                 except Exception as e:
-                    logger.warning(
-                        "Could not re-verify GPU %d identity before cap "
-                        "write (mismatch not proven; proceeding): %s",
-                        gpu_idx,
-                        e,
-                    )
-                    current_uuid = expected_uuid
+                    # We captured an identity at apply entry but now cannot
+                    # confirm `gpu_idx` still hosts it. Unlike the RESTORE
+                    # path (which writes the harmless factory default and so
+                    # best-efforts an unprovable mismatch), an apply writes a
+                    # workload-derived cap, so a write here risks clobbering a
+                    # re-enumerated GPU we cannot rule out. Refuse the write
+                    # and let the next reconcile cycle re-attribute and retry
+                    # (PR9790 review follow-up). Surfaced as an apply failure
+                    # by apply_cap's `_GpuIdentityMismatch` handler.
+                    raise _GpuIdentityMismatch(
+                        f"could not verify GPU index {gpu_idx} identity before "
+                        f"cap write (expected UUID {expected_uuid}); refusing "
+                        f"to write rather than risk a wrong-GPU clobber: {e}"
+                    ) from e
                 if current_uuid != expected_uuid:
                     raise _GpuIdentityMismatch(
                         f"GPU index {gpu_idx} now hosts UUID {current_uuid} "

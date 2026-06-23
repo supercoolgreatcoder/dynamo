@@ -643,8 +643,19 @@ def _handle_sigterm(signum, frame):
     #
     # Only the DCGM actuator can relocate by UUID; NVML indices are stable
     # within a process so its index loop is already complete. Gate on the
-    # capability the same way the prune above gates on `managed_uuid_for_idx`.
-    if actuator is not None and hasattr(type(actuator), "restore_default_by_uuid"):
+    # FULL sweep surface — both `managed_uuids()` (the per-process ownership
+    # set the sweep iterates) and `restore_default_by_uuid()` (the relocating
+    # restore). `restore_default_by_uuid` alone is NOT a sufficient gate:
+    # NvmlActuator gained it (for identity-stable orphan recovery) but
+    # deliberately does NOT track capped UUIDs, so gating on it alone would
+    # enter the sweep on NVML and then `AttributeError` on the missing
+    # `managed_uuids()`, skipping persist/shutdown/_shutdown.set() (PR9790
+    # review follow-up).
+    if (
+        actuator is not None
+        and hasattr(type(actuator), "managed_uuids")
+        and hasattr(type(actuator), "restore_default_by_uuid")
+    ):
         for uuid in getattr(actuator, "managed_uuids")():
             try:
                 sweep_result = getattr(actuator, "restore_default_by_uuid")(uuid)

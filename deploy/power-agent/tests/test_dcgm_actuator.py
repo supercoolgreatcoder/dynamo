@@ -1150,6 +1150,38 @@ class TestApplyCap(unittest.TestCase):
         modules["pydcgm"].DcgmGroup.return_value.config.Set.assert_called_once()
         metrics.apply_failures_total.inc.assert_not_called()
 
+    def test_apply_cap_skips_write_when_recheck_identity_unverifiable(self):
+        """Finding 2 follow-up (PR9790 review): once an identity IS captured
+        at entry, a pre-`Set` recheck that cannot read the UUID must NOT
+        fall through and write. Enumeration may have changed and we can't
+        prove otherwise, so refuse (apply failure + retry next cycle) rather
+        than risk writing this GPU's cap onto a re-enumerated occupant.
+
+        Contrast with `test_apply_cap_proceeds_when_entry_identity_unreadable`:
+        if NO identity could be captured at entry there is nothing to
+        protect, so the write proceeds best-effort.
+        """
+        metrics = MagicMock()
+        actuator, modules, handle, _ = _make_initialized_actuator(metrics=metrics)
+        self._seed_constraints_and_uuid(modules, handle, min_w=100, max_w=700)
+
+        # Entry capture succeeds (GPU-A); the pre-Set recheck raises a
+        # non-DCGM error → unverifiable identity with an expected UUID in hand.
+        with patch.object(
+            actuator,
+            "_read_uuid_raw",
+            side_effect=["GPU-A", RuntimeError("identity read failed at recheck")],
+        ):
+            with patch.dict(
+                "sys.modules", {**modules, "pynvml": MagicMock()}
+            ), patch("power_agent._persist_managed_gpus"):
+                result = actuator.apply_cap(0, 300)
+
+        self.assertEqual(result, 300)
+        modules["pydcgm"].DcgmGroup.return_value.config.Set.assert_not_called()
+        metrics.apply_failures_total.inc.assert_called_once()
+        self.assertNotIn(0, power_agent._managed_gpu_indices)
+
     def test_apply_cap_clamps_above_max(self):
         metrics = MagicMock()
         actuator, modules, handle, _ = _make_initialized_actuator(metrics=metrics)

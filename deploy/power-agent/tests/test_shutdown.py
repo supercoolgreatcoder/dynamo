@@ -608,12 +608,28 @@ class TestSigtermDcgmUuidSweep(_SigtermTestBase):
 
     def test_sweep_does_not_run_on_nvml_actuator(self):
         """NVML indices are stable within a process, so the index loop is
-        already complete and there is no UUID-relocation surface. An NVML
-        actuator must not trigger the sweep, leaving leftover persisted
-        UUIDs untouched (handled by the next startup's orphan recovery)."""
+        already complete and there is no UUID-relocation surface.
+
+        The real `NvmlActuator` gained `restore_default_by_uuid` (for
+        identity-stable orphan recovery) but deliberately does NOT track
+        capped UUIDs, so it has NO `managed_uuids()`. The sweep gate must
+        therefore require BOTH methods: gating on `restore_default_by_uuid`
+        alone would enter the sweep on NVML and then `AttributeError` on the
+        missing `managed_uuids()`, skipping persist/shutdown/_shutdown.set()
+        (PR9790 review follow-up). This actuator mirrors that exact surface
+        — `restore_default_by_uuid` present on the class, `managed_uuids`
+        absent — and the method raises if the sweep wrongly invokes it.
+        """
 
         class _NvmlLikeActuator:
             name = "nvml"
+
+            # On the class (not the instance) so `hasattr(type(actuator),
+            # ...)` matches it exactly as it does the real NvmlActuator.
+            def restore_default_by_uuid(self, uuid):  # pragma: no cover
+                raise AssertionError(
+                    "UUID sweep must not run on the NVML actuator"
+                )
 
             def __init__(self):
                 self.restore_default = MagicMock(return_value=True)
@@ -623,8 +639,10 @@ class TestSigtermDcgmUuidSweep(_SigtermTestBase):
         power_agent._managed_gpu_indices.add(0)
         power_agent._previously_managed.update({"uuid-managed", "uuid-leftover"})
         actuator = _NvmlLikeActuator()
-        # Pin that the sweep surface is absent on the NVML path.
-        self.assertFalse(hasattr(type(actuator), "restore_default_by_uuid"))
+        # Pin the real NVML surface: relocating restore present, ownership-set
+        # tracking absent — exactly the combination the sweep gate must reject.
+        self.assertTrue(hasattr(type(actuator), "restore_default_by_uuid"))
+        self.assertFalse(hasattr(type(actuator), "managed_uuids"))
         power_agent._active_actuator = actuator
 
         with patch.object(power_agent, "pynvml", MagicMock()):
@@ -632,9 +650,13 @@ class TestSigtermDcgmUuidSweep(_SigtermTestBase):
                 power_agent._handle_sigterm(signal.SIGTERM, None)
 
         # Index loop pruned the managed UUID; the leftover is preserved
-        # because no UUID sweep runs on NVML.
+        # because no UUID sweep runs on NVML. Critically, shutdown completed
+        # (persist + actuator.shutdown + _shutdown.set) — the regression
+        # would have skipped all three via an AttributeError.
         self.assertEqual(power_agent._previously_managed, {"uuid-leftover"})
         persist.assert_called_once_with({"uuid-leftover"})
+        actuator.shutdown.assert_called_once()
+        self.assertTrue(power_agent._shutdown.is_set())
 
 
 if __name__ == "__main__":
