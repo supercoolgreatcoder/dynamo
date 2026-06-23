@@ -57,6 +57,7 @@ pub(crate) fn get_tcp_max_message_size() -> usize {
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum RequestPlanePayloadCodec {
+    // TODO(jthomson04): Migrate the default to Msgpack after the 1.3 release.
     #[default]
     Json,
     Msgpack,
@@ -85,10 +86,6 @@ impl RequestPlanePayloadCodec {
                 Self::Json
             }
         }
-    }
-
-    pub(crate) fn is_json(&self) -> bool {
-        matches!(self, Self::Json)
     }
 
     pub(crate) fn name(&self) -> &'static str {
@@ -148,7 +145,7 @@ pub(crate) struct RequestControlMessage {
     pub(crate) id: String,
     pub(crate) request_type: RequestType,
     pub(crate) response_type: ResponseType,
-    #[serde(default, skip_serializing_if = "RequestPlanePayloadCodec::is_json")]
+    #[serde(default)]
     pub(crate) payload_codec: RequestPlanePayloadCodec,
     pub(crate) connection_info: ConnectionInfo,
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
@@ -519,43 +516,25 @@ mod tests {
     }
 
     #[test]
-    fn request_plane_payload_codec_round_trips_json_and_msgpack() {
-        let payload = TestPayload {
-            id: 7,
-            text: "line\nquote\"slash\\unicode 中".to_string(),
-            tokens: vec![1, 2, 3, 65535],
+    fn request_plane_payload_codec_round_trips_response_wrapper_json_and_msgpack() {
+        let wrapper = NetworkStreamWrapper {
+            data: Some(TestPayload {
+                id: 42,
+                text: "line\nquote\"slash\\unicode 中".to_string(),
+                tokens: vec![1, 2, 3, 65535],
+            }),
+            complete_final: false,
         };
 
         for codec in [
             RequestPlanePayloadCodec::Json,
             RequestPlanePayloadCodec::Msgpack,
         ] {
-            let encoded = codec.encode(&payload).expect("payload should encode");
-            let decoded: TestPayload = codec.decode(&encoded).expect("payload should decode");
-            assert_eq!(decoded, payload);
+            let encoded = codec.encode(&wrapper).expect("wrapper should encode");
+            let decoded: NetworkStreamWrapper<TestPayload> =
+                codec.decode(&encoded).expect("wrapper should decode");
+            assert_eq!(decoded, wrapper);
         }
-    }
-
-    #[test]
-    fn request_plane_payload_codec_round_trips_response_wrapper() {
-        let wrapper = NetworkStreamWrapper {
-            data: Some(TestPayload {
-                id: 42,
-                text: "response".to_string(),
-                tokens: vec![8, 13, 21],
-            }),
-            complete_final: false,
-        };
-
-        let encoded = RequestPlanePayloadCodec::Msgpack
-            .encode(&wrapper)
-            .expect("wrapper should encode");
-        let decoded: NetworkStreamWrapper<TestPayload> = RequestPlanePayloadCodec::Msgpack
-            .decode(&encoded)
-            .expect("wrapper should decode");
-
-        assert_eq!(decoded.data, wrapper.data);
-        assert_eq!(decoded.complete_final, wrapper.complete_final);
     }
 }
 
