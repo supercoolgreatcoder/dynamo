@@ -28,9 +28,6 @@ from unittest.mock import MagicMock, patch
 
 import managed_state
 import power_agent
-import pytest
-
-pytestmark = [pytest.mark.pre_merge, pytest.mark.gpu_0, pytest.mark.unit]
 
 
 class TestSharedStateIdentity(unittest.TestCase):

@@ -20,9 +20,7 @@ Defines the `Actuator` Protocol and two implementations:
 
 The two are mutually exclusive at chart-install time — a Power
 Agent process binds to exactly one actuator at startup and holds
-it for its lifetime. See `docs/design-docs/power-agent-dual-actuator.md`
-§6.4 for the selection mechanic and §6.6 for the
-mutual-exclusion-by-construction guarantees.
+it for its lifetime.
 
 Lazy imports
 ------------

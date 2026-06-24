@@ -18,9 +18,7 @@ description: |
   agent.dcgm.enforce=true, registers the cap as DCGM's "target
   configuration" so it is auto-reapplied after GPU reset/reinit.
 
-  Supersedes the raw deploy/power_agent/{daemonset,rbac,dev-pod}.yaml
-  manifests; see docs/design-docs/power-agent-dual-actuator.md for the
-  dual-actuator design.
+  Replaces the previous raw DaemonSet, RBAC, and dev-pod manifests.
 type: application
 # 1.1.0: adds DCGM actuator (agent.actuator + agent.dcgm.*) on top of the
 # 1.0.0 NVML-only chart. Minor bump per SemVer — new opt-in functionality,

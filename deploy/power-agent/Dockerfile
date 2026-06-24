@@ -20,8 +20,7 @@
 #                 in actuator: nvml mode (the chart default) — pydcgm is imported
 #                 lazily by DcgmActuator methods, so an NVML deployment never opens
 #                 libdcgm.so. The vendoring is dormant overhead (~12 MB image bloat)
-#                 for NVML users and the only deployment path for DCGM users. See
-#                 docs/design-docs/power-agent-dual-actuator.md §9 for the rationale.
+#                 for NVML users and the only deployment path for DCGM users.
 #   * `test`    — `FROM runtime` + pytest + tests; its `RUN pytest` executes the
 #                 unit suite *inside the shipped image layers* so CI validates
 #                 the container itself (same Python 3.12 + same baked deps), not
@@ -76,7 +75,13 @@ RUN set -eux; \
 # Slim base — the NVIDIA Container Toolkit injects libnvidia-ml.so at runtime
 # via runtimeClassName: nvidia (set by the Helm chart), so the image does NOT
 # bake pynvml's native dependency. nvmlInit() resolves the host driver lib.
-FROM ${DOCKER_PROXY}python:3.12-slim-bookworm AS runtime
+#
+# Keep the explicit `library/` namespace: ECR's Docker Hub pull-through cache
+# does not auto-expand bare official-image names (`python` -> `library/python`)
+# the way a direct Docker Hub pull does, so the proxied tag fails to pull
+# without it. `library/python` is also a valid fully-qualified reference when
+# DOCKER_PROXY is empty, so local/dev builds are unaffected.
+FROM ${DOCKER_PROXY}library/python:3.12-slim-bookworm AS runtime
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
