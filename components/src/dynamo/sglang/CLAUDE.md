@@ -20,7 +20,7 @@ support the current version plus 1 version back (N and N-1). The pattern:
    enough surface area to cover what Dynamo actually calls.
 4. Each fallback branch in `_compat.py` MUST have a comment noting which SGLang
    version it supports and when it can be removed, e.g.:
-   `# Fallback for sglang <= 0.5.10. Remove when min supported version is 0.5.12+`
+   `# Fallback for sglang <= 0.5.12. Remove when min supported version is 0.5.14+`
 5. When a new SGLang version is released and the old N-1 falls outside the support
    window, delete the corresponding fallback branches and polyfills from `_compat.py`.
    If `_compat.py` becomes trivial re-exports, inline the imports and delete the file.
@@ -140,6 +140,23 @@ BaseGenerativeHandler (handler_base.py)
 
 3. **Video generation** (`register_video_generation_model`): Same fast path with
    `ModelType.Videos`.
+
+### Multinode DP Rank Visibility
+
+SGLang multinode LLM workers have two different DP-rank views:
+
+- **Model registration / router scheduling** is global. In the legacy
+  `python -m dynamo.sglang` path, only the leader process (`node_rank == 0`)
+  serves the Dynamo endpoint and registers the model card. That single routable
+  worker must advertise `[0, dp_size)` via `ModelRuntimeConfig`; otherwise the
+  router cannot schedule remote DP ranks.
+- **KV events, FPM, and component metrics** are local. Each node subscribes only
+  to its own rank slice from `local_dp_rank_bounds(server_args)`, and non-leader
+  nodes publish those events using the leader worker id so the router-visible KV
+  trees remain keyed as `(leader_worker_id, dp_rank)`.
+
+Do not reuse the local per-node rank slice for model registration. Keep
+registration on the global range and local publishers on the local range.
 
 ## Init Flow (typical LLM decode)
 
@@ -292,14 +309,10 @@ text-to-video-diffusion.sh  # 1-2 GPUs - Text-to-video (Wan2.1)
   Always slice with an offset, don't assume per-chunk logprobs.
 - **Zombie GPU processes**: `sgl_diffusion::scheduler` spawns a child process that
   survives parent kill. Always check `nvidia-smi` after teardown.
-- **Session control graceful degradation**: Session control is request-driven --
-  the router's `AgentController` and `StickySessionRouter` are always created but
-  activate lazily. If no worker has `--enable-streaming-session`, the router warns
-  once and ignores `session_control` in requests. On the handler side,
-  `_session_kwargs()` checks `enable_streaming_session` before injecting
-  `session_params` into SGLang calls. Both layers must agree: the router skips
-  lifecycle RPCs, and the handler skips session params. Without both guards,
-  SGLang errors with "session id does not exist".
+- **Session radix cache**: With `--enable-session-radix-cache`, the handler
+  passes `agent_context.session_id` to SGLang as `session_params.id`. Agent KV
+  hints are forwarded as metadata but are not acted on by the SGLang backend.
+  This path does not create router affinity.
 
 For troubleshooting (CuDNN, config.json errors, OOM, disagg connectivity), see
 `docs/backends/sglang/sglang-examples.md#troubleshooting`.
