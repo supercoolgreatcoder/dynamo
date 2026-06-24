@@ -275,6 +275,7 @@ def test_build_mocker_engine_args_preserves_cli_mapped_fields(tmp_path):
         durable_kv_events=False,
         kv_bytes_per_token=131072,
         kv_transfer_bandwidth=123.0,
+        response_replay_trace_path=None,
         num_g2_blocks=8192,
         num_g3_blocks=16384,
         offload_batch_size=32,

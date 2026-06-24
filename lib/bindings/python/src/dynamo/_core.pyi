@@ -1998,6 +1998,7 @@ class MockEngineArgs:
         kv_bytes_per_token: Optional[int] = None,
         kv_transfer_bandwidth: Optional[float] = None,
         reasoning: Optional[ReasoningConfig] = None,
+        response_replay_trace_path: Optional[str | os.PathLike[str]] = None,
         zmq_kv_events_port: Optional[int] = None,
         zmq_replay_port: Optional[int] = None,
         preemption_mode: str = "lifo",
@@ -2052,6 +2053,9 @@ class MockEngineArgs:
 
     @property
     def bootstrap_port(self) -> Optional[int]: ...
+
+    @property
+    def response_replay_trace_path(self) -> Optional[os.PathLike[str]]: ...
 
     @property
     def num_g2_blocks(self) -> Optional[int]: ...
