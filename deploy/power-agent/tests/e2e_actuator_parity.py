@@ -16,7 +16,7 @@ both actuator paths produce observably identical results. Specifically:
   5. restore_default returns the GPU to its factory default (also
      verified via nvidia-smi).
   6. list_running_pids — both actuators call NVML on this method
-     (DcgmActuator deliberately uses NVML; see design doc §6.3),
+     (DcgmActuator deliberately uses NVML),
      so this is more of a smoke test than a parity test.
 
 NOT covered (intentionally — those are unit-test territory or live-node

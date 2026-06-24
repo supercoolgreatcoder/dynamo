@@ -743,7 +743,7 @@ def _restore_orphaned_gpus_on_startup(actuator: Actuator) -> None:
 
     The Protocol now carries `current_w` and `default_w` methods
     expressly so the guard survives the migration; see actuator.py
-    `Actuator` Protocol and design doc §6.1.
+    `Actuator` Protocol.
     """
     # Reload IN PLACE — never rebind `_previously_managed`, or the alias to
     # `managed_state.previously_managed` (shared with the actuator's module
@@ -1114,7 +1114,7 @@ class PowerAgent:
         Bypassing the actuator here would skip that lookup and read PIDs
         from the wrong physical GPU on any node where DCGM and NVML
         disagree on enumeration order — see actuator.py
-        `_ensure_identity_map` and design doc §6.3 note 5.
+        `_ensure_identity_map`.
 
         Caps are persistent by design: when a GPU has no K8s workload this
         cycle we deliberately DO NOT restore default TDP here. A managed
@@ -1204,7 +1204,7 @@ def _make_actuator(args, metrics) -> Actuator:
     """Construct the actuator declared by `--actuator`.
 
     Strict binary choice — `nvml` or `dcgm`. There is no auto-detection
-    and no runtime probe (see design doc §6.4 / §11 Q1). The operator
+    and no runtime probe. The operator
     declares the actuator at chart-install time based on whether their
     cluster runs `nvidia-dcgm`; this function honors that declaration
     without modification. argparse's `choices=` guarantees `args.actuator`

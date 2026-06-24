@@ -29,7 +29,7 @@
 #   # shipped image:
 #   docker build --target runtime -t power-agent:dev -f deploy/power-agent/Dockerfile \
 #       deploy/power-agent
-#   # run unit tests inside the image (CI `power-agent-test` job):
+#   # run unit tests inside the image (CI `power-agent` job):
 #   docker build --target test -f deploy/power-agent/Dockerfile deploy/power-agent
 
 # DOCKER_PROXY lets CI route the base image through the ECR Docker Hub mirror

@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Unit tests for multi-pod-per-GPU cap resolution policy (§6.5).
+"""Unit tests for multi-pod-per-GPU cap resolution policy.
 
 Cases:
   - 1 pod: apply pod annotation

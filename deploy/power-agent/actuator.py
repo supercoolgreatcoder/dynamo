@@ -15,8 +15,7 @@ Defines the `Actuator` Protocol and two implementations:
     + optional `dcgmConfigEnforce` writes through it. PID
     enumeration intentionally stays on NVML because DCGM does not
     expose a snapshot-of-running-PIDs API
-    (`DCGM_FI_DEV_COMPUTE_PIDS` is a time-series field; see §6.3
-    note 2 of the design doc).
+    (`DCGM_FI_DEV_COMPUTE_PIDS` is a time-series field).
 
 The two are mutually exclusive at chart-install time — a Power
 Agent process binds to exactly one actuator at startup and holds
@@ -73,7 +72,7 @@ class Actuator(Protocol):
 
     The two are mutually exclusive at chart-install time — a given
     Power Agent process binds to exactly one actuator at startup and
-    holds it for its lifetime. See §6.4 / §6.6 of the design doc.
+    holds it for its lifetime.
     """
 
     name: str  # "nvml" | "dcgm"
@@ -381,8 +380,7 @@ class DcgmActuator:
     DCGM genuinely buys over NVML — there is **no** tick-driven
     re-enforce loop in DCGM source, and `dcgmConfigEnforce` does
     **not** make the cap survive Power Agent restart (the agent's
-    SIGTERM handler restores default regardless). See the design
-    doc's v1.5 changelog and §7 for the corrected accounting.
+    SIGTERM handler restores default regardless).
 
     Asymmetric reads (intentional)
     ------------------------------
@@ -394,7 +392,7 @@ class DcgmActuator:
     `dcgmGetDeviceProcesses` exported in `libdcgm.so`. This is a
     property of the upstream API shapes, not a design preference —
     DCGM is built for time-series GPU monitoring, NVML for snapshot
-    device queries. See design doc §6.3 note 2 / §11 Q3.
+    device queries.
 
     Stale-handle recovery
     ---------------------
@@ -407,7 +405,7 @@ class DcgmActuator:
     which catches that specific error code exactly once, flushes the
     group cache, rebuilds the handle, and retries. Persistent failure
     propagates so the agent's reconcile loop logs it and the next
-    reconcile tick tries again. See §6.3.1.
+    reconcile tick tries again.
 
     `restore_default` reads field 163
     --------------------------------
@@ -417,7 +415,7 @@ class DcgmActuator:
     factory default (`DEF`), which on every shipped data-center SKU
     equals MAX but is conceptually distinct. We read DEF to match
     NVML's restore semantics byte-for-byte on hypothetical future
-    SKUs where default < max. See §11 Q5.
+    SKUs where default < max.
     """
 
     name: str = "dcgm"
@@ -598,7 +596,7 @@ class DcgmActuator:
     def _with_reconnect(self, op: Callable[[], T]) -> T:
         """Run `op`; on `DCGM_ST_CONNECTION_NOT_VALID`, rebuild + retry once.
 
-        See class docstring + design doc §6.3.1 for the reasoning behind
+        See the class docstring for the reasoning behind
         single-retry semantics, dropping (not Deleting) the group cache,
         and inline (not watchdog-thread) reconnection.
         """
@@ -705,8 +703,8 @@ class DcgmActuator:
     def list_running_pids(self, gpu_idx: int) -> list[int]:
         """Snapshot of compute PIDs on the GPU — via NVML, even on the DCGM path.
 
-        DCGM has no public snapshot-of-running-PIDs API. See class
-        docstring and design doc §6.3 note 2 for the full reasoning.
+        DCGM has no public snapshot-of-running-PIDs API. See the class
+        docstring for the full reasoning.
         Lazy-imports pynvml so this method is callable from tests that
         mock the import.
 
@@ -717,7 +715,7 @@ class DcgmActuator:
         (DCGM's gpuId -> UUID via _dcgm_uuid_by_idx, then UUID ->
         NVML index via _nvml_index_by_uuid) because the two libraries
         live in separate identity spaces — see DcgmCacheManager.cpp:
-        1230-1296 and design doc §6.3 note 5.
+        1230-1296.
         """
         import pynvml
 
@@ -860,8 +858,7 @@ class DcgmActuator:
         Distinct from `maxPowerLimit` (max settable); on every shipped
         data-center SKU the two are numerically equal, but reading the
         right field keeps the DCGM path semantically aligned with NVML
-        on hypothetical future SKUs where default < max. See §11 Q5 +
-        v1.4 changelog for the discussion.
+        on hypothetical future SKUs where default < max.
         """
         return self._coerce_power_limit_watts(
             self._power_limits(gpu_idx).defaultPowerLimit,
@@ -949,7 +946,7 @@ class DcgmActuator:
         contract on the DCGM side. DCGMError other than
         CONNECTION_NOT_VALID is absorbed into `apply_failures_total`
         and the call returns the effective post-clamp watts regardless
-        (Protocol §6.1). SIGTERM / orphan-recovery callers want write
+        (per the Actuator Protocol). SIGTERM / orphan-recovery callers want write
         failures surfaced as exceptions instead — they call
         `restore_default`, which uses `_apply_cap_inner`.
         """

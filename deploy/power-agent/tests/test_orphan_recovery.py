@@ -14,8 +14,7 @@ that the migration had to preserve:
      defer to the normal reconcile.
   3. The current_w < default_w GUARD — only write if the cap is
      actually below default. The Protocol gained `current_w` and
-     `default_w` expressly so this guard survives the migration; see
-     design doc §6.1 and the v1.5 changelog.
+     `default_w` expressly so this guard survives the migration.
   4. Per-GPU exception isolation — one GPU failing doesn't abort the
      loop for the others.
   5. Successful restore removes the UUID from `_previously_managed`

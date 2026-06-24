@@ -106,7 +106,7 @@ spec:
           securityContext:
             # NVML power-cap writes require root, and the agent persists
             # managed-GPU UUID state to a hostPath — non-root images cannot
-            # write there. See plan §1.2 / power_agent.py:apply_cap.
+            # write there. See power_agent.py:apply_cap.
             privileged: true
             readOnlyRootFilesystem: false
             runAsUser: 0

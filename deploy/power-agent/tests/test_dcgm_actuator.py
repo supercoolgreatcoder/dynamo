@@ -12,7 +12,7 @@ recovery against a fully-mocked pydcgm surface. Test scope:
     tears down both, defensively against an already-gone hostengine.
   * Read surface: get_uuid (decodes bytes→str), constraints_w
     (reads MIN=161 + MAX=162), list_running_pids (uses NVML, NOT DCGM
-    — the most load-bearing test in this file, see §6.3 note 2).
+    — the most load-bearing test in this file).
   * Write surface: apply_cap clamps the request, writes the
     `c_dcgmDeviceConfig_v2.mPowerLimit.val`, optionally calls
     Enforce(), updates module-level managed-state, and bumps
@@ -564,7 +564,7 @@ def _wire_identity_map(modules, nvml, handle, dcgm_uuids, nvml_uuids):
 
 
 class TestListRunningPidsUsesNvml(unittest.TestCase):
-    """The crown jewel test — DCGM path uses NVML for PIDs (§6.3 note 2).
+    """The crown jewel test — DCGM path uses NVML for PIDs.
 
     If a future refactor accidentally routes the PID read through DCGM
     (which has no snapshot API), the agent would lose PID enumeration
@@ -608,7 +608,7 @@ class TestListRunningPidsUsesNvml(unittest.TestCase):
         # info API), NOT dcgmEntityGetLatestValues (field cache). If any
         # call lands on the field-cache API, we've regressed either onto
         # the v1.8 UUID-via-field-cache bug or — worse — onto the
-        # time-series PID-read path the design doc warns about.
+        # time-series PID-read path this actuator deliberately avoids.
         modules["dcgm_agent"].dcgmEntityGetLatestValues.assert_not_called()
 
     def test_list_running_pids_returns_empty_when_no_processes(self):
@@ -1117,7 +1117,7 @@ class TestApplyCap(unittest.TestCase):
             ):
                 result = actuator.apply_cap(0, 300)
 
-        # Effective watts still returned (Protocol §6.1), but NO cap write.
+        # Effective watts still returned (per the Actuator Protocol), but NO cap write.
         self.assertEqual(result, 300)
         modules["pydcgm"].DcgmGroup.return_value.config.Set.assert_not_called()
         metrics.apply_failures_total.inc.assert_called_once()

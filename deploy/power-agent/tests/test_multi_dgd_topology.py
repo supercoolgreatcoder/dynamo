@@ -3,8 +3,7 @@
 
 """Multi-DGD / multi-framework reconcile coverage — Tier-1 unit tests.
 
-Covers the well-formed mixed-framework topology from
-``docs/design-docs/multi-tenant-test.md``::
+Covers this well-formed mixed-framework topology::
 
     Node:  8 × B200 GPUs, single power-agent pod
       GPU 0     DGD-V (vLLM disagg)     pod V-P  cap=450W
@@ -33,7 +32,6 @@ Asserted invariants (well-formed topology):
 (#9682), the multi-PID dedup is not present and the TP-rank PIDs would
 spuriously trigger the multi-pod ``agree`` counter — only the
 single-PID-per-pod subset of this file is back-portable to #9682.
-See §7 of the design doc for the split landing sequence.
 """
 
 from __future__ import annotations
@@ -47,7 +45,7 @@ from power_agent import PowerAgent
 from tests.test_multi_pod_policy import _FakeMetrics
 
 # ---------------------------------------------------------------------------
-# Canonical topology (see docs/design-docs/multi-tenant-test.md §2)
+# Canonical multi-DGD topology
 # ---------------------------------------------------------------------------
 
 # Pod UIDs — the pod-uid namespace is opaque to the agent; only equality
