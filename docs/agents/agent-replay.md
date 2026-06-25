@@ -12,6 +12,8 @@ Capture an agent workload once, then use the request trace in either of two ways
 
 A request trace stores token lengths, prompt hashes, timing, and session identity. It does not store prompts, responses, or tool arguments. Start with [Agent Tracing](agent-tracing.md) to collect request rows.
 
+See this [ToolOrchestra request trace](https://gist.github.com/ishandhanani/31ffa697ca9d068624f280f10c19d45d) for a complete example with 75 sessions and 149 requests.
+
 ## Collect a Trace
 
 Set `DYN_REQUEST_TRACE=1` while running the agent workload. This writes compressed JSONL to `/tmp/dynamo-request-trace.*.jsonl.gz` by default.
@@ -49,21 +51,11 @@ python -m dynamo.replay /tmp/dynamo-request-trace.agentic-mooncake.jsonl \
 
 `kv_router` needs at least two mock workers. For a single-worker smoke test, use `--router-mode round_robin --num-workers 1`.
 
-## Agentic Row Semantics
+## How Scheduling Works
 
-Agentic Mooncake rows preserve:
+Each `request_end` row becomes one replay request. `session_id` orders turns in a session, while `parent_session_id` identifies child sessions. Prompt hashes and token lengths reproduce workload shape without storing request content.
 
-- `request_id`: the LLM request row identity.
-- Mooncake `session_id`: derived from the Dynamo `session_id`.
-- `wait_for`: request IDs that must complete before this row becomes eligible.
-- `branches`: child request IDs spawned from this row.
-- `prefix_reset`: first request in a session.
-- `delay`: non-tool delay after dependencies finish.
-- `tool_wait_ms`: tool time after dependencies finish, parallel-aware as the union of overlapping spans rather than their sum.
-- `tool_events`: per-tool spans attributed to this LLM request, each carrying `tool_call_id`, `tool_class`, `status`, `started_at_unix_ms`, `ended_at_unix_ms`, `duration_ms`, and optional `output_bytes`, `output_tokens`, or `error_type`.
-- `hash_ids`, `input_length`, and `output_length`: prompt-prefix and length data for mocker replay.
-
-Rows with no `wait_for` use their `timestamp` as the replay start time. Rows with dependencies wait for all listed requests to complete, then wait `delay + tool_wait_ms` before dispatch. For more flags and engine settings, see [DynoSim Runs](../dynosim/runs.md).
+DynoSim starts root requests at their recorded timestamps. Dependent requests wait for their predecessors, then for the recorded agent and tool delay. See [DynoSim Runs](../dynosim/runs.md) for the row schema and other replay modes.
 
 ## Replay Live with AIPerf
 
@@ -76,4 +68,6 @@ aiperf synthesize dynamo-trace /tmp/dynamo-request-trace.jsonl --output /tmp/dyn
 
 Replay `/tmp/dynamo-weka` with AIPerf's fixed schedule and Dynamo header transport by following the [Weka replay guide](https://github.com/ishandhanani/aiperf/blob/idhanani/agentx-dynamo-trajectories/docs/tutorials/weka-trace.md#replay-a-dynamo-request-trace).
 
-The conversion preserves request timing, token lengths, prompt hashes, and direct parent-child relationships. AIPerf synthesizes prompt content from the hashes and sends recorded output length as `max_tokens`; it does not replay the original model response or execute tools.
+The conversion preserves request timing, token lengths, prompt hashes, and direct parent-child relationships. Root sessions target their recorded timestamps; later turns also wait for the previous request to finish, so a slower endpoint produces positive schedule drift instead of overlapping a session's turns.
+
+AIPerf synthesizes prompt content from the hashes and sends recorded output length as `max_tokens`; it does not replay the original model response or execute tools.
