@@ -101,3 +101,47 @@ re-check makes the primitive safe even if a caller mis-sequences it.)
 Stages are ordered lowest-risk first; S1 is pure deletion, S2/S3 touch the hot
 path and must keep the sglang shadow-failover e2e green
 (`scripts/repro-bulwark-failover.sh sglang`).
+
+## Status — DONE & validated
+
+- **S1 (dead ring fork)** — removed `lib/gms_kv_ring/rust_ring`.
+- **GMS pause simplification** — removed the spurious engine-side KV sleep/wake
+  under GMS (trtllm); the V2 KV pool persists across pause (lease-arbitrated).
+- **S2 (drop `lease_epoch`)** — removed the never-validated per-block epoch from
+  the ring acquire tuple + `KVLease`; 32-byte record layout unchanged.
+- **S1b (RPC lease table)** — deleted `server/kv_leases.py` + the gms.py dispatch
+  + client/session.py methods + the 2 RPC-only tests. KV ownership now tracked in
+  the **two failover-relevant places** (persistent claim + per-segment shm lease),
+  serialized by the failover flock; weights stay on their orthogonal FSM.
+
+**Validation:** all three engines pass the shadow-failover e2e on the simplified
+code (sglang/vllm/trtllm `1 passed`), and the 13 KV-lease invariant tests pass
+(`tests/test_kv_lease_shm_client.py`), including the 8-worker cross-process stress
+(no duplicate active writers) and the reclaim-foreign-preserves-current-owner test.
+
+## KV block state-machine race analysis (single-writer-per-segment)
+
+States `FREE → LEASED → SEALED → FREE` (+ `RESERVED` for starvation headroom),
+fields `{state, generation, owner_hash}` (all atomics). Failover-relevant claims:
+
+1. **Two engines acquire the same block** — `acquire` is a CAS `FREE→LEASED`; only
+   one CAS wins, the loser tries another block. *Single writer per block.*
+2. **Stale release after re-acquire** — `release`/`seal` validate `generation`
+   (bumped on each acquire); a stale release with an old generation is a no-op.
+3. **Shadow pre-activation overlap (the key failover case)** — shadow goes live
+   before the primary fully dies. It only writes blocks it acquired itself
+   (`FREE→LEASED`, blocks the primary doesn't hold); the primary keeps its own
+   `LEASED` blocks. No block is `LEASED` by two engines (CAS guarantees it).
+4. **Shadow takes the primary's blocks** — only via `reclaim_foreign`
+   (`LEASED/SEALED→FREE` for `owner != self`), which is **flock-gated**: it runs
+   only after the shadow holds the failover flock the primary released *on death*.
+   A dead process issues no writes, so reclaiming its blocks is race-free.
+5. **reclaim vs. a concurrent acquire** — they act on disjoint source states
+   (`reclaim`: `LEASED→FREE`; `acquire`: `FREE→LEASED`), so they serialize through
+   the per-block state atomic; a reclaimed block becomes `FREE` and is only then
+   acquirable. No torn ownership.
+
+Invariant: **no KV segment is ever `LEASED` by two engines simultaneously** — held
+by (a) the per-block state CAS, (b) `generation` (stale-op guard), (c) `owner_hash`
+(reclaim targets only foreign blocks), (d) the failover flock (reclaim only after
+the prior owner is dead). Verified by the cross-process stress + reclaim tests.
