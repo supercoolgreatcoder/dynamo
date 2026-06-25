@@ -1,73 +1,165 @@
 ---
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-title: Agent Simulation
-subtitle: Replay agent request traces with DynoSim or AIPerf
+title: Agent Trace Replay
+subtitle: Capture a live agent workload, reconstruct its request graph, and replay it
 ---
 
-Capture an agent workload once, then use the request trace in either of two ways:
+Agent trace replay reproduces the serving workload created by an agent, not the
+agent's decisions. It preserves request timing, token lengths, prompt-block
+identity, and session relationships without storing prompts, responses, or tool
+arguments.
 
-- Convert it to Agentic Mooncake and simulate it offline with DynoSim.
-- Convert it to an AIPerf dataset and replay it against a live endpoint.
+The same capture can drive an offline DynoSim simulation or a live AIPerf run:
 
-A request trace stores token lengths, prompt hashes, timing, and session identity. It does not store prompts, responses, or tool arguments. Start with [Agent Tracing](agent-tracing.md) to collect request rows.
+```mermaid
+flowchart LR
+    A["Agent harness"] -->|"LLM requests + session headers"| F["Dynamo frontend"]
+    T["Real tools"] -.->|"optional tool spans"| F
+    F --> C["request trace"]
+    C --> M["Agentic Mooncake"] --> D["DynoSim"]
+    C --> W["Weka trace"] --> P["AIPerf fixed schedule"] --> E["Dynamo endpoint"]
+```
 
-See this [ToolOrchestra request trace](https://gist.github.com/ishandhanani/31ffa697ca9d068624f280f10c19d45d) for a complete example with 75 sessions and 149 requests.
+## Capture a Live Run
 
-## Collect a Trace
+Enable request tracing on the frontend that receives the agent traffic:
 
-Set `DYN_REQUEST_TRACE=1` while running the agent workload. This writes compressed JSONL to `/tmp/dynamo-request-trace.*.jsonl.gz` by default.
+```bash
+export DYN_REQUEST_TRACE=1
+export DYN_REQUEST_TRACE_OUTPUT_PATH=/tmp/agent-run/request-trace
 
-For tool timing fidelity, publish explicit tool events over the optional ZMQ ingress described in [Agent Tracing](agent-tracing.md#tool-call-observability). Without tool events, replay preserves the full gap between adjacent LLM requests but cannot separate tool time from agent overhead.
+# Optional: bind the ingress used by a harness that publishes explicit tool spans.
+export DYN_REQUEST_TRACE_TOOL_EVENTS_ZMQ_ENDPOINT=tcp://127.0.0.1:20390
+```
 
-## Convert to Agentic Mooncake
+Run the normal agent benchmark against that endpoint. Each reasoning/tool chain
+should send `X-Dynamo-Session-ID`; child agents should also send
+`X-Dynamo-Parent-Session-ID`. Tracing is passive and does not change routing or
+enable session affinity.
 
-**Experimental.** The converter uses Dynamo `request_end` rows for request timing, token lengths, worker placement, and replay hashes. It also uses terminal harness tool rows (`tool_end` / `tool_error`) to preserve tool-wait time between dependent LLM requests.
+The sink writes rotating `request-trace.NNNNNN.jsonl.gz` files. Stop the
+frontend, or otherwise allow the sink to flush, before converting them. See
+[Agent Tracing](agent-tracing.md) for the record schema, Perfetto conversion,
+and tool-event wire format.
 
-Replay ignores non-replay request fields such as `finish_reason_metadata`; use the Perfetto view in [Agent Tracing](agent-tracing.md#view-traces-in-perfetto) when you want to inspect final finish reasons, backend stop signals, or complete tool-call metadata inside the trace.
+## How the Request Graph Is Built
+
+The converter turns trace rows into a dependency graph:
+
+- `session_id` orders requests into one linear agent chain.
+- `parent_session_id` adds a child branch to its direct parent session.
+- `request_received_ms` determines the recorded arrival schedule.
+- `replay.input_length`, `output_tokens`, and `input_sequence_hashes` reproduce
+  the request shape and complete-block prompt-prefix relationships.
+- The trace retains terminal tool rows for per-tool measurements. AIPerf does
+  not replay those rows or execute tools; request timestamps still preserve the
+  combined tool and harness delay before the next LLM call. Agentic Mooncake
+  additionally uses terminal tool rows to retain tool-wait decomposition.
+
+AIPerf writes one Weka file per root session. Requests inside a session remain
+dependent, while independent roots and child branches can overlap. Root
+requests target their recorded timestamps. A later turn starts no earlier than
+both its recorded target and the completion of its predecessor, so a slower
+endpoint accumulates positive schedule drift instead of overlapping turns from
+the same session.
+
+Dynamo sequence hashes become Weka `hash_ids` with `hash_id_scope: "global"`.
+The scope means the same `(block_size, hash_id)` in different root files
+reconstructs to the same synthetic token block. This preserves cross-session
+complete-block prefix reuse without exposing the original tokens.
+
+## Convert for AIPerf
+
+This path currently requires
+[AIPerf PR #3](https://github.com/ajcasagrande/aiperf/pull/3). The converter
+reads uncompressed JSONL:
+
+```bash
+gzip -cd /tmp/agent-run/request-trace.*.jsonl.gz > /tmp/agent-run/request-trace.jsonl
+
+aiperf synthesize dynamo-trace /tmp/agent-run/request-trace.jsonl \
+  --output /tmp/agent-run/weka
+```
+
+The output should contain the same number of requests and root sessions as the
+capture. The current Weka graph supports one direct child-session level; the
+converter rejects deeper trees instead of flattening them silently.
+
+## Replay Against a Live Endpoint
+
+Each converted Weka file declares its capture block size, which AIPerf honors
+automatically:
+
+```bash
+AIPERF_DATASET_WEKA_SPLIT_FLATTENED_AGENTS=false \
+AIPERF_DYNAMO_SESSION_TRANSPORT=headers \
+aiperf profile \
+  --url http://localhost:8000 \
+  --model my-model \
+  --tokenizer /path/to/my-model \
+  --endpoint-type chat \
+  --input-file /tmp/agent-run/weka \
+  --custom-dataset-type weka_trace \
+  --fixed-schedule \
+  --fixed-schedule-auto-offset \
+  --use-dynamo-conv-aware-routing \
+  --use-server-token-count \
+  --extra-inputs ignore_eos:true \
+  --output-artifact-dir /tmp/agent-run/aiperf
+```
+
+Do not add a concurrency or request-rate cap for a faithful replay. The graph
+and recorded timestamps supply the concurrency. Header transport is required
+by current Dynamo releases. `ignore_eos:true` makes the backend generate the
+recorded output length instead of stopping early on newly sampled content. The
+split override keeps AIPerf from applying its native Weka chain detector to the
+graph that the Dynamo converter already constructed.
+
+## Check Replay Fidelity
+
+Treat these as the minimum alignment checks:
+
+- Captured, converted, AIPerf, and replayed request counts match.
+- Captured and replayed session counts and per-session turn counts match.
+- AIPerf reports zero request errors.
+- Every replayed output length matches the capture when `ignore_eos:true` is
+  used.
+- Relative arrival-time drift and request-duration drift are reported rather
+  than assumed to be zero.
+
+Synthetic prompts preserve hash-block topology, not original text. Wire input
+length can differ slightly because the target tokenizer and chat serialization
+reconstruct the request. Service time can also differ even against the same
+model. For cache comparisons, keep model, tokenizer, block size, worker
+topology, and initial cache state identical; compare `cached_tokens` or
+`kv_hit_rate` when the capture provides them.
+
+See the [AIPerf Weka replay guide](https://github.com/ishandhanani/aiperf/blob/idhanani/agentx-dynamo-trajectories/docs/tutorials/weka-trace.md#replay-a-dynamo-request-trace)
+for timing controls and graph details. This
+[ToolOrchestra trace](https://gist.github.com/ishandhanani/31ffa697ca9d068624f280f10c19d45d)
+is a complete multi-session input example.
+
+## Replay Offline with DynoSim
+
+For scheduling experiments that do not need model execution, convert the same
+capture to Agentic Mooncake and run it through mock workers:
 
 ```bash
 cargo run -p dynamo-bench --bin request_trace_to_mooncake -- \
   --agentic \
-  --input-path /tmp/dynamo-request-trace.*.jsonl.gz \
-  --output-file /tmp/dynamo-request-trace.agentic-mooncake.jsonl
-```
+  --input-path /tmp/agent-run/request-trace.*.jsonl.gz \
+  --output-file /tmp/agent-run/agentic-mooncake.jsonl
 
-## Replay Offline
-
-The converter prints `trace_block_size`. Pass that value to `--trace-block-size` so hash segmentation matches the capture. The example also uses it as the mock engine block size for a simple smoke test; the two settings are otherwise independent.
-
-```bash
-TRACE_BLOCK_SIZE=128
-python -m dynamo.replay /tmp/dynamo-request-trace.agentic-mooncake.jsonl \
+python -m dynamo.replay /tmp/agent-run/agentic-mooncake.jsonl \
   --trace-format agentic_mooncake \
-  --trace-block-size "${TRACE_BLOCK_SIZE}" \
+  --trace-block-size 16 \
   --replay-mode offline \
   --router-mode kv_router \
   --num-workers 4 \
-  --extra-engine-args "{\"block_size\":${TRACE_BLOCK_SIZE}}" \
-  --report-json /tmp/dynamo-request-trace.replay-report.json
+  --extra-engine-args '{"block_size":16}' \
+  --report-json /tmp/agent-run/dynosim-report.json
 ```
 
-`kv_router` needs at least two mock workers. For a single-worker smoke test, use `--router-mode round_robin --num-workers 1`.
-
-## How Scheduling Works
-
-Each `request_end` row becomes one replay request. `session_id` orders turns in a session, while `parent_session_id` identifies child sessions. Prompt hashes and token lengths reproduce workload shape without storing request content.
-
-DynoSim starts root requests at their recorded timestamps. Dependent requests wait for their predecessors, then for the recorded agent and tool delay. See [DynoSim Runs](../dynosim/runs.md) for the row schema and other replay modes.
-
-## Replay Live with AIPerf
-
-**Experimental.** This path currently requires [AIPerf PR #3](https://github.com/ajcasagrande/aiperf/pull/3). Its converter reads uncompressed JSONL:
-
-```bash
-gzip -cd /tmp/dynamo-request-trace.*.jsonl.gz > /tmp/dynamo-request-trace.jsonl
-aiperf synthesize dynamo-trace /tmp/dynamo-request-trace.jsonl --output /tmp/dynamo-weka
-```
-
-Replay `/tmp/dynamo-weka` with AIPerf's fixed schedule and Dynamo header transport by following the [Weka replay guide](https://github.com/ishandhanani/aiperf/blob/idhanani/agentx-dynamo-trajectories/docs/tutorials/weka-trace.md#replay-a-dynamo-request-trace).
-
-The conversion preserves request timing, token lengths, prompt hashes, and direct parent-child relationships. Root sessions target their recorded timestamps; later turns also wait for the previous request to finish, so a slower endpoint produces positive schedule drift instead of overlapping a session's turns.
-
-AIPerf synthesizes prompt content from the hashes and sends recorded output length as `max_tokens`; it does not replay the original model response or execute tools.
+`kv_router` needs at least two mock workers. See
+[DynoSim Runs](../dynosim/runs.md) for engine configuration and replay reports.
