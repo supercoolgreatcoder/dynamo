@@ -78,7 +78,9 @@ for site_dir in site.getsitepackages():
         print(f"Patched optional DeepGEMM import guard in {configurer}")
 PY
 
-if ! command -v protoc >/dev/null 2>&1; then
+if command -v protoc >/dev/null 2>&1; then
+    export PROTOC="${PROTOC:-$(command -v protoc)}"
+else
     PROTOC_VERSION="${PROTOC_VERSION:-27.3}"
     PROTOC_ROOT="$ROOT/protoc-$PROTOC_VERSION"
     PROTOC_ZIP="$ROOT/protoc-$PROTOC_VERSION-linux-x86_64.zip"
