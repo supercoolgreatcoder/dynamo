@@ -126,6 +126,7 @@ runs:
             --platform ${{ steps.settings.outputs.build_platforms }} \
             "${BUILD_ARGS[@]}" \
             --build-context snapshot=../snapshot \
+            --build-context operator=../operator \
             ${TARGET_FLAG} \
             ${TAGGING_FLAGS} -f Dockerfile .
 
