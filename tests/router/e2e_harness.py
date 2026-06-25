@@ -445,6 +445,9 @@ def run_mooncake_router_stress_test(
                         frontend_url=frontend_url,
                         expected_num_workers=engine_workers.num_workers,
                         timeout=frontend_timeout,
+                        engine_workers=engine_workers,
+                        store_backend="etcd",
+                        request_plane=request_plane,
                     )
                 )
                 payloads = build_mooncake_trace_payloads(model_name)
