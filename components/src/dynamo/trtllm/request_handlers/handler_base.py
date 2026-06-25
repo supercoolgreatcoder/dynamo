@@ -69,10 +69,24 @@ configure_dynamo_logging()
 logger = logging.getLogger(__name__)
 
 
+def _gms_kv_managed() -> bool:
+    """True when GMS owns the KV cache (V2 persistent pool + block leases).
+
+    In that mode the KV must persist across pause and write ownership is handled
+    by V2 KV leases, so the engine performs no local KV sleep/wake.
+    """
+    try:
+        from gpu_memory_service.integrations.trtllm.model_loader import gms_enabled
+    except ImportError:
+        return False
+    return gms_enabled()
+
+
 class TRTLLMEnginePauseController:
     """Adapts TRT-LLM sleep/wake to the standard pause controller interface.
 
-    Two memory domains: KV cache via TRT-LLM collective_rpc, weights via GMS.
+    KV cache: under GMS, the GMS-owned persistent V2 pool (leases arbitrate
+    writes); otherwise TRT-LLM collective_rpc sleep/wake. Weights: always GMS.
     """
 
     def __init__(self, engine: TensorRTLLMEngine):
@@ -94,7 +108,14 @@ class TRTLLMEnginePauseController:
         tags = tags or ["kv_cache", "weights"]
         if "kv_cache" in tags:
             self._pending_resume_tags.add("kv_cache")
-            self._collective_rpc("sleep", ["kv_cache"])
+            # Under GMS the KV cache is the GMS-owned persistent V2 pool: it must
+            # SURVIVE pause so the shadow can reattach it, and write ownership is
+            # arbitrated by V2 KV block leases — not by the engine's local
+            # torch-memory-saver sleep. The collective_rpc("sleep") path *frees*
+            # the KV, which is both wrong under GMS and unavailable on the
+            # single-process executor (no _collective_rpc). Skip it under GMS.
+            if not _gms_kv_managed():
+                self._collective_rpc("sleep", ["kv_cache"])
         if "weights" in tags:
             self._pending_resume_tags.add("weights")
             self._release_gms_weights()
@@ -112,7 +133,10 @@ class TRTLLMEnginePauseController:
             self._restore_gms_weights()
             self._pending_resume_tags.discard("weights")
         if "kv_cache" in resume_tags:
-            self._collective_rpc("wakeup", ["kv_cache"])
+            # Symmetric with pause(): GMS V2 KV persists across pause and is
+            # reattached via leases, so there is no engine-side wakeup to do.
+            if not _gms_kv_managed():
+                self._collective_rpc("wakeup", ["kv_cache"])
             self._pending_resume_tags.discard("kv_cache")
         return True
 
