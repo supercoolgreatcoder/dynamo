@@ -135,9 +135,9 @@ unsafe fn validate_lease_buffer(ptr: *const u8, buf_len: usize) -> PyResult<u32>
     Ok(total_blocks)
 }
 
-unsafe fn release_acquired_lease_blocks(ptr: *mut u8, acquired: &[(u32, u32, u64)]) {
+unsafe fn release_acquired_lease_blocks(ptr: *mut u8, acquired: &[(u32, u32)]) {
     let free_count_ptr = ptr.add(L_FREE_COUNT) as *const AtomicU64;
-    for (block_id, generation, _epoch) in acquired.iter().copied() {
+    for (block_id, generation) in acquired.iter().copied() {
         let base = lease_record_off(block_id);
         let generation_ptr = ptr.add(base + LR_GENERATION) as *const AtomicU32;
         if (*generation_ptr).load(Ordering::Acquire) != generation {
@@ -169,7 +169,7 @@ unsafe fn try_acquire_lease_block(
     total_blocks: u32,
     block_id: u32,
     owner_hash: u64,
-) -> Option<(u32, u32, u64)> {
+) -> Option<(u32, u32)> {
     if block_id >= total_blocks {
         return None;
     }
@@ -187,22 +187,21 @@ unsafe fn try_acquire_lease_block(
         return None;
     }
 
+    // Single-writer-per-segment is enforced by the state CAS above. `generation`
+    // (bumped here, validated on release/seal) guards against a stale release
+    // freeing a re-leased block. The former per-block `lease_epoch` was written
+    // here but never read/validated anywhere (vestigial); removed. The LR_LEASE_EPOCH
+    // record slot is now reserved padding so the on-disk record size is unchanged.
     let generation_ptr = ptr.add(base + LR_GENERATION) as *const AtomicU32;
-    let epoch_ptr = ptr.add(base + LR_LEASE_EPOCH) as *const AtomicU64;
     let owner_ptr = ptr.add(base + LR_OWNER_HASH) as *const AtomicU64;
-    let next_epoch_ptr = ptr.add(L_NEXT_EPOCH) as *const AtomicU64;
     let free_count_ptr = ptr.add(L_FREE_COUNT) as *const AtomicU64;
 
     let generation = (*generation_ptr)
         .fetch_add(1, Ordering::AcqRel)
         .wrapping_add(1);
-    let epoch = (*next_epoch_ptr)
-        .fetch_add(1, Ordering::AcqRel)
-        .wrapping_add(1);
-    (*epoch_ptr).store(epoch, Ordering::Release);
     (*owner_ptr).store(owner_hash, Ordering::Release);
     (*free_count_ptr).fetch_sub(1, Ordering::AcqRel);
-    Some((block_id, generation, epoch))
+    Some((block_id, generation))
 }
 
 #[inline(always)]
@@ -567,8 +566,8 @@ unsafe fn acquire_lease_blocks(
     allow_partial: bool,
     strict_preferred: bool,
     owner_hash: u64,
-) -> PyResult<Vec<(u32, u32, u64)>> {
-    let mut acquired: Vec<(u32, u32, u64)> = Vec::with_capacity(count as usize);
+) -> PyResult<Vec<(u32, u32)>> {
+    let mut acquired: Vec<(u32, u32)> = Vec::with_capacity(count as usize);
 
     for block_id in preferred_blocks.iter().copied() {
         if acquired.len() >= count as usize {
@@ -576,7 +575,7 @@ unsafe fn acquire_lease_blocks(
         }
         if acquired
             .iter()
-            .any(|(existing, _, _)| *existing == block_id)
+            .any(|(existing, _)| *existing == block_id)
         {
             continue;
         }
@@ -631,7 +630,7 @@ fn kv_lease_acquire(
     allow_partial: bool,
     strict_preferred: bool,
     owner_hash: u64,
-) -> PyResult<Vec<(u32, u32, u64)>> {
+) -> PyResult<Vec<(u32, u32)>> {
     let _ = py;
     if count == 0 {
         return Ok(Vec::new());
@@ -674,7 +673,7 @@ fn kv_lease_acquire_lockless_if_unreserved(
     allow_partial: bool,
     strict_preferred: bool,
     owner_hash: u64,
-) -> PyResult<Option<Vec<(u32, u32, u64)>>> {
+) -> PyResult<Option<Vec<(u32, u32)>>> {
     let _ = py;
     if count == 0 {
         return Ok(Some(Vec::new()));

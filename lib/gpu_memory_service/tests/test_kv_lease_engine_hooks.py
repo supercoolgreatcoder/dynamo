@@ -81,7 +81,7 @@ class _InMemoryLeaseClient:
             allow_partial=allow_partial,
             strict_preferred=strict_preferred,
         )
-        return [KVLease(r.block_id, r.generation, r.lease_epoch) for r in records]
+        return [KVLease(r.block_id, r.generation) for r in records]
 
     def seal(self, leases: list[KVLease]) -> None:
         if not leases:
