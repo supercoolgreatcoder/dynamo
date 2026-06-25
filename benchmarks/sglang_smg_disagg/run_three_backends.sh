@@ -134,22 +134,21 @@ start_frontend() {
 
 run_smg_disagg() {
     local server_log="$1"
-    local prefill_http="$((30001 + PORT_OFFSET))"
-    local decode_http="$((30002 + PORT_OFFSET))"
-    local prefill_smg="$((40001 + PORT_OFFSET))"
-    local decode_smg="$((40002 + PORT_OFFSET))"
+    local prefill_smg="$((30001 + PORT_OFFSET))"
+    local decode_smg="$((30002 + PORT_OFFSET))"
     local prefill_system="$((8081 + PORT_OFFSET))"
     local decode_system="$((8082 + PORT_OFFSET))"
 
     local common=()
     while IFS= read -r -d '' arg; do common+=("$arg"); done < <(sglang_common_args)
 
-    CUDA_VISIBLE_DEVICES=0 SGLANG_GRPC_PORT="$prefill_smg" \
+    CUDA_VISIBLE_DEVICES=0 \
         setsid "$PYTHON_BIN" -m sglang.launch_server \
         --grpc-mode \
         "${common[@]}" \
-        --port "$prefill_http" \
+        --port "$prefill_smg" \
         --disaggregation-mode prefill \
+        --skip-server-warmup \
         --disable-cuda-graph \
         >>"$server_log" 2>&1 &
     cleanup_pids+=("$!")
@@ -161,12 +160,13 @@ run_smg_disagg() {
         >>"$server_log" 2>&1 &
     cleanup_pids+=("$!")
 
-    CUDA_VISIBLE_DEVICES=1 SGLANG_GRPC_PORT="$decode_smg" \
+    CUDA_VISIBLE_DEVICES=1 \
         setsid "$PYTHON_BIN" -m sglang.launch_server \
         --grpc-mode \
         "${common[@]}" \
-        --port "$decode_http" \
+        --port "$decode_smg" \
         --disaggregation-mode decode \
+        --skip-server-warmup \
         --disable-cuda-graph \
         >>"$server_log" 2>&1 &
     cleanup_pids+=("$!")
