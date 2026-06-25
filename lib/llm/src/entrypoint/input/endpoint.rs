@@ -213,7 +213,9 @@ pub async fn run(
                 worker_monitor,
                 kv_chooser,
                 None,
+                false,
                 router_config.enforce_disagg,
+                router_config.session_affinity_ttl_secs,
             )
             .await
             .context("build Bulwark gateway preprocessed routing")?;
