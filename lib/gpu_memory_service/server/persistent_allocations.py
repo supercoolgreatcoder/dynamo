@@ -103,6 +103,23 @@ class PersistentAllocationManager:
         return self._device
 
     @property
+    def active_claim_count(self) -> int:
+        """Number of distinct (engine_id, tag) keys currently claimed.
+
+        A key is "active" while any claimant (exclusive or shared) holds it.
+        The kv_cache daemon projects this onto its reported runtime-state so
+        persistent KV — which bypasses the single-writer FSM — is observable to
+        layout assertions: claims present => an active (RW) KV layout exists;
+        claims fully released (engine pause / crash cleanup) => no layout.
+        """
+        shared = {key for key, count in self._shared_claim_counts.items() if count > 0}
+        return len(self._exclusive_claimed | shared)
+
+    @property
+    def has_active_claims(self) -> bool:
+        return self.active_claim_count > 0
+
+    @property
     def granularity(self) -> int:
         return self._granularity
 

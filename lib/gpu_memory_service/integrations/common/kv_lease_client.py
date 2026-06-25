@@ -160,7 +160,6 @@ def _valid_shm_header(header: tuple[int, int, int, int, int, int] | None) -> boo
 class KVLease:
     block_id: int
     generation: int
-    lease_epoch: int
 
 
 @dataclass(frozen=True)
@@ -491,8 +490,8 @@ class SharedMemoryKVLeaseClient:
     @staticmethod
     def _lease_infos_to_records(infos) -> list[KVLease]:
         return [
-            KVLease(int(block_id), int(generation), int(lease_epoch))
-            for block_id, generation, lease_epoch in infos
+            KVLease(int(block_id), int(generation))
+            for block_id, generation in infos
         ]
 
     def _log_acquire_failure(

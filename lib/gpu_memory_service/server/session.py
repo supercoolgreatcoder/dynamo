@@ -11,7 +11,6 @@ from typing import Optional
 
 from gpu_memory_service.common.locks import GrantedLockType, RequestedLockType
 from gpu_memory_service.common.protocol.messages import (
-    AcquireKVBlockLeasesRequest,
     AllocateRequest,
     ClaimPersistentAllocationRequest,
     CommitRequest,
@@ -22,19 +21,13 @@ from gpu_memory_service.common.protocol.messages import (
     GetAllocationStateRequest,
     GetLockStateRequest,
     GetStateHashRequest,
-    InitKVLeaseNamespaceRequest,
     ListAllocationsRequest,
-    ListKVBlockLeasesRequest,
     ListPersistentAllocationsRequest,
     MetadataDeleteRequest,
     MetadataGetRequest,
     MetadataListRequest,
     MetadataPutRequest,
-    PinKVBlockLeasesRequest,
-    ReleaseKVBlockLeasesRequest,
     ReleasePersistentAllocationRequest,
-    SealKVBlockLeasesRequest,
-    UnpinKVBlockLeasesRequest,
 )
 
 from .fsm import GMSFSM, Connection, ServerState, StateEvent
@@ -78,13 +71,6 @@ PERSISTENT_ALLOWED: frozenset[type] = frozenset(
         ReleasePersistentAllocationRequest,
         ExportPersistentAllocationRequest,
         ListPersistentAllocationsRequest,
-        InitKVLeaseNamespaceRequest,
-        AcquireKVBlockLeasesRequest,
-        SealKVBlockLeasesRequest,
-        ReleaseKVBlockLeasesRequest,
-        PinKVBlockLeasesRequest,
-        UnpinKVBlockLeasesRequest,
-        ListKVBlockLeasesRequest,
     }
 )
 
