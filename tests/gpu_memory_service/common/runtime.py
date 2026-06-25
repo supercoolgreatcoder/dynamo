@@ -286,7 +286,13 @@ class VLLMWithGMSProcess(GMSEngineProcess):
             "--max-num-seqs",
             "1",
             "--gpu-memory-utilization",
-            "0.8",
+            # Env-configurable: shadow engines start while a prior engine's
+            # GMS-persistent KV pool is still resident, so vLLM's startup
+            # free-memory preflight (free >= util*total) needs headroom for a
+            # second/third coexisting allocation. Default 0.8 matches upstream;
+            # the failover repro lowers it so the preflight passes and the
+            # geometry patch reattaches the shared pool.
+            os.environ.get("VLLM_GMS_GPU_MEM_UTIL", "0.8"),
             "--kv-events-config",
             kv_events_cfg,
         ]
