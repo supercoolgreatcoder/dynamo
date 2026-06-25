@@ -176,6 +176,17 @@ runs:
           --as=system:serviceaccount:"$NAMESPACE":snapshot \
           > "$OUT/rbac.can-i-list-podsnapshotcontents.txt" 2>&1 || true
 
+        # Checkpoint artifact metadata from the node agent's storage: the manifest (records the CRIU
+        # External net[inode]:extNetNs option + source pod IP) and the CRIU dump/restore logs (show
+        # how the net namespace and devices like tun were handled). The large image files are skipped.
+        agent="$(kubectl get pods -n "$NAMESPACE" -o name 2>/dev/null | grep -m1 snapshot-agent)"
+        if [ -n "$agent" ]; then
+          kubectl exec -n "$NAMESPACE" "$agent" -c agent -- \
+            sh -c 'find /checkpoints -maxdepth 4 -type f \( -name manifest.yaml -o -name "*.log" \) -print0 \
+                   | while IFS= read -r -d "" f; do echo "===== $f ====="; cat "$f"; echo; done' \
+            > "$OUT/checkpoint-artifacts.txt" 2>&1 || true
+        fi
+
     - name: Cleanup Deployment
       if: always()
       shell: bash
