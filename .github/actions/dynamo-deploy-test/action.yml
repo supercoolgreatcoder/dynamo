@@ -133,6 +133,36 @@ runs:
           --alluredir=test-results/allure-results \
           --log-cli-level=INFO
 
+    - name: Collect snapshot control-plane state
+      # Best-effort dump of the checkpoint/snapshot control plane (CRs + operator and node-agent
+      # logs) into the uploaded pod-logs artifact. Runs before cleanup so the source pods still
+      # exist. Every command is guarded so non-checkpoint deploy tests (no snapshot CRDs/agents)
+      # never fail here.
+      if: always()
+      shell: bash
+      env:
+        NAMESPACE: ${{ inputs.namespace }}
+      run: |
+        export KUBECONFIG=${{ github.workspace }}/.kubeconfig
+        OUT="${{ github.workspace }}/test-output/control-plane"
+        mkdir -p "$OUT"
+
+        for cr in dynamocheckpoints podsnapshots podsnapshotcontents; do
+          kubectl get "$cr" -A -o yaml > "$OUT/${cr}.yaml" 2>&1 || true
+          kubectl get "$cr" -A -o wide > "$OUT/${cr}.list.txt" 2>&1 || true
+        done
+
+        # Operator and node-agent logs (current + previous), matched by name.
+        kubectl get pods -n "$NAMESPACE" -o name 2>/dev/null \
+          | grep -E 'operator-controller-manager|snapshot-agent' \
+          | while read -r pod; do
+              safe="$(echo "$pod" | tr '/' '_')"
+              kubectl logs -n "$NAMESPACE" "$pod" --all-containers --tail=-1 \
+                > "$OUT/${safe}.log" 2>&1 || true
+              kubectl logs -n "$NAMESPACE" "$pod" --all-containers --previous --tail=-1 \
+                > "$OUT/${safe}.previous.log" 2>&1 || true
+            done
+
     - name: Cleanup Deployment
       if: always()
       shell: bash
