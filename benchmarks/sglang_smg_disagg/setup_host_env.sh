@@ -6,17 +6,22 @@ DYNAMO_SRC="${DYNAMO_SRC:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
 ROOT="${ROOT:-/tmp/connorc_sglang_smg_disagg_bench}"
 VENV="${VENV:-$ROOT/venv}"
 
-export HOME="${HOME:-$ROOT/home}"
+export HOME="${BENCH_HOME:-$ROOT/home}"
 export HF_HOME="${HF_HOME:-$ROOT/hf_cache}"
 export PIP_CACHE_DIR="${PIP_CACHE_DIR:-$ROOT/pip_cache}"
 export UV_CACHE_DIR="${UV_CACHE_DIR:-$ROOT/uv_cache}"
 export CARGO_HOME="${CARGO_HOME:-$ROOT/cargo}"
 export RUSTUP_HOME="${RUSTUP_HOME:-$ROOT/rustup}"
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$ROOT/cargo-target}"
+export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$ROOT/cache}"
+export FLASHINFER_WORKSPACE_BASE="${FLASHINFER_WORKSPACE_BASE:-$ROOT}"
+export TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-$ROOT/triton_cache}"
+export TORCHINDUCTOR_CACHE_DIR="${TORCHINDUCTOR_CACHE_DIR:-$ROOT/torchinductor_cache}"
 export PATH="$CARGO_HOME/bin:$VENV/bin:$PATH"
 
 mkdir -p "$HOME" "$HF_HOME" "$PIP_CACHE_DIR" "$UV_CACHE_DIR" \
-    "$CARGO_HOME" "$RUSTUP_HOME" "$CARGO_TARGET_DIR" "$ROOT/bin"
+    "$CARGO_HOME" "$RUSTUP_HOME" "$CARGO_TARGET_DIR" "$ROOT/bin" \
+    "$XDG_CACHE_HOME" "$TRITON_CACHE_DIR" "$TORCHINDUCTOR_CACHE_DIR"
 
 if [[ -f "$VENV/bin/activate" ]]; then
     # shellcheck disable=SC1091

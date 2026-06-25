@@ -15,10 +15,14 @@ SMG_CONNECTIONS="${SMG_CONNECTIONS:-8}"
 DISAGG_BOOTSTRAP_PORT="${DYN_DISAGG_BOOTSTRAP_PORT:-12345}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 
-export HOME="${HOME:-$ROOT/home}"
+export HOME="${BENCH_HOME:-$ROOT/home}"
 export HF_HOME="${HF_HOME:-$ROOT/hf_cache}"
 export PIP_CACHE_DIR="${PIP_CACHE_DIR:-$ROOT/pip_cache}"
 export UV_CACHE_DIR="${UV_CACHE_DIR:-$ROOT/uv_cache}"
+export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$ROOT/cache}"
+export FLASHINFER_WORKSPACE_BASE="${FLASHINFER_WORKSPACE_BASE:-$ROOT}"
+export TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-$ROOT/triton_cache}"
+export TORCHINDUCTOR_CACHE_DIR="${TORCHINDUCTOR_CACHE_DIR:-$ROOT/torchinductor_cache}"
 export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0,1}"
 export PYTHONUNBUFFERED=1
 export FLASHINFER_DISABLE_VERSION_CHECK=1
@@ -31,7 +35,9 @@ if [[ -f "$VENV/bin/activate" ]]; then
     source "$VENV/bin/activate"
 fi
 
-mkdir -p "$ROOT/logs" "$ROOT/artifacts" "$ROOT/file_kv"
+mkdir -p "$HOME" "$HF_HOME" "$PIP_CACHE_DIR" "$UV_CACHE_DIR" \
+    "$XDG_CACHE_HOME" "$TRITON_CACHE_DIR" "$TORCHINDUCTOR_CACHE_DIR" \
+    "$ROOT/logs" "$ROOT/artifacts" "$ROOT/file_kv"
 
 cleanup_pids=()
 cleanup() {
