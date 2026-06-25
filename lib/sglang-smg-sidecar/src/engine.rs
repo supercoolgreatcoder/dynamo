@@ -127,26 +127,43 @@ impl SglangSmgSidecarEngine {
         Ok((engine, config))
     }
 
-    /// Poll SMG `HealthCheck` until the engine reports healthy or the deadline
-    /// elapses. Transient RPC errors are retried because the SGLang process may
-    /// still be loading the model.
+    /// Poll until the engine reports ready or the deadline elapses. For
+    /// aggregated workers we use SMG `HealthCheck`. For disaggregated SGLang,
+    /// upstream `HealthCheck` injects scheduler work, so readiness is based on
+    /// metadata discovery instead.
     async fn await_ready(&self, client: &mut Client) -> Result<(), DynamoError> {
         let deadline = Instant::now() + self.transport.deadline;
         loop {
-            let outcome = client.health_check(pb::HealthCheckRequest {}).await;
-            let retry_msg = match outcome {
-                Ok(resp) => {
-                    let resp = resp.into_inner();
-                    if resp.healthy {
-                        return Ok(());
+            let retry_msg = if matches!(self.disaggregation_mode, DisaggregationMode::Aggregated) {
+                match client.health_check(pb::HealthCheckRequest {}).await {
+                    Ok(resp) => {
+                        let resp = resp.into_inner();
+                        if resp.healthy {
+                            return Ok(());
+                        }
+                        if resp.message.is_empty() {
+                            "engine health check returned unhealthy".to_string()
+                        } else {
+                            format!("engine unhealthy: {}", resp.message)
+                        }
                     }
-                    if resp.message.is_empty() {
-                        "engine health check returned unhealthy".to_string()
-                    } else {
-                        format!("engine unhealthy: {}", resp.message)
-                    }
+                    Err(status) => format!("HealthCheck RPC failed: {}", status.message()),
                 }
-                Err(status) => format!("HealthCheck RPC failed: {}", status.message()),
+            } else {
+                match client::discover(client).await {
+                    Ok(discovery) => {
+                        validate_discovery(&discovery)?;
+                        let observed = discover_disaggregation_mode(&discovery)?;
+                        if observed == self.disaggregation_mode {
+                            return Ok(());
+                        }
+                        return Err(client::invalid_arg(format!(
+                            "SGLang SMG engine role changed since bootstrap: registered as {:?} but engine now reports {:?}",
+                            self.disaggregation_mode, observed
+                        )));
+                    }
+                    Err(err) => format!("metadata discovery failed: {err}"),
+                }
             };
 
             if Instant::now() >= deadline {

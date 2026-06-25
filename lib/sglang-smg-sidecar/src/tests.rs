@@ -68,6 +68,7 @@ impl Default for FakeConfig {
 
 struct FakeSmgSglang {
     cfg: FakeConfig,
+    health_count: Arc<AtomicUsize>,
     abort_count: Arc<AtomicUsize>,
     abort_ids: Arc<Mutex<Vec<String>>>,
     last_generate: Arc<Mutex<Option<pb::GenerateRequest>>>,
@@ -149,6 +150,7 @@ impl SglangScheduler for FakeSmgSglang {
         &self,
         _request: Request<pb::HealthCheckRequest>,
     ) -> Result<Response<pb::HealthCheckResponse>, Status> {
+        self.health_count.fetch_add(1, Ordering::SeqCst);
         Ok(Response::new(pb::HealthCheckResponse {
             healthy: self.cfg.healthy,
             message: if self.cfg.healthy {
@@ -226,6 +228,7 @@ impl SglangScheduler for FakeSmgSglang {
 
 struct FakeHandle {
     endpoint: String,
+    health_count: Arc<AtomicUsize>,
     abort_count: Arc<AtomicUsize>,
     abort_ids: Arc<Mutex<Vec<String>>>,
     last_generate: Arc<Mutex<Option<pb::GenerateRequest>>>,
@@ -247,12 +250,14 @@ impl Drop for FakeHandle {
 }
 
 fn spawn_fake_engine(cfg: FakeConfig) -> FakeHandle {
+    let health_count = Arc::new(AtomicUsize::new(0));
     let abort_count = Arc::new(AtomicUsize::new(0));
     let abort_ids = Arc::new(Mutex::new(Vec::new()));
     let last_generate = Arc::new(Mutex::new(None));
     let (tx, rx) = std::sync::mpsc::channel();
     let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
 
+    let svc_health_count = health_count.clone();
     let svc_abort_count = abort_count.clone();
     let svc_abort_ids = abort_ids.clone();
     let svc_generate = last_generate.clone();
@@ -270,6 +275,7 @@ fn spawn_fake_engine(cfg: FakeConfig) -> FakeHandle {
 
             let svc = FakeSmgSglang {
                 cfg,
+                health_count: svc_health_count,
                 abort_count: svc_abort_count,
                 abort_ids: svc_abort_ids,
                 last_generate: svc_generate,
@@ -290,6 +296,7 @@ fn spawn_fake_engine(cfg: FakeConfig) -> FakeHandle {
     let addr = rx.recv().expect("fake engine never bound");
     FakeHandle {
         endpoint: format!("http://{addr}"),
+        health_count,
         abort_count,
         abort_ids,
         last_generate,
@@ -431,6 +438,21 @@ async fn start_advertises_prefill_metadata() {
     assert_eq!(llm.data_parallel_size, Some(2));
     assert_eq!(llm.bootstrap_host.as_deref(), Some("10.0.0.7"));
     assert_eq!(llm.bootstrap_port, Some(34567));
+
+    engine.cleanup().await.unwrap();
+}
+
+#[tokio::test]
+async fn disaggregated_start_uses_metadata_readiness_not_smg_healthcheck() {
+    let handle = spawn_fake_engine(FakeConfig {
+        role: "prefill".to_string(),
+        healthy: false,
+        ..FakeConfig::default()
+    });
+    let engine = engine_for(&handle, DisaggregationMode::Prefill);
+
+    engine.start(0).await.expect("metadata readiness");
+    assert_eq!(handle.health_count.load(Ordering::SeqCst), 0);
 
     engine.cleanup().await.unwrap();
 }
