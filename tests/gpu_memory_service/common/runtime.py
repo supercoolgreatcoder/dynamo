@@ -356,7 +356,13 @@ class TRTLLMWithGMSProcess(GMSEngineProcess):
     def env_updates(self) -> dict[str, str]:
         env = {
             "CUDA_VISIBLE_DEVICES": os.environ.get("CUDA_VISIBLE_DEVICES", "0"),
-            "TLLM_WORKER_USE_SINGLE_PROCESS": "1",
+            # Single-process executor (GenerationExecutorWorker) has no
+            # collective_rpc, which GMS pause/resume (release_memory_occupation)
+            # requires. The MPI proxy executor implements collective_rpc and
+            # supports model_world_size==1, so the failover repro sets this to 0.
+            "TLLM_WORKER_USE_SINGLE_PROCESS": os.environ.get(
+                "TLLM_WORKER_USE_SINGLE_PROCESS", "1"
+            ),
             "MPI4PY_MPIABI": "openmpi",
             "OMPI_MCA_coll_ucc_enable": "0",
         }
