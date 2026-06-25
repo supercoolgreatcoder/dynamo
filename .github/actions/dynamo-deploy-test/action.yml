@@ -163,6 +163,19 @@ runs:
                 > "$OUT/${safe}.previous.log" 2>&1 || true
             done
 
+        # Snapshot-agent RBAC: the cluster-scoped ClusterRole/Binding for podsnapshotcontents and a
+        # definitive authorization probe for the agent ServiceAccount (the content informer does a
+        # cluster-scope list/watch of podsnapshotcontents).
+        kubectl get clusterrole,clusterrolebinding,role,rolebinding -A 2>/dev/null \
+          | grep -i snapshot > "$OUT/rbac.list.txt" 2>&1 || true
+        kubectl get clusterrole snapshot-agent-podsnapshotcontents -o yaml \
+          > "$OUT/rbac.clusterrole-podsnapshotcontents.yaml" 2>&1 || true
+        kubectl get clusterrolebinding snapshot-agent-podsnapshotcontents -o yaml \
+          > "$OUT/rbac.clusterrolebinding-podsnapshotcontents.yaml" 2>&1 || true
+        kubectl auth can-i list podsnapshotcontents.nvidia.com \
+          --as=system:serviceaccount:"$NAMESPACE":snapshot \
+          > "$OUT/rbac.can-i-list-podsnapshotcontents.txt" 2>&1 || true
+
     - name: Cleanup Deployment
       if: always()
       shell: bash
