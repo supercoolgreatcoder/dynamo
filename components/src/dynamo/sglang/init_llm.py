@@ -69,19 +69,22 @@ class _NonLeaderFailoverController:
         self._is_quiesced = False
 
     async def quiesce(self, tags: Optional[list[str]] = None) -> bool:
-        if self._delegate is not None:
+        # The delegate only handles quiesce when it actually implements it (the
+        # leader rank's request handler). A standby whose delegate has no quiesce
+        # (e.g. a DecodeWorkerHandler) falls through to the lock-only path.
+        if self._delegate is not None and hasattr(self._delegate, "quiesce"):
             return await self._delegate.quiesce(tags)
         if self._is_quiesced:
             return False
         logging.info(
-            "[GMS failover] sglang non-leader rank has no tokenizer manager; "
+            "[GMS failover] sglang rank has no quiesce-capable handler; "
             "using lock-only quiesce"
         )
         self._is_quiesced = True
         return True
 
     async def resume(self, tags: Optional[list[str]] = None) -> bool:
-        if self._delegate is not None:
+        if self._delegate is not None and hasattr(self._delegate, "resume"):
             return await self._delegate.resume(tags)
         if not self._is_quiesced:
             return False
@@ -89,7 +92,7 @@ class _NonLeaderFailoverController:
         return True
 
     def mark_resumed(self) -> None:
-        if self._delegate is not None:
+        if self._delegate is not None and hasattr(self._delegate, "mark_resumed"):
             self._delegate.mark_resumed()
         self._is_quiesced = False
 
