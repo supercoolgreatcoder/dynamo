@@ -1,0 +1,125 @@
+# Single-pod Bulwark GMS shadow-failover — store-native (busybox + NFS Nix store).
+#
+# This is the Kubernetes analogue of tests/gpu_memory_service/test_shadow_failover.py.
+# Five containers in ONE pod share one GPU's memory through GMS, a /dev/shm KV-lease
+# table, and a failover flock — the same mechanism the single-host e2e exercises:
+#
+#   gms-weights   GMS weights daemon      (gpu_memory_service.cli.server, tag=weights)
+#   gms-kv-cache  GMS kv_cache daemon     (gpu_memory_service.cli.server, tag=kv_cache)
+#   frontend      nats + etcd + dynamo.frontend (OpenAI HTTP ingress)
+#   engine-0      primary engine          (ENGINE_ID=0, *_GMS_LOCK_BEFORE_INIT=1)
+#   engine-1      shadow engine           (ENGINE_ID=1, DYN_GMS_FAILOVER_SHADOW_MODE=true)
+#
+# The container/volume/env layout is derived from the tested operator source
+# deploy/operator/internal/dynamo/failover.go (intra-pod failover mode). The engines
+# auto-coordinate via the flock: engine-0 takes the RW lock first; engine-1 is the
+# shadow and takes over when engine-0 dies. Failover is triggered by killing engine-0
+# (see run-failover-k8s.sh) and confirmed by the frontend continuing to serve.
+#
+# GPU sharing: all GPU containers share ONE physical GPU via the nvidia runtime
+# (NVIDIA_VISIBLE_DEVICES=all + CUDA_VISIBLE_DEVICES pinning) rather than per-container
+# nvidia.com/gpu requests (which would assign distinct GPUs and break GMS sharing).
+# Pin to a node with a free GPU index via nodeName/nodeSelector.
+#
+# Placeholders (filled by run-failover-k8s.sh): __ENGINE__ __MODEL__ __GPU_INDEX__
+#   __ENGINE_VENV__ (store path) __RT_SP__ __GMS_SP__ __RING_SP__ __SRC_SP__ (PYTHONPATH parts)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bulwark-failover-__ENGINE__
+  labels: {app: bulwark-failover, engine: __ENGINE__}
+spec:
+  restartPolicy: Never
+  runtimeClassName: nvidia
+  shareProcessNamespace: false
+  tolerations:
+  - {effect: NoSchedule, key: nvidia.com/gpu, operator: Exists}
+  volumes:
+  - {name: rootfs, persistentVolumeClaim: {claimName: rootfs}}      # Nix store -> /nix/store
+  - {name: models, persistentVolumeClaim: {claimName: shared-model-cache}}
+  - {name: gms-shared, emptyDir: {}}                                # UDS sockets + failover.lock
+  - {name: dshm, emptyDir: {medium: Memory, sizeLimit: 16Gi}}       # /dev/shm KV leases
+  - {name: tmp, emptyDir: {}}
+  containers:
+  # ---- GMS weights daemon -------------------------------------------------
+  - name: gms-weights
+    image: busybox:1.36
+    command: ["/bin/sh","-c"]
+    args: ["rm -f /run/gms/shared/gms_*_weights.sock; exec env GMS_SERVER_TAGS=weights GMS_SOCKET_DIR=/run/gms/shared __ENGINE_VENV__/bin/python -m gpu_memory_service.cli.server"]
+    env: &gpuenv
+    - {name: HOME, value: /tmp}
+    - {name: NVIDIA_VISIBLE_DEVICES, value: "all"}
+    - {name: CUDA_VISIBLE_DEVICES, value: "__GPU_INDEX__"}
+    - {name: LD_LIBRARY_PATH, value: "/usr/lib/x86_64-linux-gnu:/run/opengl-driver/lib"}
+    - {name: PYTHONPATH, value: "__RT_SP__:__GMS_SP__:__RING_SP__:__SRC_SP__"}
+    volumeMounts: &gpumounts
+    - {mountPath: /nix/store, name: rootfs, subPath: store}
+    - {mountPath: /run/gms/shared, name: gms-shared}
+    - {mountPath: /dev/shm, name: dshm}
+    - {mountPath: /tmp, name: tmp}
+    - {mountPath: /models, name: models}
+  # ---- GMS kv_cache daemon ------------------------------------------------
+  - name: gms-kv-cache
+    image: busybox:1.36
+    command: ["/bin/sh","-c"]
+    args: ["rm -f /run/gms/shared/gms_*_kv_cache.sock; exec env GMS_SERVER_TAGS=kv_cache GMS_SOCKET_DIR=/run/gms/shared __ENGINE_VENV__/bin/python -m gpu_memory_service.cli.server"]
+    env: *gpuenv
+    volumeMounts: *gpumounts
+  # ---- frontend (nats + etcd + dynamo.frontend) ---------------------------
+  - name: frontend
+    image: busybox:1.36
+    command: ["/bin/sh","-c"]
+    args: ["__SERVICES_BIN__/dynamo-services & sleep 4; exec __ENGINE_VENV__/bin/python -m dynamo.frontend --http-port 8080"]
+    env:
+    - {name: HOME, value: /tmp}
+    - {name: PYTHONPATH, value: "__RT_SP__:__SRC_SP__"}
+    volumeMounts:
+    - {mountPath: /nix/store, name: rootfs, subPath: store}
+    - {mountPath: /tmp, name: tmp}
+  # ---- engine-0 (primary) -------------------------------------------------
+  - name: engine-0
+    image: busybox:1.36
+    command: ["/bin/sh","-c"]
+    args: ["exec __ENGINE_VENV__/bin/python -m dynamo.__ENGINE__ --model __MODEL__ --load-format gms"]
+    env: &engine0env
+    - {name: HOME, value: /tmp}
+    - {name: NVIDIA_VISIBLE_DEVICES, value: "all"}
+    - {name: CUDA_VISIBLE_DEVICES, value: "__GPU_INDEX__"}
+    - {name: LD_LIBRARY_PATH, value: "/usr/lib/x86_64-linux-gnu:/run/opengl-driver/lib"}
+    - {name: PYTHONPATH, value: "__RT_SP__:__GMS_SP__:__RING_SP__:__SRC_SP__"}
+    - {name: GMS_SOCKET_DIR, value: "/run/gms/shared"}
+    - {name: GMS_KV_LEASES, value: "1"}
+    - {name: GMS_KV_LEASE_SHM_DIR, value: "/dev/shm"}
+    # --- intra-pod failover wiring (from operator failover.go) ---
+    - {name: ENGINE_ID, value: "0"}
+    - {name: FAILOVER_LOCK_PATH, value: "/run/gms/shared/failover.lock"}
+    - {name: DYN_GMS_FAILOVER_PRIMARY_ENGINE_ID, value: "0"}
+    - {name: DYN_GMS_FAILOVER_SHADOW_MODE, value: "true"}
+    - {name: DYN_VLLM_GMS_LOCK_BEFORE_INIT, value: "1"}
+    - {name: DYN_SGLANG_GMS_LOCK_BEFORE_INIT, value: "1"}
+    - {name: DYN_SYSTEM_ENABLED, value: "true"}
+    - {name: DYN_SYSTEM_PORT, value: "9090"}
+    volumeMounts: *gpumounts
+  # ---- engine-1 (shadow) --------------------------------------------------
+  - name: engine-1
+    image: busybox:1.36
+    command: ["/bin/sh","-c"]
+    args: ["exec __ENGINE_VENV__/bin/python -m dynamo.__ENGINE__ --model __MODEL__ --load-format gms"]
+    env:
+    - {name: HOME, value: /tmp}
+    - {name: NVIDIA_VISIBLE_DEVICES, value: "all"}
+    - {name: CUDA_VISIBLE_DEVICES, value: "__GPU_INDEX__"}
+    - {name: LD_LIBRARY_PATH, value: "/usr/lib/x86_64-linux-gnu:/run/opengl-driver/lib"}
+    - {name: PYTHONPATH, value: "__RT_SP__:__GMS_SP__:__RING_SP__:__SRC_SP__"}
+    - {name: GMS_SOCKET_DIR, value: "/run/gms/shared"}
+    - {name: GMS_KV_LEASES, value: "1"}
+    - {name: GMS_KV_LEASE_SHM_DIR, value: "/dev/shm"}
+    - {name: ENGINE_ID, value: "1"}
+    - {name: FAILOVER_LOCK_PATH, value: "/run/gms/shared/failover.lock"}
+    - {name: DYN_GMS_FAILOVER_PRIMARY_ENGINE_ID, value: "0"}
+    - {name: DYN_GMS_FAILOVER_SHADOW_MODE, value: "true"}
+    - {name: DYN_VLLM_GMS_LOCK_BEFORE_INIT, value: "0"}
+    - {name: DYN_SGLANG_GMS_LOCK_BEFORE_INIT, value: "0"}
+    - {name: DYN_SYSTEM_ENABLED, value: "true"}
+    - {name: DYN_SYSTEM_PORT, value: "9091"}
+    volumeMounts: *gpumounts
