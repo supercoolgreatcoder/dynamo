@@ -22,7 +22,8 @@ from typing import Protocol
 _KV_LEASE_SHM_MAGIC = 0x4C534D47
 _KV_LEASE_SHM_VERSION = 1
 _KV_LEASE_SHM_HEADER_SIZE = 64
-_KV_LEASE_SHM_RECORD_SIZE = 32
+# Per-block record: state (u32) | generation (u32) | owner_hash (u64).
+_KV_LEASE_SHM_RECORD_SIZE = 16
 _KV_LEASE_SHM_HEADER_STRUCT = struct.Struct("<IIIIQQ")
 
 logger = logging.getLogger(__name__)
@@ -147,7 +148,7 @@ def _read_shm_header(fd: int) -> tuple[int, int, int, int, int, int] | None:
 def _valid_shm_header(header: tuple[int, int, int, int, int, int] | None) -> bool:
     if header is None:
         return False
-    magic, version, total_blocks, record_size, _free_count, _next_epoch = header
+    magic, version, total_blocks, record_size, _free_count, _reserved = header
     return (
         magic == _KV_LEASE_SHM_MAGIC
         and version == _KV_LEASE_SHM_VERSION

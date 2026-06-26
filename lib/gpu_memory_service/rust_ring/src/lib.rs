@@ -62,22 +62,23 @@ const OP_RESTORE_CHUNK: u8 = 1;
 const LEASE_MAGIC: u32 = 0x4c53_4d47; // "GMSL" as little-endian u32.
 const LEASE_VERSION: u32 = 1;
 const LEASE_HEADER_SIZE: usize = 64;
-const LEASE_RECORD_SIZE: usize = 32;
+const LEASE_RECORD_SIZE: usize = 16;
 
 const L_MAGIC: usize = 0;
 const L_VERSION: usize = 4;
 const L_TOTAL_BLOCKS: usize = 8;
 const L_RECORD_SIZE: usize = 12;
 const L_FREE_COUNT: usize = 16;
-const L_NEXT_EPOCH: usize = 24;
+// 24..32 is reserved header padding (8-byte aligned, kept for forward-compat).
 const L_RESERVATION_EPOCH: usize = 32;
 const L_RESERVED_BLOCKS: usize = 40;
 const L_RESERVED_OWNER_HASH: usize = 48;
 
+// Per-block lease record: state (CAS-owned), generation (stale-op guard),
+// owner_hash (holder identity for foreign reclaim/fencing).
 const LR_STATE: usize = 0;
 const LR_GENERATION: usize = 4;
-const LR_LEASE_EPOCH: usize = 8;
-const LR_OWNER_HASH: usize = 16;
+const LR_OWNER_HASH: usize = 8;
 
 const LEASE_STATE_FREE: u32 = 0;
 const LEASE_STATE_LEASED: u32 = 1;
@@ -189,9 +190,8 @@ unsafe fn try_acquire_lease_block(
 
     // Single-writer-per-segment is enforced by the state CAS above. `generation`
     // (bumped here, validated on release/seal) guards against a stale release
-    // freeing a re-leased block. The former per-block `lease_epoch` was written
-    // here but never read/validated anywhere (vestigial); removed. The LR_LEASE_EPOCH
-    // record slot is now reserved padding so the on-disk record size is unchanged.
+    // freeing a re-leased block; `owner_hash` identifies the holder so a foreign
+    // block can be reclaimed/fenced after the holder crashes.
     let generation_ptr = ptr.add(base + LR_GENERATION) as *const AtomicU32;
     let owner_ptr = ptr.add(base + LR_OWNER_HASH) as *const AtomicU64;
     let free_count_ptr = ptr.add(L_FREE_COUNT) as *const AtomicU64;
@@ -448,7 +448,6 @@ fn kv_lease_init(
         write_u32(ptr, L_TOTAL_BLOCKS, total_blocks);
         write_u32(ptr, L_RECORD_SIZE, LEASE_RECORD_SIZE as u32);
         write_u64(ptr, L_FREE_COUNT, total_blocks as u64);
-        write_u64(ptr, L_NEXT_EPOCH, 1);
         write_u64(ptr, L_RESERVATION_EPOCH, 0);
         write_u32(ptr, L_RESERVED_BLOCKS, 0);
         write_u64(ptr, L_RESERVED_OWNER_HASH, 0);
@@ -457,10 +456,7 @@ fn kv_lease_init(
             let base = lease_record_off(block_id);
             write_u32(ptr, base + LR_STATE, LEASE_STATE_FREE);
             write_u32(ptr, base + LR_GENERATION, 0);
-            write_u64(ptr, base + LR_LEASE_EPOCH, 0);
             write_u64(ptr, base + LR_OWNER_HASH, 0);
-            let tail = base + 24;
-            write_u64(ptr, tail, 0);
         }
 
         let free_count_ptr = ptr.add(L_FREE_COUNT) as *const AtomicU64;
