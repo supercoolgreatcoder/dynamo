@@ -286,7 +286,13 @@ class VLLMWithGMSProcess(GMSEngineProcess):
             "--max-num-seqs",
             "1",
             "--gpu-memory-utilization",
-            "0.8",
+            # Env-configurable: shadow engines start while a prior engine's
+            # GMS-persistent KV pool is still resident, so vLLM's startup
+            # free-memory preflight (free >= util*total) needs headroom for a
+            # second/third coexisting allocation. Default 0.8 matches upstream;
+            # the failover repro lowers it so the preflight passes and the
+            # geometry patch reattaches the shared pool.
+            os.environ.get("VLLM_GMS_GPU_MEM_UTIL", "0.8"),
             "--kv-events-config",
             kv_events_cfg,
         ]
@@ -350,7 +356,13 @@ class TRTLLMWithGMSProcess(GMSEngineProcess):
     def env_updates(self) -> dict[str, str]:
         env = {
             "CUDA_VISIBLE_DEVICES": os.environ.get("CUDA_VISIBLE_DEVICES", "0"),
-            "TLLM_WORKER_USE_SINGLE_PROCESS": "1",
+            # Single-process executor (GenerationExecutorWorker) has no
+            # collective_rpc, which GMS pause/resume (release_memory_occupation)
+            # requires. The MPI proxy executor implements collective_rpc and
+            # supports model_world_size==1, so the failover repro sets this to 0.
+            "TLLM_WORKER_USE_SINGLE_PROCESS": os.environ.get(
+                "TLLM_WORKER_USE_SINGLE_PROCESS", "1"
+            ),
             "MPI4PY_MPIABI": "openmpi",
             "OMPI_MCA_coll_ucc_enable": "0",
         }
