@@ -259,6 +259,11 @@ async def init_decode(
             logging.info(
                 "[GMS failover] sglang private-bootstrap shadow prewarm complete"
             )
+        # Give the serving handler a quiesce-capable failover controller so a
+        # shadow can quiesce (pause/release memory) before discovery; without it
+        # gms_failover falls back to the raw handler, which has no quiesce.
+        if getattr(handler, "_quiesce_controller", None) is None:
+            handler._quiesce_controller = SGLangEnginePauseController(engine)
         failover_activation = await prepare_gms_failover(
             handler,
             runtime,
