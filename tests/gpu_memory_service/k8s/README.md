@@ -31,10 +31,24 @@ container/volume/env layout mirrors the tested operator source
 orchestrator — so failover is triggered simply by **killing `engine-0`** and confirmed
 by the frontend continuing to serve via `engine-1`.
 
-**GPU sharing:** all GPU containers share one physical GPU via the nvidia runtime
-(`NVIDIA_VISIBLE_DEVICES=all` + `CUDA_VISIBLE_DEVICES` pinning), *not* per-container
-`nvidia.com/gpu` requests (which would assign distinct GPUs and defeat GMS sharing).
-Pin to a node with a free GPU index (`GPU_INDEX`, `nodeName`/`nodeSelector`).
+**GPU sharing (DRA):** the four GPU containers share ONE physical GPU via a native
+DRA `ResourceClaim` (DeviceClass `gpu.nvidia.com`) referenced by each — the same
+mechanism Bulwark uses. Requesting `nvidia.com/gpu` per-container would assign
+distinct GPUs and defeat GMS memory sharing; DRA exposes the same device to all
+referencing containers (as `cuda:0`) and the scheduler places the pod on a free-GPU
+node. No `NVIDIA_VISIBLE_DEVICES`/UUID juggling, no operator.
+
+**Shadow attach:** the shadow must *attach* the primary's published KV pool rather
+than allocate its own. That path (`use_existing_shared_geometry()`) is enabled by
+`GMS_VLLM_SHARED_KV=1`; the shadow then waits for and reattaches the primary's
+`kv_pool:v2:*` allocation (`shared=True`). Without it the shadow sizes a fresh KV
+tensor and OOMs against the per-process cap even with the GPU mostly free.
+
+**Busybox toolchain:** store-native engines need a few host tools the busybox image
+lacks — provided via env in the template: `ldconfig` (symlinked from glibc-bin), a C
+compiler + `nvcc -ccbin` (gcc-wrapper + cuda-merged) and `ninja` for triton/flashinfer
+JIT, `TRITON_LIBCUDA_PATH`/`LIBRARY_PATH` pointing at where the nvidia runtime injects
+`libcuda.so.1` (`/usr/lib/x86_64-linux-gnu`) and the nix CUDA `lib`/`lib/stubs`.
 
 ## Prerequisites
 
@@ -62,19 +76,25 @@ The runner syncs the store delta, renders `bulwark-failover-pod.yaml.tmpl`, appl
 waits for model registration, serves a request, kills `engine-0`, and serves again —
 the shadow should answer with KV preserved.
 
-## Validation status (be honest about what's proven)
+## Validation status
 
-- **Foundation — VALIDATED in-cluster** (ns `mkhadkevich-dev`): the busybox+store pod
-  runs store-native CPython on a cluster GPU; `torch` sees CUDA; the rebuilt
-  `dynamo._core` loads; `gpu_memory_service` imports; `LEASE_RECORD_SIZE == 16` (the
-  repacked record). See `foundation-probe.yaml`.
-- **Store sync — VALIDATED**: host-side closure sync into the `rootfs` PVC store
-  (287-path delta) used by `run-failover-k8s.sh`.
-- **Full 5-container failover green-run — PENDING**: the manifest + driver are derived
-  from the tested operator failover source and the proven single-host e2e, but the
-  end-to-end green run on a shareable-GPU node has not yet been completed here (engine
-  cold-start from NFS is slow; GPU-sharing across containers needs a node with a free
-  index). Run via `run-failover-k8s.sh` and iterate on your cluster.
+**VALIDATED end-to-end in-cluster** (ns `mkhadkevich-dev`, vLLM, Qwen3-0.6B), on the
+rebased `dynamo._core` + 16-byte KV lease record:
+
+- 5 containers in one pod, **one GPU shared via DRA** (both GMS daemons + both engines
+  on the same `GPU-*`); no operator, no `NVIDIA_VISIBLE_DEVICES`/UUID hacks.
+- Primary (engine-0) loaded through the full GMS vLLM integration and **served real
+  tokens**; created the GMS persistent KV pool (`kv_pool:v2:*`).
+- Shadow (engine-1) **attached the primary's pool** (`Reattached … shared=True`, same
+  tag), not a fresh allocation.
+- Primary **crashed** (EngineCore killed → engine-0 `terminated`); the daemon **released
+  the primary's persistent claims**; the **shadow served the next request** with KV
+  preserved — i.e. the same shadow-failover behavior as the single-host e2e.
+
+Notes: engine cold-start from the NFS store + flashinfer JIT is slow (~3–6 min/engine);
+the `--max-num-seqs 1` / util `0.45` knobs match the single-host failover config.
+sglang/trtllm reuse the same pod template (their per-engine args differ — see
+`tests/gpu_memory_service/common/runtime.py`); only vLLM has been run green here.
 
 ## Relationship to the operator
 
