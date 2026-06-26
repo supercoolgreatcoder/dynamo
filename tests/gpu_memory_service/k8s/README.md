@@ -13,6 +13,36 @@ primary crash; the shadow serves; single-writer-per-segment holds). This harness
 confirms the **same mechanism in Kubernetes**, in the same multi-container shape the
 production Bulwark operator deploys.
 
+## Two harnesses
+
+| Harness | Runner | Failover path | What it is |
+|---|---|---|---|
+| **pytest-in-container** | `run-pytest-failover-k8s.sh` | the test's own fast pause/resume (`GMSProcessManager`) | Runs the **actual `test_shadow_failover.py`** in one busybox GPU container — the truest k8s analogue of the single-host run (same code, only the container boundary differs). **Start here.** |
+| **standalone 5-container** | `run-failover-k8s.sh` | standalone auto-failover (flock + `DYN_GMS_FAILOVER_SHADOW_MODE`) | Reproduces the operator's intra-pod topology (5 containers) and drives failover by killing `engine-0`. Operator-shaped; slower path. |
+
+**pytest-in-container — validated** (ns `mkhadkevich-dev`, **sglang** + vLLM, Qwen3-0.6B):
+`1 passed`; primary served, was killed, shadow resumed (`Remapping weights`/`kv_pool`),
+next request succeeded — **recovery ≈ 2–3 s**, matching the single-host 1–3 s. First
+generate is slow (~60 s) because it JIT-compiles `sgl-kernel`; the shadow then reuses the
+cached kernel.
+
+### Two container-tooling fixes (the only real difference vs the host)
+
+Getting the test green in a container was *entirely* about busybox vs host tooling — the
+failover logic was never the problem. Both fixes are baked into
+`pytest-failover-pod.yaml.tmpl`:
+
+1. **GNU `sed` + `coreutils` ahead of busybox on `PATH`.** `tests/utils/managed_process.py`
+   pipes engine stdout through `sed -u` (unbuffered) to prefix `[ENGINE]` and to *drain the
+   pipe line-by-line*. busybox `sed` rejects `-u`, so that process dies, the engine's stdout
+   pipe fills (64 KB), and the engine **deadlocks on `write()`** at startup.
+2. **wrapper-`nvcc` + shadow `CUDA_HOME`.** sglang lazily JIT-compiles `sgl-kernel`
+   (`fused_rope`) on the first generate via tvm-ffi, which probes the host compiler by
+   running `$CUDA_HOME/bin/nvcc` **with a reset env** (so `NVCC_PREPEND_FLAGS` is lost →
+   `nvcc fatal: Failed to preprocess host compiler properties`). Fix: a wrapper `nvcc`
+   (`exec nvcc -ccbin <gcc-wrapper>/g++ "$@"`) in a shadow CUDA dir that `CUDA_HOME` points
+   at, so `-ccbin g++` reaches *every* nvcc invocation. (Same trick as `runfo.sh` on host.)
+
 ## Topology — one pod, five containers, one shared GPU
 
 | Container | Role | Command / key env |
@@ -66,7 +96,11 @@ JIT, `TRITON_LIBCUDA_PATH`/`LIBRARY_PATH` pointing at where the nvidia runtime i
 kubectl -n <ns> apply -f foundation-probe.yaml   # edit store-path placeholders first
 kubectl -n <ns> logs gms-foundation-probe
 
-# full single-pod failover for one engine
+# RECOMMENDED: run the actual pytest e2e in one container (the single-host test, in k8s)
+./run-pytest-failover-k8s.sh sglang <ns>   # validated; ~2-3s recovery
+./run-pytest-failover-k8s.sh vllm   <ns>
+
+# operator-shaped standalone 5-container failover (kill engine-0, serve via shadow)
 ./run-failover-k8s.sh vllm   <ns>
 ./run-failover-k8s.sh sglang <ns>
 ./run-failover-k8s.sh trtllm <ns>   # weights-only GMS (no kv_cache daemon); V2 KV only
