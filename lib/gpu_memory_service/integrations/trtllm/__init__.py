@@ -76,6 +76,15 @@ def setup_gms(
     # uses its own buffers (no custom workspace), so force it for every AllReduce.
     _force_nccl_allreduce()
 
+    # Fast HANG detection (matches vllm/sglang). TRT-LLM uses an MPI/C++ NCCL communicator
+    # (not torch.distributed PGs) for the executor, so the torch _set_pg_timeout path is a
+    # no-op here — but TRT-LLM ships its own PyExecutor HangDetector. Lower its (fixed 300s)
+    # timeout to the serving value; on_detected already does _handle_errors + shutdown which
+    # releases the failover flock so the shadow takes over. Keep the torch-PG tighten too for
+    # any config that runs the TorchDist (torch.distributed) communicator.
+    _patch_hang_detector_timeout()
+    _patch_serving_collective_timeout()
+
     # TP>1 spawns rank workers via MpiPoolSession; those fresh processes must also
     # run setup_gms or weights/KV bypass GMS. Opt-in (still being hardened: running
     # the GMS patches inside the spawned ranks currently triggers a CUDA illegal
@@ -125,6 +134,92 @@ def _force_nccl_allreduce() -> None:
     )
 
 
+def _patch_hang_detector_timeout() -> None:
+    """Lower TRT-LLM's native PyExecutor HangDetector timeout to the serving timeout.
+
+    TRT-LLM's executor runs on an MPI/C++ NCCL communicator, not torch.distributed process
+    groups, so ``_set_pg_timeout`` (the vllm/sglang serving-timeout mechanism) cannot tighten
+    anything here. TRT-LLM instead ships ``HangDetector`` (pyexecutor/hang_detector.py): the
+    executor loop ``checkpoint()``s every iteration and, if no checkpoint lands within
+    ``timeout`` seconds (a stuck collective on a dead/hung rank), fires ``on_detected`` which
+    runs ``_handle_errors`` + sets the shutdown event — the process exits, the failover flock
+    releases, and the shadow takes over. The timeout defaults to 300s and is not plumbed from
+    any config, so override it to the (low) serving timeout. The detector is constructed AFTER
+    warmup in ``PyExecutor.__init__`` and only times the serving loop (idle iterations
+    checkpoint too), so a small value is warmup-safe and won't false-positive.
+    """
+    try:
+        from gpu_memory_service.common.serving_timeout import (
+            enabled,
+            serving_timeout_s,
+        )
+    except Exception:  # pragma: no cover
+        return
+    if not enabled():
+        return
+    try:
+        from tensorrt_llm._torch.pyexecutor import hang_detector as _hd
+    except Exception:  # pragma: no cover - import shape varies by version
+        logger.debug("[GMS serving-timeout] could not import HangDetector", exc_info=True)
+        return
+    cls = getattr(_hd, "HangDetector", None)
+    if cls is None or getattr(cls, "_gms_timeout_patched", False):
+        return
+    secs = max(1, int(serving_timeout_s()))
+    orig_init = cls.__init__
+
+    def patched_init(self, timeout=None, on_detected=None):
+        # Force the serving timeout regardless of the caller's default (300s).
+        orig_init(self, timeout=secs, on_detected=on_detected)
+
+    cls.__init__ = patched_init
+    cls._gms_timeout_patched = True
+    logger.info(
+        "[GMS] patched TRT-LLM HangDetector timeout -> %ds (fast serving hang detection)",
+        secs,
+    )
+
+
+def _patch_serving_collective_timeout() -> None:
+    """Lower the collective watchdog to the serving timeout once a rank is past warmup.
+
+    TRT-LLM's PyExecutor runs warmup (model_engine.warmup + CUDA-graph capture) inside
+    ``__init__`` and then calls ``start_worker()`` as the final init step to spin up the
+    executor loop thread. So wrapping ``start_worker`` gives a precise PER-RANK post-warmup
+    hook (mirrors vllm's compile_or_warm_up_model / sglang's run_event_loop): the tight
+    serving timeout can never fire during the generous-timeout warmup phase. The tighten
+    is a no-op if torch.distributed isn't initialized, so it is safe regardless of backend.
+    """
+    try:
+        from gpu_memory_service.common.serving_timeout import enabled, tighten_now
+    except Exception:  # pragma: no cover
+        return
+    if not enabled():
+        return
+    try:
+        from tensorrt_llm._torch.pyexecutor.py_executor import PyExecutor
+    except Exception:  # pragma: no cover - import shape varies by version
+        logger.debug("[GMS serving-timeout] could not import PyExecutor", exc_info=True)
+        return
+    if getattr(PyExecutor, "_gms_serving_timeout_patched", False):
+        return
+    orig_start_worker = PyExecutor.start_worker
+
+    def patched_start_worker(self, *args, **kwargs):
+        result = orig_start_worker(self, *args, **kwargs)
+        try:
+            tighten_now()
+        except Exception:  # pragma: no cover
+            logger.debug("[GMS serving-timeout] trtllm tighten failed", exc_info=True)
+        return result
+
+    PyExecutor.start_worker = patched_start_worker
+    PyExecutor._gms_serving_timeout_patched = True
+    logger.info(
+        "[GMS] patched PyExecutor.start_worker to tighten serving NCCL timeout post-warmup"
+    )
+
+
 def _gms_worker_initializer(model_loader_extra_config: dict[str, Any] | None) -> None:
     """Run in each MPI-spawned TRT-LLM rank worker before it builds the engine."""
     # Re-apply the GMS patches in the worker process; do not re-patch the pool
@@ -162,7 +257,12 @@ def _install_mpi_worker_gms(model_loader_extra_config: dict[str, Any] | None) ->
         # search paths for flashinfer's runtime JIT, HF cache, the failover lock).
         # Without LIBRARY_PATH/PATH the flashinfer JIT link fails (-lcudart/-lcuda);
         # without LD_LIBRARY_PATH the driver/OMPI libs are missing.
-        _prefixes = ("TRTLLM", "TLLM", "GMS", "CUDA", "NCCL", "HF_", "OMPI_", "MPI")
+        # DYN_GMS_* carries the serving-timeout config; TORCH_NCCL_* carries the NCCL
+        # watchdog/teardown knobs — both must reach the spawned ranks where the engine runs.
+        _prefixes = (
+            "TRTLLM", "TLLM", "GMS", "CUDA", "NCCL", "HF_", "OMPI_", "MPI",
+            "DYN_GMS", "TORCH_NCCL",
+        )
         _exact = {
             "CUDA_HOME", "CUDA_PATH", "LIBRARY_PATH", "LD_LIBRARY_PATH", "PATH",
             "CPATH", "CC", "CXX", "TRITON_LIBCUDA_PATH", "PYTHONPATH",
