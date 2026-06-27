@@ -81,6 +81,13 @@ def setup_gms(server_args) -> Type["GMSModelLoader"]:
 
     configure_shared_failover_env()
 
+    # The post-ready collective-timeout tightening for SGLang is applied PRECISELY,
+    # not via a grace delay: patches.patch_serving_collective_timeout_for_gms wraps
+    # Scheduler.run_event_loop (entered only AFTER model load + CUDA-graph capture in
+    # Scheduler.__init__), so a tight 2-3s serving timeout can never fire during warmup.
+    # That patch is installed at GMSModelLoader import time (model_loader.py), which
+    # runs in every rank's scheduler process. Nothing to arm here.
+
     # Resolve lock mode and RO reconnect timeout from model_loader_extra_config
     # before patches fire.
     global _gms_lock_mode

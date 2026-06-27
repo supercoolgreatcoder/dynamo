@@ -29,6 +29,7 @@ from gpu_memory_service.integrations.sglang.memory_saver import (
 from gpu_memory_service.integrations.sglang.patches import (
     patch_idle_leak_recovery_for_gms,
     patch_model_runner,
+    patch_serving_collective_timeout_for_gms,
     patch_shared_kv_pool_geometry,
     patch_static_state_for_gms,
     patch_torch_memory_saver,
@@ -47,6 +48,7 @@ patch_model_runner()
 patch_shared_kv_pool_geometry()
 patch_static_state_for_gms()
 patch_idle_leak_recovery_for_gms()
+patch_serving_collective_timeout_for_gms()
 logger.info("[GMS] Applied patches")
 
 

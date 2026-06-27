@@ -386,6 +386,54 @@ def _gms_shared_failover_enabled() -> bool:
     )
 
 
+_serving_timeout_patched = False
+
+
+def patch_serving_collective_timeout_for_gms() -> None:
+    """Tighten the NCCL collective watchdog to the serving timeout once SGLang is past
+    warmup. Model load + CUDA-graph capture (the heavy/slow collectives) happen in
+    ``Scheduler.__init__``, BEFORE ``run_event_loop``; wrapping ``run_event_loop`` entry
+    therefore applies the low serving timeout only after warmup, in every rank's
+    scheduler process — the precise post-warmup hook for SGLang, analogous to vLLM's
+    ``GMSWorker.compile_or_warm_up_model``. No grace-delay heuristic, so a tight 2-3s
+    serving timeout can never fire during warmup. No-op unless
+    DYN_GMS_SERVING_NCCL_TIMEOUT_S>0 (checked inside ``tighten_now``).
+    """
+    global _serving_timeout_patched
+    if _serving_timeout_patched:
+        return
+    try:
+        from sglang.srt.managers.scheduler import Scheduler
+    except ImportError:
+        logger.debug(
+            "[GMS] Could not import SGLang Scheduler, skipping serving-timeout patch"
+        )
+        return
+    if getattr(Scheduler, "_gms_serving_timeout_patched", False):
+        _serving_timeout_patched = True
+        return
+
+    original_run_event_loop = Scheduler.run_event_loop
+
+    def patched_run_event_loop(self, *args, **kwargs):
+        # First (and only) entry == post-warmup, pre-traffic: tighten now.
+        try:
+            from gpu_memory_service.common.serving_timeout import tighten_now
+
+            tighten_now()
+        except Exception:
+            logger.debug("[GMS serving-timeout] sglang tighten failed", exc_info=True)
+        return original_run_event_loop(self, *args, **kwargs)
+
+    Scheduler.run_event_loop = patched_run_event_loop
+    Scheduler._gms_serving_timeout_patched = True
+    _serving_timeout_patched = True
+    logger.info(
+        "[GMS serving-timeout] patched SGLang Scheduler.run_event_loop "
+        "(post-warmup collective-timeout tighten)"
+    )
+
+
 def patch_idle_leak_recovery_for_gms() -> None:
     """Recover from SGLang idle pool-accounting leaks in GMS failover mode.
 
