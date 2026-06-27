@@ -382,12 +382,31 @@ def run_dynamo_headless(config: Config) -> None:
     # ModelExpress uses vLLM's plugin path with --load-format=modelexpress.
     # Dynamo does not set a custom worker class here.
 
+    # Cross-node liveness: heartbeat the leader so a crash of this worker node is
+    # detected in ~one heartbeat-timeout instead of via the NCCL collective timeout.
+    _maybe_start_vllm_rank_liveness_client(config)
+
     # Keep the upstream CLI import local so tests that only exercise
     # build_headless_namespace() do not pull in vLLM's full CLI import graph.
     from vllm.entrypoints.cli.serve import run_headless
 
     args = build_headless_namespace(config)
     run_headless(args)
+
+
+def _maybe_start_vllm_rank_liveness_client(config: Config) -> None:
+    """Start the worker side of the ZMQ rank-liveness channel (headless nodes)."""
+    from dynamo.common import rank_liveness as rl
+
+    if not rl.liveness_enabled() or not config.gms_shadow_mode:
+        return
+    ea = config.engine_args
+    node_rank = int(getattr(ea, "node_rank", 0) or 0)
+    leader_host = getattr(ea, "master_addr", None)
+    nnodes = int(getattr(ea, "nnodes", 1) or 1)
+    if nnodes <= 1 or node_rank < 1 or not leader_host:
+        return
+    rl.RankLivenessClient(leader_host, node_rank).start()
 
 
 async def worker(argv: list[str] | None = None) -> None:

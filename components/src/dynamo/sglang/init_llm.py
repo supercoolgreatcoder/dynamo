@@ -20,7 +20,10 @@ from dynamo.common.utils.endpoint_types import parse_endpoint_types
 from dynamo.llm import ModelInput, ModelType, WorkerType
 from dynamo.runtime import DistributedRuntime
 from dynamo.sglang.args import Config
-from dynamo.sglang.failover_watchdog import maybe_start_gms_failover_child_watchdog
+from dynamo.sglang.failover_watchdog import (
+    maybe_start_gms_failover_child_watchdog,
+    maybe_start_rank_liveness,
+)
 from dynamo.sglang.health_check import (
     SglangDisaggHealthCheckPayload,
     SglangHealthCheckPayload,
@@ -55,6 +58,15 @@ def _is_private_bootstrap_shadow() -> bool:
     engine_id = os.environ.get("ENGINE_ID", "0")
     primary_engine_id = os.environ.get("DYN_GMS_FAILOVER_PRIMARY_ENGINE_ID", "0")
     return engine_id != primary_engine_id
+
+
+def _rank_liveness_leader_host(server_args) -> Optional[str]:
+    """Leader host that worker nodes heartbeat — derived from --dist-init-addr."""
+    addr = getattr(server_args, "dist_init_addr", None)
+    if not addr:
+        return None
+    # "host:port" or "[ipv6]:port" -> host
+    return addr.rsplit(":", 1)[0].strip("[]")
 
 
 class _NonLeaderFailoverController:
@@ -210,6 +222,14 @@ async def init_decode(
         non_leader_failover_owner = await _prepare_non_leader_failover(
             engine, runtime, early_failover_activation
         )
+        # Heartbeat the leader over ZMQ so a crash of this worker node is detected
+        # in ~one heartbeat-timeout instead of via the NCCL collective timeout.
+        maybe_start_rank_liveness(
+            non_leader_failover_owner,
+            engine,
+            node_rank=server_args.node_rank,
+            leader_host=_rank_liveness_leader_host(server_args),
+        )
         # Keep the owner alive for the non-leader loop. Its attached lock fd is
         # the local primary/shadow fencing token.
         _ = non_leader_failover_owner
@@ -272,6 +292,12 @@ async def init_decode(
         )
         failover_activation.attach_to(handler)
     maybe_start_gms_failover_child_watchdog(handler, engine)
+    # Leader side of the cross-node liveness channel: watch worker heartbeats and,
+    # on a worker crash, reuse the fence+release path to fail over to the warm shadow.
+    if server_args.nnodes and server_args.nnodes > 1:
+        maybe_start_rank_liveness(
+            handler, engine, node_rank=0, leader_host=None
+        )
 
     logging.info(f"Registering model with endpoint types: {dynamo_args.endpoint_types}")
     if dynamo_args.custom_jinja_template and "chat" not in dynamo_args.endpoint_types:

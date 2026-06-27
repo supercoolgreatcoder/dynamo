@@ -17,6 +17,7 @@ from vllm.v1.engine.async_llm import AsyncLLM
 
 from dynamo import prometheus_names
 from dynamo.common.gms_failover import (
+    release_attached_gms_failover_lock,
     run_gms_failover_post_lock_fence,
     run_gms_failover_promotion_warmup,
 )
@@ -444,6 +445,50 @@ class WorkerFactory:
         await lock.acquire(engine_id=f"engine-{engine_id}", timeout=timeout)
         return lock
 
+    def _maybe_start_rank_liveness_monitor(self, handler, config: Config):
+        """Leader side of the cross-node ZMQ rank-liveness channel.
+
+        Only the rank-0 leader runs worker_factory (headless workers bypass it),
+        so reaching here means we are the active leader. On a worker node going
+        silent (process death), release the failover lock so the warm shadow
+        promotes in ~one heartbeat-timeout, then signal a graceful shutdown of the
+        now-broken leader — instead of waiting out the NCCL collective timeout.
+        """
+        import signal
+
+        from dynamo.common import rank_liveness as rl
+
+        if not rl.liveness_enabled() or not getattr(config, "gms_shadow_mode", False):
+            return None
+        if int(getattr(config.engine_args, "nnodes", 1) or 1) <= 1:
+            return None
+
+        loop = asyncio.get_running_loop()
+
+        def on_rank_lost(rank: int, reason: str) -> None:
+            logger.warning(
+                "[GMS liveness] vLLM worker rank %d lost (%s); releasing lock + "
+                "shutting down broken leader for fast shadow promotion",
+                rank,
+                reason,
+            )
+            try:
+                asyncio.run_coroutine_threadsafe(
+                    release_attached_gms_failover_lock(handler, backend_name="vllm"),
+                    loop,
+                )
+            except Exception:
+                logger.debug("[GMS liveness] lock release on rank loss failed", exc_info=True)
+            # The cohort is broken (a TP rank is gone); bring the leader down so it
+            # stops holding the GPU/KV and the shadow (now lock holder) serves.
+            os.kill(os.getpid(), signal.SIGTERM)
+
+        monitor = rl.RankLivenessMonitor(on_rank_lost)
+        setattr(handler, "_gms_rank_liveness_monitor", monitor)
+        monitor.start()
+        logger.info("[GMS liveness] started vLLM leader rank-liveness monitor")
+        return monitor
+
     async def _configure_gms_preinit_failover_role(
         self,
         config: Config,
@@ -578,6 +623,7 @@ class WorkerFactory:
                     "[GMS failover] Skipping promotion warmup for active primary; "
                     "warmup is shadow-only"
                 )
+            self._maybe_start_rank_liveness_monitor(handler, config)
             logger.info("[Primary] Active lock acquired, registering with discovery")
             return
 
