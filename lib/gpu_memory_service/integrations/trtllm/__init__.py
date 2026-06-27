@@ -76,6 +76,13 @@ def setup_gms(
     # uses its own buffers (no custom workspace), so force it for every AllReduce.
     _force_nccl_allreduce()
 
+    # Multi-node: AllReduce.__init__ under the AUTO strategy probes multi-node-NVLink
+    # support via pynvml.nvmlDeviceGetNvLinkCapability, which raises NVMLError on this
+    # hardware and crashes model construction. MNNVL is only ever used on aarch64 + real
+    # NVL domains anyway, so neutralize the probe (return False) to make AllReduce robust
+    # even if the force-NCCL patch above did not bind (e.g. import-order at sitecustomize).
+    _patch_disable_mnnvl()
+
     # Fast HANG detection (matches vllm/sglang). TRT-LLM uses an MPI/C++ NCCL communicator
     # (not torch.distributed PGs) for the executor, so the torch _set_pg_timeout path is a
     # no-op here — but TRT-LLM ships its own PyExecutor HangDetector. Lower its (fixed 300s)
@@ -121,6 +128,16 @@ def _force_nccl_allreduce() -> None:
     orig_init = cls.__init__
 
     def patched_init(self, *args, **kwargs):
+        # Force NCCL as the strategy ARGUMENT, before the original __init__ runs. This
+        # both avoids the custom IPC workspace (which faults against GMS memory) AND
+        # skips the AUTO/MNNVL branch in __init__ whose multi-node NVLink probe
+        # (MnnvlMemory.supports_mnnvl -> pynvml.nvmlDeviceGetNvLinkCapability) raises
+        # NVMLError_InvalidArgument on this hardware and crashes model construction.
+        # Signature: __init__(self, mapping, strategy=AUTO, dtype=None).
+        if len(args) >= 2:
+            args = (args[0], AllReduceStrategy.NCCL) + tuple(args[2:])
+        else:
+            kwargs["strategy"] = AllReduceStrategy.NCCL
         orig_init(self, *args, **kwargs)
         try:
             self.strategy = AllReduceStrategy.NCCL
@@ -132,6 +149,37 @@ def _force_nccl_allreduce() -> None:
     logger.info(
         "[GMS] forced AllReduce strategy=NCCL (custom IPC all-reduce conflicts with GMS memory)"
     )
+
+
+def _patch_disable_mnnvl() -> None:
+    """Make TRT-LLM's multi-node-NVLink (MNNVL) support probe a safe no-op.
+
+    ``AllReduce.__init__`` (AUTO strategy) calls ``MNNVLAllReduce.is_mnnvl`` ->
+    ``MnnvlMemory.supports_mnnvl`` -> ``support_nvlink`` ->
+    ``pynvml.nvmlDeviceGetNvLinkCapability``, which raises ``NVMLError_InvalidArgument``
+    on this driver/GPU and crashes model construction in multi-node runs. MNNVL is only
+    actually selected on aarch64 with a real NVLink domain, so forcing the probe to False
+    is behaviorally safe and prevents the crash regardless of the all-reduce strategy.
+    """
+    try:
+        from tensorrt_llm import _mnnvl_utils as _mn
+    except Exception:  # pragma: no cover - import shape varies by version
+        logger.debug("[GMS] could not import _mnnvl_utils to disable MNNVL", exc_info=True)
+        return
+    cls = getattr(_mn, "MnnvlMemory", None)
+    if cls is None or getattr(cls, "_gms_mnnvl_disabled", False):
+        return
+
+    def _supports_mnnvl(*_a, **_k):
+        return False
+
+    try:
+        cls.supports_mnnvl = staticmethod(_supports_mnnvl)
+    except Exception:  # pragma: no cover
+        logger.debug("[GMS] failed to patch supports_mnnvl", exc_info=True)
+        return
+    cls._gms_mnnvl_disabled = True
+    logger.info("[GMS] disabled MNNVL probe (avoids nvml NvLink-capability crash, multi-node)")
 
 
 def _patch_hang_detector_timeout() -> None:
