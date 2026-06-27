@@ -227,10 +227,33 @@ def install(factory: Callable[[object, int, str], KVLeaseClient] | None = None) 
     def _make_client(group, total_slots: int, suffix: str) -> KVLeaseClient:
         if _factory is not None:
             return _factory(group, total_slots, suffix)
-        device = resolve_lease_device(
-            "GMS_TRTLLM_KV_LEASE_DEVICE",
-            fallback_env_names=("LOCAL_RANK", "OMPI_COMM_WORLD_LOCAL_RANK"),
-        )
+        # The lease MUST bind the same GPU the V2 pool is allocated on. Under the
+        # MPI proxy executor each TP rank is a Comm-spawned worker; the
+        # LOCAL_RANK / OMPI_COMM_WORLD_LOCAL_RANK env heuristic is unreliable there
+        # (all spawned ranks can report 0 -> every rank binds gpu0 -> the non-zero
+        # ranks touch gpu0 memory from their own context => CUDA 700). The V2 pool
+        # is created on the worker's *current* CUDA device, so resolve from that;
+        # an explicit GMS_TRTLLM_KV_LEASE_DEVICE still overrides for tests.
+        device = None
+        _explicit = os.environ.get("GMS_TRTLLM_KV_LEASE_DEVICE")
+        if _explicit is not None:
+            try:
+                device = int(_explicit)
+            except ValueError:
+                device = None
+        if device is None:
+            try:
+                import torch
+
+                if torch.cuda.is_available():
+                    device = int(torch.cuda.current_device())
+            except Exception:  # noqa: BLE001
+                device = None
+        if device is None:
+            device = resolve_lease_device(
+                "GMS_TRTLLM_KV_LEASE_DEVICE",
+                fallback_env_names=("LOCAL_RANK", "OMPI_COMM_WORLD_LOCAL_RANK"),
+            )
         return GMSKVLeaseClient.from_env(
             "trtllm",
             device,

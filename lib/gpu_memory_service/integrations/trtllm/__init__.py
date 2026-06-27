@@ -70,6 +70,12 @@ def setup_gms(
 
     install_kv_leases_v2.install()
 
+    # Under GMS the custom IPC-workspace all-reduce strategies (AUTO/ONESHOT/TWOSHOT)
+    # share buffers across ranks via CUDA/VMM IPC, which conflicts with GMS-managed
+    # GPU memory and faults (CUDA 700) in the spawned MPI rank workers. NCCL all-reduce
+    # uses its own buffers (no custom workspace), so force it for every AllReduce.
+    _force_nccl_allreduce()
+
     # TP>1 spawns rank workers via MpiPoolSession; those fresh processes must also
     # run setup_gms or weights/KV bypass GMS. Opt-in (still being hardened: running
     # the GMS patches inside the spawned ranks currently triggers a CUDA illegal
@@ -82,6 +88,41 @@ def setup_gms(
         _install_mpi_worker_gms(extra)
 
     logger.info("[GMS] TensorRT-LLM integration enabled (mode=%s)", lock_mode)
+
+
+def _force_nccl_allreduce() -> None:
+    """Force every TRT-LLM AllReduce module to the NCCL strategy under GMS.
+
+    The custom IPC-workspace strategies (AUTO/ONESHOT/TWOSHOT/MNNVL) share a
+    workspace buffer across TP ranks via CUDA/VMM IPC; that handle is invalid in a
+    Comm-spawned MPI rank whose GPU memory is GMS-managed -> CUDA 700 illegal access
+    during the autotuner warmup. NCCL all-reduce uses NCCL's own buffers (no custom
+    workspace), so it is safe with GMS. ``self.strategy`` is read per forward, so
+    setting it post-init is sufficient.
+    """
+    try:
+        from tensorrt_llm._torch.distributed import ops as _ops
+        from tensorrt_llm.functional import AllReduceStrategy
+    except Exception:  # pragma: no cover - import shape varies by version
+        logger.debug("[GMS] could not import AllReduce to force NCCL", exc_info=True)
+        return
+    cls = getattr(_ops, "AllReduce", None)
+    if cls is None or getattr(cls, "_gms_nccl_forced", False):
+        return
+    orig_init = cls.__init__
+
+    def patched_init(self, *args, **kwargs):
+        orig_init(self, *args, **kwargs)
+        try:
+            self.strategy = AllReduceStrategy.NCCL
+        except Exception:  # pragma: no cover
+            logger.debug("[GMS] failed to force NCCL on AllReduce", exc_info=True)
+
+    cls.__init__ = patched_init
+    cls._gms_nccl_forced = True
+    logger.info(
+        "[GMS] forced AllReduce strategy=NCCL (custom IPC all-reduce conflicts with GMS memory)"
+    )
 
 
 def _gms_worker_initializer(model_loader_extra_config: dict[str, Any] | None) -> None:
@@ -116,11 +157,21 @@ def _install_mpi_worker_gms(model_loader_extra_config: dict[str, Any] | None) ->
 
     def _start_mpi_pool(self) -> None:
         assert not self.mpi_pool, "MPI session already started"
+        # Spawned rank workers must inherit not just GMS/TRTLLM config but the full
+        # toolchain env they need to load/JIT (CUDA, driver, the compiler+linker
+        # search paths for flashinfer's runtime JIT, HF cache, the failover lock).
+        # Without LIBRARY_PATH/PATH the flashinfer JIT link fails (-lcudart/-lcuda);
+        # without LD_LIBRARY_PATH the driver/OMPI libs are missing.
+        _prefixes = ("TRTLLM", "TLLM", "GMS", "CUDA", "NCCL", "HF_", "OMPI_", "MPI")
+        _exact = {
+            "CUDA_HOME", "CUDA_PATH", "LIBRARY_PATH", "LD_LIBRARY_PATH", "PATH",
+            "CPATH", "CC", "CXX", "TRITON_LIBCUDA_PATH", "PYTHONPATH",
+            "FAILOVER_LOCK_PATH", "HOME", "TLLM_WORKER_USE_SINGLE_PROCESS",
+        }
         env = {
             k: v
             for k, v in _os.environ.items()
-            if k.startswith(("TRTLLM", "TLLM", "GMS"))
-            or k in ("CUDA_HOME", "CUDA_PATH")
+            if k.startswith(_prefixes) or k in _exact
         }
         self.mpi_pool = MPIPoolExecutor(
             max_workers=self.n_workers,
