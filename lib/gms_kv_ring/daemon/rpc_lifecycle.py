@@ -4,6 +4,7 @@
 """Engine lifecycle and local storage RPC handlers."""
 from __future__ import annotations
 from typing import TYPE_CHECKING
+from gms_kv_ring.daemon.consumers import LayerDesc
 from gms_kv_ring.daemon.rpc_types import Handler, Message, Response
 if TYPE_CHECKING:
     from gms_kv_ring.daemon.server import Daemon
@@ -14,8 +15,6 @@ def handle_ping(daemon: "Daemon", msg: Message) -> Response:
 
 
 def handle_attach_engine_pool(daemon: "Daemon", msg: Message) -> Response:
-    from gms_kv_ring.daemon.server import LayerDesc
-
     layers = [
         LayerDesc(
             layer_idx=int(layer["layer_idx"]),
