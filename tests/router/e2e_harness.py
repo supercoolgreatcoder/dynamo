@@ -1,10 +1,12 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import asyncio
 import logging
 import os
 import time
-from typing import Any, Callable, ContextManager
+from contextlib import ExitStack, contextmanager
+from typing import Any
 
 from tests.router.common import (
     _test_router_basic,
@@ -12,12 +14,82 @@ from tests.router.common import (
     _test_router_decisions_disagg,
     _test_router_indexers_sync,
 )
-from tests.router.helper import generate_random_suffix, get_runtime
+from tests.router.helper import (
+    generate_random_suffix,
+    get_runtime,
+    wait_for_frontend_ready,
+)
+from tests.router.router_process import FrontendRouterProcess
 from tests.utils.constants import DefaultPort
 from tests.utils.port_utils import allocate_ports, deallocate_ports
 from tests.utils.test_output import resolve_test_output_path
 
 logger = logging.getLogger(__name__)
+
+
+def env_int(name: str, default: int) -> int:
+    return int(os.environ.get(name, default))
+
+
+def env_optional_int(name: str) -> int | None:
+    raw = os.environ.get(name)
+    return None if raw is None else int(raw)
+
+
+def env_float(name: str, default: float) -> float:
+    return float(os.environ.get(name, default))
+
+
+def env_bool(name: str, default: bool) -> bool:
+    raw = os.environ.get(name)
+    return default if raw is None else raw.lower() not in {"0", "false", "no", "off"}
+
+
+def resolve_router_gpu_start_index(gpu_start_index: int) -> int:
+    override = os.environ.get("DYNAMO_ROUTER_E2E_GPU_START_INDEX")
+    if override is None:
+        return gpu_start_index
+    try:
+        base_index = int(override)
+    except ValueError as exc:
+        raise ValueError(
+            "DYNAMO_ROUTER_E2E_GPU_START_INDEX must be an integer"
+        ) from exc
+    return base_index + gpu_start_index
+
+
+def _resolve_router_e2e_num_requests(default: int = 10) -> int:
+    override = os.environ.get("DYNAMO_ROUTER_E2E_NUM_REQUESTS")
+    if override is None:
+        return default
+    try:
+        value = int(override)
+    except ValueError as exc:
+        raise ValueError("DYNAMO_ROUTER_E2E_NUM_REQUESTS must be an integer") from exc
+    if value <= 0:
+        raise ValueError("DYNAMO_ROUTER_E2E_NUM_REQUESTS must be positive")
+    return value
+
+
+@contextmanager
+def maybe_router_gms_servers():
+    if os.environ.get("DYNAMO_ROUTER_E2E_ENABLE_GMS") != "1":
+        yield
+        return
+
+    from tests.gpu_memory_service.common.gms import GMSServer
+
+    devices = os.environ.get("DYNAMO_ROUTER_E2E_GMS_DEVICES", "0,1")
+    tags = os.environ.get("DYNAMO_ROUTER_E2E_GMS_TAGS", "weights,kv_cache")
+    device_ids = [int(part.strip()) for part in devices.split(",") if part.strip()]
+    tag_names = [part.strip() for part in tags.split(",") if part.strip()]
+
+    with ExitStack() as stack:
+        for device in device_ids:
+            for tag in tag_names:
+                stack.enter_context(GMSServer(device=device, tag=tag))
+        yield
+
 
 TEST_PROMPT = (
     "In a quiet meadow tucked between rolling hills, a plump gray rabbit nibbled on "
@@ -161,29 +233,6 @@ def get_engine_endpoint(engine_workers, request_plane: str, component_name: str)
     return runtime.endpoint(f"{engine_workers.namespace}.{component_name}.generate")
 
 
-def _create_engine_process(
-    *,
-    engine_process_cls,
-    engine_args_name: str,
-    engine_args: dict[str, Any],
-    request,
-    request_plane: str,
-    default_process_kwargs: dict[str, Any],
-    engine_process_kwargs: dict[str, Any] | None,
-):
-    process_kwargs = (
-        default_process_kwargs
-        if engine_process_kwargs is None
-        else engine_process_kwargs
-    )
-    return engine_process_cls(
-        request,
-        request_plane=request_plane,
-        **{engine_args_name: engine_args},
-        **process_kwargs,
-    )
-
-
 def run_basic_router_test(
     *,
     engine_process_cls,
@@ -196,39 +245,27 @@ def run_basic_router_test(
     block_size: int,
     model_name: str,
     frontend_timeout: int = 180,
-    engine_process_kwargs: dict[str, Any] | None = None,
-    test_payload: dict[str, Any] | None = None,
-    num_requests: int = 10,
-    router_mode: str = "kv",
-    min_initial_workers: int | None = None,
 ):
-    process = _create_engine_process(
-        engine_process_cls=engine_process_cls,
-        engine_args_name=engine_args_name,
-        engine_args=engine_args,
-        request=request,
-        request_plane=request_plane,
-        default_process_kwargs={
-            "num_workers": num_workers,
-            "single_gpu": single_gpu,
-        },
-        engine_process_kwargs=engine_process_kwargs,
-    )
-    with process as engine_workers:
-        frontend_port = allocate_frontend_ports(request, 1)[0]
-        _test_router_basic(
-            engine_workers=engine_workers,
-            block_size=block_size,
-            request=request,
-            frontend_port=frontend_port,
-            test_payload=test_payload or build_test_payload(model_name),
-            num_requests=num_requests,
-            frontend_timeout=frontend_timeout,
-            store_backend="etcd",
+    with maybe_router_gms_servers():
+        with engine_process_cls(
+            request,
+            num_workers=num_workers,
+            single_gpu=single_gpu,
             request_plane=request_plane,
-            router_mode=router_mode,
-            min_initial_workers=min_initial_workers,
-        )
+            **{engine_args_name: engine_args},
+        ) as engine_workers:
+            frontend_port = allocate_frontend_ports(request, 1)[0]
+            _test_router_basic(
+                engine_workers=engine_workers,
+                block_size=block_size,
+                request=request,
+                frontend_port=frontend_port,
+                test_payload=build_test_payload(model_name),
+                num_requests=_resolve_router_e2e_num_requests(),
+                frontend_timeout=frontend_timeout,
+                store_backend="etcd",
+                request_plane=request_plane,
+            )
 
 
 def run_router_decisions_test(
@@ -246,43 +283,29 @@ def run_router_decisions_test(
     test_dp_rank: bool,
     extra_process_kwargs: dict[str, Any] | None = None,
     initial_wait: float = 0.25,
-    engine_process_kwargs: dict[str, Any] | None = None,
-    test_kwargs: dict[str, Any] | None = None,
 ):
-    default_process_kwargs = {
-        "num_workers": num_workers,
-        "single_gpu": single_gpu,
-        **(extra_process_kwargs or {}),
-    }
-    process = _create_engine_process(
-        engine_process_cls=engine_process_cls,
-        engine_args_name=engine_args_name,
-        engine_args=engine_args,
-        request=request,
-        request_plane=request_plane,
-        default_process_kwargs=default_process_kwargs,
-        engine_process_kwargs=engine_process_kwargs,
-    )
-    with process as engine_workers:
-        endpoint = get_engine_endpoint(engine_workers, request_plane, component_name)
-        scenario_kwargs = dict(test_kwargs or {})
-        for argument, attribute in (
-            ("standalone_indexer_url", "standalone_indexer_url"),
-            ("standalone_selector_url", "standalone_selector_url"),
-        ):
-            value = getattr(engine_workers, attribute, None)
-            if value is not None:
-                scenario_kwargs.setdefault(argument, value)
-        _test_router_decisions(
-            engine_workers,
-            endpoint,
-            model_name,
+    process_kwargs = extra_process_kwargs or {}
+    with maybe_router_gms_servers():
+        with engine_process_cls(
             request,
-            test_dp_rank=test_dp_rank,
-            block_size=block_size,
-            initial_wait=initial_wait,
-            **scenario_kwargs,
-        )
+            num_workers=num_workers,
+            single_gpu=single_gpu,
+            request_plane=request_plane,
+            **{engine_args_name: engine_args},
+            **process_kwargs,
+        ) as engine_workers:
+            endpoint = get_engine_endpoint(
+                engine_workers, request_plane, component_name
+            )
+            _test_router_decisions(
+                engine_workers,
+                endpoint,
+                model_name,
+                request,
+                test_dp_rank=test_dp_rank,
+                block_size=block_size,
+                initial_wait=initial_wait,
+            )
 
 
 def run_disagg_router_decisions_test(
@@ -298,10 +321,8 @@ def run_disagg_router_decisions_test(
     num_decode_workers: int,
     prefill_process_kwargs: dict[str, Any] | None = None,
     decode_process_kwargs: dict[str, Any] | None = None,
-    worker_context_factory: Callable[[str], ContextManager[tuple[Any, Any]]]
-    | None = None,
-    test_payload: dict[str, Any] | None = None,
-    test_kwargs: dict[str, Any] | None = None,
+    strict_timing: bool = True,
+    progressive_request_count: int = 4,
 ):
     shared_namespace = f"test-namespace-{generate_random_suffix()}"
     frontend_port = allocate_frontend_ports(request, 1)[0]
@@ -315,38 +336,32 @@ def run_disagg_router_decisions_test(
         **(decode_process_kwargs or {}),
     }
 
-    def run_test(prefill_workers, decode_workers):
-        _test_router_decisions_disagg(
-            prefill_workers=prefill_workers,
-            decode_workers=decode_workers,
-            block_size=block_size,
-            request=request,
-            frontend_port=frontend_port,
-            test_payload=test_payload or build_test_payload(model_name),
-            request_plane=request_plane,
-            **(test_kwargs or {}),
-        )
-
-    if worker_context_factory is not None:
-        with worker_context_factory(shared_namespace) as workers:
-            run_test(*workers)
-        return
-
-    with engine_process_cls(
-        request,
-        num_workers=num_prefill_workers,
-        request_plane=request_plane,
-        **{engine_args_name: engine_args},
-        **prefill_kwargs,
-    ) as prefill_workers:
+    with maybe_router_gms_servers():
         with engine_process_cls(
             request,
-            num_workers=num_decode_workers,
+            num_workers=num_prefill_workers,
             request_plane=request_plane,
             **{engine_args_name: engine_args},
-            **decode_kwargs,
-        ) as decode_workers:
-            run_test(prefill_workers, decode_workers)
+            **prefill_kwargs,
+        ) as prefill_workers:
+            with engine_process_cls(
+                request,
+                num_workers=num_decode_workers,
+                request_plane=request_plane,
+                **{engine_args_name: engine_args},
+                **decode_kwargs,
+            ) as decode_workers:
+                _test_router_decisions_disagg(
+                    prefill_workers=prefill_workers,
+                    decode_workers=decode_workers,
+                    block_size=block_size,
+                    request=request,
+                    frontend_port=frontend_port,
+                    test_payload=build_test_payload(model_name),
+                    request_plane=request_plane,
+                    strict_timing=strict_timing,
+                    progressive_request_count=progressive_request_count,
+                )
 
 
 def run_indexers_sync_test(
@@ -363,44 +378,38 @@ def run_indexers_sync_test(
     model_name: str,
     num_workers: int,
     extra_process_kwargs: dict[str, Any] | None = None,
-    engine_process_kwargs: dict[str, Any] | None = None,
 ):
     nats_process, _etcd_process = runtime_services_dynamic_ports
     process_kwargs = extra_process_kwargs or {}
 
-    process = _create_engine_process(
-        engine_process_cls=engine_process_cls,
-        engine_args_name=engine_args_name,
-        engine_args=engine_args,
-        request=request,
-        request_plane=request_plane,
-        default_process_kwargs={
-            "num_workers": num_workers,
-            "single_gpu": True,
-            "store_backend": store_backend,
-            "durable_kv_events": durable_kv_events,
-            **process_kwargs,
-        },
-        engine_process_kwargs=engine_process_kwargs,
-    )
-    with process as engine_workers:
-        _test_router_indexers_sync(
-            engine_workers=engine_workers,
-            block_size=block_size,
-            model_name=model_name,
+    with maybe_router_gms_servers():
+        with engine_process_cls(
+            request,
             num_workers=num_workers,
-            store_backend=store_backend,
+            single_gpu=True,
             request_plane=request_plane,
-            test_nats_interruption=not durable_kv_events,
-            nats_server=nats_process if not durable_kv_events else None,
+            store_backend=store_backend,
             durable_kv_events=durable_kv_events,
-            standalone_indexer_url=getattr(
-                engine_workers, "standalone_indexer_url", None
-            ),
-            standalone_indexer_b_url=getattr(
-                engine_workers, "standalone_indexer_b_url", None
-            ),
-            test_zmq_replay=bool(
-                getattr(engine_workers, "standalone_indexer_url", None)
-            ),
-        )
+            **{engine_args_name: engine_args},
+            **process_kwargs,
+        ) as engine_workers:
+            _test_router_indexers_sync(
+                engine_workers=engine_workers,
+                block_size=block_size,
+                model_name=model_name,
+                num_workers=num_workers,
+                store_backend=store_backend,
+                request_plane=request_plane,
+                test_nats_interruption=not durable_kv_events,
+                nats_server=nats_process if not durable_kv_events else None,
+                durable_kv_events=durable_kv_events,
+                standalone_indexer_url=getattr(
+                    engine_workers, "standalone_indexer_url", None
+                ),
+                standalone_indexer_b_url=getattr(
+                    engine_workers, "standalone_indexer_b_url", None
+                ),
+                test_zmq_replay=bool(
+                    getattr(engine_workers, "standalone_indexer_url", None)
+                ),
+            )
