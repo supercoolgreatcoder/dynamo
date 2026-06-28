@@ -12,7 +12,7 @@ import os
 import signal
 import threading
 import time
-from typing import Any
+from typing import Any, Iterable
 
 from dynamo.common.gms_failover import release_attached_gms_failover_lock
 
@@ -283,3 +283,63 @@ def maybe_start_gms_failover_child_watchdog(
     watchdog.start()
     logger.info("[GMS failover] started SGLang child watchdog")
     return watchdog
+
+
+def maybe_start_rank_liveness(
+    target: Any,
+    engine: Any,
+    *,
+    node_rank: int,
+    leader_host: str | None,
+    loop: asyncio.AbstractEventLoop | None = None,
+    expected_ranks: Iterable[int] | None = None,
+):
+    """Start the cross-node ZMQ rank-liveness channel for SGLang.
+
+    Worker nodes (node_rank>=1) heartbeat the leader. The leader (node_rank==0)
+    monitors those heartbeats and, on a worker going silent (process death),
+    reuses the child watchdog's fence+release path — so a remote rank crash is
+    detected in ~one heartbeat-timeout instead of via the NCCL collective timeout.
+    Local detection (child watchdog) and pure hangs (engine/NCCL watchdog) are
+    unaffected; this only adds the fast cross-node *crash* path.
+    """
+    from dynamo.common import rank_liveness as rl
+
+    if not rl.liveness_enabled() or not _truthy_env("DYN_GMS_FAILOVER_SHADOW_MODE"):
+        return None
+
+    if node_rank >= 1:
+        if not leader_host:
+            logger.warning("[GMS liveness] no leader host for worker rank %d; skipping", node_rank)
+            return None
+        client = rl.RankLivenessClient(leader_host, node_rank)
+        if target is not None:
+            setattr(target, "_gms_rank_liveness_client", client)
+        client.start()
+        return client
+
+    # Leader side: trigger failover when a worker rank dies.
+    loop = loop or asyncio.get_running_loop()
+
+    def on_rank_lost(rank: int, reason: str) -> None:
+        watchdog = getattr(target, "_gms_failover_child_watchdog", None)
+        if watchdog is not None:
+            watchdog._trigger_failure(f"cross-node rank {rank} liveness lost ({reason})")
+            return
+        logger.warning(
+            "[GMS liveness] rank %d lost (%s); fencing + releasing lock directly", rank, reason
+        )
+        try:
+            _fence_children(engine)
+        except Exception:
+            logger.debug("[GMS liveness] fence on rank loss failed", exc_info=True)
+        asyncio.run_coroutine_threadsafe(
+            release_attached_gms_failover_lock(target, backend_name="sglang"), loop
+        )
+
+    monitor = rl.RankLivenessMonitor(
+        on_rank_lost, expected_ranks=expected_ranks
+    )
+    setattr(target, "_gms_rank_liveness_monitor", monitor)
+    monitor.start()
+    return monitor
