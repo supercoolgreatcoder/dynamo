@@ -6,7 +6,6 @@
 - patch_torch_memory_saver: Routes weights and kv_cache to GMS
 - patch_model_runner: Fixes memory accounting with pre-loaded weights
 - patch_static_state_for_gms: No-ops named-buffer export/import (GMS preserves them)
-- patch_idle_leak_recovery_for_gms: Reclaims idle preserved-cache accounting leaks
 """
 
 from __future__ import annotations
@@ -30,7 +29,6 @@ _torch_memory_saver_patched = False
 _model_runner_patched = False
 _static_state_patched = False
 _kv_pool_geometry_patched = False
-_idle_leak_recovery_patched = False
 
 
 def patch_torch_memory_saver() -> None:
@@ -373,79 +371,52 @@ def _resolve_shared_kv_geometry_device(runner, resolve_lease_device_fn) -> int:
     return int(resolve_lease_device_fn("GMS_SGLANG_KV_LEASE_DEVICE"))
 
 
-def _env_truthy(name: str, default: bool = False) -> bool:
-    value = os.environ.get(name)
-    if value is None:
-        return default
-    return value.strip().lower() not in ("", "0", "false", "no", "off")
+_serving_timeout_patched = False
 
 
-def _gms_shared_failover_enabled() -> bool:
-    return _env_truthy("GMS_SGLANG_SHARED_KV") and _env_truthy(
-        "DYN_GMS_FAILOVER_SHADOW_MODE"
-    )
-
-
-def patch_idle_leak_recovery_for_gms() -> None:
-    """Recover from SGLang idle pool-accounting leaks in GMS failover mode.
-
-    During Bulwark failover, requests can be cancelled or replayed while the
-    shadow takes over a GMS-preserved KV namespace. SGLang's idle invariant can
-    then observe a few page-sized allocations that are neither locally free nor
-    attached to the prefix tree. When the scheduler is fully idle, flushing the
-    local cache is correctness-preserving and returns the allocator to a clean
-    state. Keep this narrow: outside GMS shared-KV failover, upstream's strict
-    invariant should still raise.
+def patch_serving_collective_timeout_for_gms() -> None:
+    """Tighten the NCCL collective watchdog to the serving timeout once SGLang is past
+    warmup. Model load + CUDA-graph capture (the heavy/slow collectives) happen in
+    ``Scheduler.__init__``, BEFORE ``run_event_loop``; wrapping ``run_event_loop`` entry
+    therefore applies the low serving timeout only after warmup, in every rank's
+    scheduler process — the precise post-warmup hook for SGLang, analogous to vLLM's
+    ``GMSWorker.compile_or_warm_up_model``. No grace-delay heuristic, so a tight 2-3s
+    serving timeout can never fire during warmup. No-op unless
+    DYN_GMS_SERVING_NCCL_TIMEOUT_S>0 (checked inside ``tighten_now``).
     """
-    global _idle_leak_recovery_patched
-    if _idle_leak_recovery_patched:
+    global _serving_timeout_patched
+    if _serving_timeout_patched:
         return
-
     try:
         from sglang.srt.managers.scheduler import Scheduler
     except ImportError:
         logger.debug(
-            "[GMS] Could not import SGLang Scheduler, skipping idle leak patch"
+            "[GMS] Could not import SGLang Scheduler, skipping serving-timeout patch"
         )
         return
-
-    if hasattr(Scheduler, "_gms_idle_leak_recovery_patched"):
-        _idle_leak_recovery_patched = True
+    if getattr(Scheduler, "_gms_serving_timeout_patched", False):
+        _serving_timeout_patched = True
         return
 
-    original_on_idle = Scheduler.on_idle
+    original_run_event_loop = Scheduler.run_event_loop
 
-    def patched_on_idle(self, *args, **kwargs):
+    def patched_run_event_loop(self, *args, **kwargs):
+        # First (and only) entry == post-warmup, pre-traffic: tighten now.
         try:
-            return original_on_idle(self, *args, **kwargs)
-        except ValueError as exc:
-            message = str(exc)
-            if "pool memory leak detected" not in message:
-                raise
-            if not _gms_shared_failover_enabled():
-                raise
-            if getattr(self, "_gms_idle_leak_recovery_active", False):
-                raise
-            is_idle = getattr(self, "is_fully_idle", lambda: False)
-            if not is_idle():
-                raise
+            from gpu_memory_service.common.serving_timeout import tighten_now
 
-            logger.warning(
-                "[GMS] Recovering SGLang idle pool accounting leak by flushing "
-                "idle KV cache: %s",
-                message,
-            )
-            self._gms_idle_leak_recovery_active = True
-            try:
-                self.flush_cache(empty_cache=False)
-                return original_on_idle(self, *args, **kwargs)
-            finally:
-                self._gms_idle_leak_recovery_active = False
+            tighten_now()
+        except Exception:
+            logger.debug("[GMS serving-timeout] sglang tighten failed", exc_info=True)
+        return original_run_event_loop(self, *args, **kwargs)
 
-    Scheduler.on_idle = patched_on_idle
-    Scheduler._gms_idle_leak_recovery_patched = True
-    _idle_leak_recovery_patched = True
-    logger.info("[GMS] Patched SGLang idle leak recovery")
+    Scheduler.run_event_loop = patched_run_event_loop
+    Scheduler._gms_serving_timeout_patched = True
+    _serving_timeout_patched = True
+    logger.info(
+        "[GMS serving-timeout] patched SGLang Scheduler.run_event_loop "
+        "(post-warmup collective-timeout tighten)"
+    )
 
 
 def patch_static_state_for_gms() -> None:

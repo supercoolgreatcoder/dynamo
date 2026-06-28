@@ -430,16 +430,35 @@ class GMSWorker(Worker):
         finally:
             compilation_config.cudagraph_mode = saved_mode
 
+    def _maybe_tighten_serving_collective_timeout(self) -> None:
+        """Post-warmup hook: the engine is fully initialized in this rank's worker
+        process, so lower the NCCL collective watchdog to the (low) serving timeout
+        for fast hang detection. Only ever called after warmup actually ran, so it
+        cannot fire during init/warmup. No-op unless DYN_GMS_SERVING_NCCL_TIMEOUT_S>0.
+        """
+        try:
+            from gpu_memory_service.common.serving_timeout import (
+                apply_serving_collective_timeout,
+            )
+
+            apply_serving_collective_timeout()
+        except Exception:
+            logger.debug("[GMS serving-timeout] vLLM tighten failed", exc_info=True)
+
     def compile_or_warm_up_model(self):
         """Defer warmup/cudagraph capture while private-bootstrap KV is VA-only."""
         if not self._private_bootstrap_kv_active():
-            return super().compile_or_warm_up_model()
+            result = super().compile_or_warm_up_model()
+            self._maybe_tighten_serving_collective_timeout()
+            return result
         if private_bootstrap_scratch_warmup_enabled():
             logger.info(
                 "[GMS] Running vLLM warmup and CUDA graph capture on "
                 "scratch-backed private-bootstrap shadow KV"
             )
-            return super().compile_or_warm_up_model()
+            result = super().compile_or_warm_up_model()
+            self._maybe_tighten_serving_collective_timeout()
+            return result
 
         from vllm.v1.worker.worker_base import CompilationTimes
 
@@ -474,6 +493,8 @@ class GMSWorker(Worker):
         except Exception:
             self._gms_deferred_private_bootstrap_warmup = True
             raise
+        # Deferred warmup just completed (shadow promoted + about to serve): tighten.
+        self._maybe_tighten_serving_collective_timeout()
 
     def initialize_from_config(self, kv_cache_config) -> None:
         """Allocate KV cache backing through GMS-owned persistent HBM."""
