@@ -17,9 +17,11 @@ import pytest
 
 from tests.router.e2e_harness import (
     ManagedEngineProcessMixin,
+    resolve_router_gpu_start_index,
     run_basic_router_test,
     run_disagg_router_decisions_test,
     run_indexers_sync_test,
+    run_mooncake_router_stress_test,
     run_router_decisions_test,
 )
 from tests.router.helper import (
@@ -35,7 +37,38 @@ from tests.utils.port_utils import allocate_ports, deallocate_ports
 
 logger = logging.getLogger(__name__)
 
-MODEL_NAME = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return int(raw)
+
+
+def _env_optional_int(name: str) -> Optional[int]:
+    raw = os.environ.get(name)
+    if raw is None:
+        return None
+    return int(raw)
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return float(raw)
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.lower() not in {"0", "false", "no", "off"}
+
+
+MODEL_NAME = os.environ.get(
+    "DYNAMO_ROUTER_E2E_VLLM_MODEL", "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+)
 
 pytestmark = [
     pytest.mark.e2e,
@@ -51,16 +84,36 @@ BLOCK_SIZE = 16
 VLLM_ARGS: Dict[str, Any] = {
     "block_size": BLOCK_SIZE,
     "model": MODEL_NAME,
-    "gpu_memory_utilization": 0.4,  # Limit VRAM allocation per worker
-    "max_model_len": 1024,  # Limit context length to reduce KV cache size
-    "enforce_eager": True,  # Disable CUDA graphs for faster startup & lower memory
+    "gpu_memory_utilization": _env_float(
+        "DYNAMO_ROUTER_E2E_VLLM_GPU_MEMORY_UTILIZATION", 0.4
+    ),
+    "max_model_len": _env_int("DYNAMO_ROUTER_E2E_VLLM_MAX_MODEL_LEN", 1024),
+    "enforce_eager": _env_bool("DYNAMO_ROUTER_E2E_VLLM_ENFORCE_EAGER", False),
+    "tensor_parallel_size": _env_optional_int(
+        "DYNAMO_ROUTER_E2E_VLLM_TENSOR_PARALLEL_SIZE"
+    ),
+    "enable_expert_parallel": _env_bool(
+        "DYNAMO_ROUTER_E2E_VLLM_ENABLE_EXPERT_PARALLEL", False
+    ),
+    "enable_eplb": _env_bool("DYNAMO_ROUTER_E2E_VLLM_ENABLE_EPLB", False),
+    "all2all_backend": os.environ.get("DYNAMO_ROUTER_E2E_VLLM_ALL2ALL_BACKEND"),
 }
 
 VLLM_ARGS_NO_BLOCK_SIZE: Dict[str, Any] = {
     "model": MODEL_NAME,
-    "gpu_memory_utilization": 0.4,  # Limit VRAM allocation per worker
-    "max_model_len": 1024,  # Limit context length to reduce KV cache size
-    "enforce_eager": True,  # Disable CUDA graphs for faster startup & lower memory
+    "gpu_memory_utilization": _env_float(
+        "DYNAMO_ROUTER_E2E_VLLM_GPU_MEMORY_UTILIZATION", 0.4
+    ),
+    "max_model_len": _env_int("DYNAMO_ROUTER_E2E_VLLM_MAX_MODEL_LEN", 1024),
+    "enforce_eager": _env_bool("DYNAMO_ROUTER_E2E_VLLM_ENFORCE_EAGER", False),
+    "tensor_parallel_size": _env_optional_int(
+        "DYNAMO_ROUTER_E2E_VLLM_TENSOR_PARALLEL_SIZE"
+    ),
+    "enable_expert_parallel": _env_bool(
+        "DYNAMO_ROUTER_E2E_VLLM_ENABLE_EXPERT_PARALLEL", False
+    ),
+    "enable_eplb": _env_bool("DYNAMO_ROUTER_E2E_VLLM_ENABLE_EPLB", False),
+    "all2all_backend": os.environ.get("DYNAMO_ROUTER_E2E_VLLM_ALL2ALL_BACKEND"),
 }
 
 
@@ -127,6 +180,7 @@ class VLLMProcess(ManagedEngineProcessMixin):
         self.worker_id_to_zmq_ports: dict[int, dict[int, str]] = {}
         self._worker_id_to_replay_ports: dict[int, dict[int, str]] = {}
         self.store_backend = store_backend
+        gpu_start_index = resolve_router_gpu_start_index(gpu_start_index)
         self._request = request
         self._request_plane = request_plane
         self._standalone_indexer = standalone_indexer
@@ -170,6 +224,16 @@ class VLLMProcess(ManagedEngineProcessMixin):
         num_gpu_blocks_override = vllm_args.get("num_gpu_blocks_override")
         max_model_len = vllm_args.get("max_model_len")
         enforce_eager = vllm_args.get("enforce_eager", False)
+        tensor_parallel_size = vllm_args.get("tensor_parallel_size")
+        enable_expert_parallel = vllm_args.get("enable_expert_parallel", False)
+        enable_eplb = vllm_args.get("enable_eplb", False)
+        all2all_backend = vllm_args.get("all2all_backend")
+        load_format = vllm_args.get("load_format") or os.environ.get(
+            "DYNAMO_ROUTER_E2E_LOAD_FORMAT"
+        )
+        model_loader_extra_config = vllm_args.get(
+            "model_loader_extra_config"
+        ) or os.environ.get("DYNAMO_ROUTER_E2E_MODEL_LOADER_EXTRA_CONFIG")
 
         self.model_name = model
         self.block_size = vllm_args.get("block_size", BLOCK_SIZE)
@@ -184,8 +248,18 @@ class VLLMProcess(ManagedEngineProcessMixin):
         for worker_idx in range(num_workers):
             # Calculate GPU device for this process
             if single_gpu:
-                # Force all processes to GPU 0 (for single-GPU testing)
+                # Force all processes to one GPU (for single-GPU testing)
                 gpu_device = str(gpu_start_index)
+            elif tensor_parallel_size is not None and int(tensor_parallel_size) > 1:
+                worker_start_gpu = gpu_start_index + worker_idx * int(
+                    tensor_parallel_size
+                )
+                gpu_device = ",".join(
+                    str(i)
+                    for i in range(
+                        worker_start_gpu, worker_start_gpu + int(tensor_parallel_size)
+                    )
+                )
             elif data_parallel_size is not None:
                 # Worker sees dp_rank GPUs (each DP rank gets its own GPU)
                 worker_start_gpu = gpu_start_index + worker_idx * data_parallel_size
@@ -196,7 +270,7 @@ class VLLMProcess(ManagedEngineProcessMixin):
                     )
                 )
             else:
-                # No DP; worker sees one GPU
+                # No DP/TP; worker sees one GPU
                 gpu_device = str(gpu_start_index + worker_idx)
 
             command = ["python3", "-m", "dynamo.vllm", "--model", model]
@@ -217,6 +291,14 @@ class VLLMProcess(ManagedEngineProcessMixin):
             if enforce_eager:
                 command.append("--enforce-eager")
 
+            if load_format is not None:
+                command.extend(["--load-format", str(load_format)])
+
+            if model_loader_extra_config is not None:
+                command.extend(
+                    ["--model-loader-extra-config", str(model_loader_extra_config)]
+                )
+
             # Limit VRAM allocation (required for multi-worker on same GPU)
             command.extend(_vllm_gpu_mem_args(gpu_memory_utilization))
 
@@ -229,6 +311,18 @@ class VLLMProcess(ManagedEngineProcessMixin):
                 command.extend(
                     ["--num-gpu-blocks-override", str(num_gpu_blocks_override)]
                 )
+
+            if tensor_parallel_size is not None:
+                command.extend(["--tensor-parallel-size", str(tensor_parallel_size)])
+
+            if enable_expert_parallel:
+                command.append("--enable-expert-parallel")
+
+            if enable_eplb:
+                command.append("--enable-eplb")
+
+            if all2all_backend:
+                command.extend(["--all2all-backend", str(all2all_backend)])
 
             if data_parallel_size is not None:
                 # Add DP configuration for external load balancing
@@ -294,6 +388,8 @@ class VLLMProcess(ManagedEngineProcessMixin):
                 health_check_urls=[],
                 log_dir=request.node.name,
                 terminate_all_matching_process_names=False,
+                terminate_parent_only_first=True,
+                graceful_shutdown_timeout=30.0,
             )
             self.worker_processes.append(process)
             if data_parallel_size is not None:
@@ -516,6 +612,34 @@ def test_vllm_kv_router_basic(
     )
 
 
+@pytest.mark.slow
+@pytest.mark.gpu_1
+@pytest.mark.nightly
+@pytest.mark.parametrize("request_plane", ["tcp"], indirect=True)
+@pytest.mark.timeout(3600)
+def test_vllm_gms_mooncake_trace_stress(
+    request,
+    runtime_services_dynamic_ports,
+    predownload_models,
+    set_ucx_tls_no_mm,
+    request_plane,
+):
+    if os.environ.get("DYNAMO_ROUTER_E2E_MOONCAKE_STRESS") != "1":
+        pytest.skip("set DYNAMO_ROUTER_E2E_MOONCAKE_STRESS=1 to run")
+    run_mooncake_router_stress_test(
+        engine_process_cls=VLLMProcess,
+        engine_args_name="vllm_args",
+        engine_args=VLLM_ARGS,
+        num_workers=_env_int("DYNAMO_ROUTER_E2E_MOONCAKE_NUM_WORKERS", 2),
+        single_gpu=_env_bool("DYNAMO_ROUTER_E2E_MOONCAKE_SINGLE_GPU", True),
+        request=request,
+        request_plane=request_plane,
+        block_size=BLOCK_SIZE,
+        model_name=MODEL_NAME,
+        frontend_timeout=_env_int("DYNAMO_ROUTER_E2E_MOONCAKE_FRONTEND_TIMEOUT_S", 900),
+    )
+
+
 @pytest.mark.pre_merge
 @pytest.mark.gpu_1
 @pytest.mark.profiled_vram_gib(6.9)  # actual profiled peak with kv-bytes
@@ -627,8 +751,12 @@ def test_router_decisions_vllm_disagg(
         request_plane=request_plane,
         model_name=MODEL_NAME,
         block_size=BLOCK_SIZE,
-        num_prefill_workers=2,
-        num_decode_workers=1,
+        num_prefill_workers=int(
+            os.environ.get("DYNAMO_ROUTER_E2E_NUM_PREFILL_WORKERS", "2")
+        ),
+        num_decode_workers=int(
+            os.environ.get("DYNAMO_ROUTER_E2E_NUM_DECODE_WORKERS", "1")
+        ),
         prefill_process_kwargs={
             "single_gpu": True,
             "gpu_start_index": 0,

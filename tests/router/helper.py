@@ -8,6 +8,7 @@ import os
 import random
 import string
 import sys
+import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -132,41 +133,61 @@ def verify_response_worker_ids(
     )
 
 
-def verify_response_timing(timing_info: dict[str, Any], disagg: bool = False) -> None:
-    """Verify timing info has valid values (ttft_ms > 0, total_time_ms > 0).
+def verify_response_timing(
+    timing_info: dict[str, Any],
+    disagg: bool = False,
+    require_ttft: bool = True,
+    require_kv_transfer_latency: bool = True,
+) -> None:
+    """Verify timing info has valid values.
 
     Args:
         timing_info: Dict of timing fields from nvext.timing in the response.
-        disagg: If True, also verify kv_transfer_estimated_latency_ms > 0 (disaggregated mode only).
+        disagg: If True, verify disaggregated-mode transfer timing when required.
+        require_ttft: If True, require ttft_ms > 0. Some backends do not emit it.
+        require_kv_transfer_latency: If True, require kv_transfer_estimated_latency_ms > 0.
     """
     ttft_ms = timing_info.get("ttft_ms")
     total_time_ms = timing_info.get("total_time_ms")
 
-    assert ttft_ms is not None and ttft_ms > 0, f"Expected ttft_ms > 0, got: {ttft_ms}"
     assert (
         total_time_ms is not None and total_time_ms > 0
     ), f"Expected total_time_ms > 0, got: {total_time_ms}"
-    assert (
-        total_time_ms >= ttft_ms
-    ), f"Expected total_time_ms >= ttft_ms, got {total_time_ms} < {ttft_ms}"
-    logger.info(
-        f"✓ Verified timing: ttft_ms={ttft_ms:.2f}, total_time_ms={total_time_ms:.2f}"
-    )
+
+    if ttft_ms is None:
+        assert not require_ttft, "Expected ttft_ms > 0, got: None"
+        logger.info("Timing did not include ttft_ms; verified total_time_ms only")
+    else:
+        assert ttft_ms > 0, f"Expected ttft_ms > 0, got: {ttft_ms}"
+        assert (
+            total_time_ms >= ttft_ms
+        ), f"Expected total_time_ms >= ttft_ms, got {total_time_ms} < {ttft_ms}"
+        logger.info(
+            f"✓ Verified timing: ttft_ms={ttft_ms:.2f}, total_time_ms={total_time_ms:.2f}"
+        )
 
     if disagg:
         kv_transfer_estimated_latency_ms = timing_info.get(
             "kv_transfer_estimated_latency_ms"
         )
-        assert (
-            kv_transfer_estimated_latency_ms is not None
-            and kv_transfer_estimated_latency_ms > 0
-        ), (
-            f"Expected kv_transfer_estimated_latency_ms > 0 in disaggregated mode, "
-            f"got: {kv_transfer_estimated_latency_ms}"
-        )
-        logger.info(
-            f"✓ Verified kv_transfer_estimated_latency_ms={kv_transfer_estimated_latency_ms:.2f}"
-        )
+        if kv_transfer_estimated_latency_ms is None:
+            assert not require_kv_transfer_latency, (
+                "Expected kv_transfer_estimated_latency_ms > 0 in disaggregated mode, "
+                "got: None"
+            )
+            prefill_wait_time_ms = timing_info.get("prefill_wait_time_ms")
+            if prefill_wait_time_ms is not None:
+                assert (
+                    prefill_wait_time_ms >= 0
+                ), f"Expected prefill_wait_time_ms >= 0, got: {prefill_wait_time_ms}"
+        else:
+            assert kv_transfer_estimated_latency_ms > 0, (
+                f"Expected kv_transfer_estimated_latency_ms > 0 in disaggregated mode, "
+                f"got: {kv_transfer_estimated_latency_ms}"
+            )
+            logger.info(
+                f"✓ Verified kv_transfer_estimated_latency_ms={kv_transfer_estimated_latency_ms:.2f}"
+            )
 
 
 ########################################################
@@ -541,9 +562,15 @@ async def send_request_with_retry(url: str, payload: dict, max_retries: int = 8)
             async with aiohttp.ClientSession() as session:
                 async with session.post(url, json=payload) as response:
                     if response.status == 200:
-                        # Read the response to ensure it's valid
-                        async for _ in response.content:
-                            pass
+                        # Read and validate the response to ensure the stream
+                        # completed rather than failing inside an HTTP 200 body.
+                        chunks = []
+                        async for chunk in response.content:
+                            if chunk:
+                                chunks.append(chunk)
+                        _validate_stream_response_chunks(
+                            chunks, f"Initial request to {url}"
+                        )
                         logger.debug(
                             f"First request succeeded on attempt {attempt + 1}"
                         )
@@ -583,6 +610,54 @@ def get_runtime(
     return DistributedRuntime(
         loop, store_backend, request_plane, event_plane=event_plane
     )
+
+
+def _validate_stream_response_chunks(chunks: list[bytes], context: str) -> None:
+    """Validate an OpenAI-compatible SSE stream completed cleanly.
+
+    Some backends surface generation errors as HTTP 200 streams that terminate
+    early. Treat those as failed requests instead of counting the transport as
+    success.
+    """
+    body = b"".join(chunks).decode("utf-8", errors="replace")
+    saw_sse_payload = False
+    saw_done = False
+
+    for raw_line in body.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith(":"):
+            continue
+        if not line.startswith("data:"):
+            continue
+
+        saw_sse_payload = True
+        data_str = line[5:].strip()
+        if data_str == "[DONE]":
+            saw_done = True
+            continue
+
+        try:
+            data = json.loads(data_str)
+        except json.JSONDecodeError:
+            continue
+
+        error = data.get("error")
+        if error:
+            raise AssertionError(f"{context} returned stream error payload: {error}")
+
+    if saw_sse_payload and not saw_done:
+        raise AssertionError(f"{context} stream ended without data: [DONE]")
+
+    if not saw_sse_payload:
+        if not body.strip():
+            raise AssertionError(f"{context} stream returned no SSE payload")
+        try:
+            data = json.loads(body)
+        except json.JSONDecodeError:
+            return
+        error = data.get("error") if isinstance(data, dict) else None
+        if error:
+            raise AssertionError(f"{context} returned error payload: {error}")
 
 
 async def check_nats_consumers(namespace: str, expected_count: Optional[int] = None):
@@ -650,11 +725,14 @@ async def send_inflight_requests(urls: list, payload: dict, num_requests: int):
                     )
                     return False
 
-                # For streaming responses, read the entire stream
+                # For streaming responses, read and validate the entire stream.
                 chunks = []
                 async for line in response.content:
                     if line:
                         chunks.append(line)
+                _validate_stream_response_chunks(
+                    chunks, f"Request {request_id} to URL {url_index}"
+                )
 
                 logger.debug(
                     f"Request {request_id} to URL {url_index} completed with {len(chunks)} chunks"
@@ -681,6 +759,172 @@ async def send_inflight_requests(urls: list, payload: dict, num_requests: int):
         successful == num_requests
     ), f"Expected {num_requests} successful requests, got {successful}"
     logger.info(f"All {num_requests} requests completed successfully")
+
+
+def _percentile_ms(values: list[float], percentile: float) -> float:
+    if not values:
+        return 0.0
+    sorted_values = sorted(values)
+    idx = int(round((len(sorted_values) - 1) * percentile / 100.0))
+    return sorted_values[max(0, min(idx, len(sorted_values) - 1))]
+
+
+async def send_inflight_request_payloads(
+    urls: list[str],
+    payloads: list[dict],
+    *,
+    max_concurrency: int,
+    request_timeout_s: int = 900,
+    max_retries: int = 8,
+    retry_backoff_s: float = 0.25,
+    summary_label: str = "Heterogeneous request",
+) -> dict[str, Any]:
+    """Send a heterogeneous request set with bounded client concurrency.
+
+    This is used by the Mooncake trace stress tests where every request can have
+    a different prompt length and generation length. Router overload responses
+    are retried because 503 ResourceExhausted is a valid backpressure signal
+    when the offered trace briefly exceeds the active workers' capacity.
+    """
+    if not urls:
+        raise ValueError("urls must not be empty")
+    if not payloads:
+        raise ValueError("payloads must not be empty")
+    if max_concurrency <= 0:
+        raise ValueError("max_concurrency must be positive")
+    if max_retries < 0:
+        raise ValueError("max_retries must be non-negative")
+    if retry_backoff_s <= 0:
+        raise ValueError("retry_backoff_s must be positive")
+
+    semaphore = asyncio.Semaphore(max_concurrency)
+    timeout = aiohttp.ClientTimeout(total=request_timeout_s)
+    retryable_statuses = {429, 503}
+
+    async def _retry_delay(attempt: int) -> None:
+        base = min(retry_backoff_s * (2 ** max(0, attempt - 1)), 5.0)
+        jitter = random.uniform(0.0, retry_backoff_s)  # noqa: S311
+        await asyncio.sleep(base + jitter)
+
+    async def send_single_request(
+        session: aiohttp.ClientSession, request_id: int, payload: dict
+    ) -> dict[str, Any]:
+        url_index = request_id % len(urls)
+        url = urls[url_index]
+        async with semaphore:
+            start = time.perf_counter()
+            attempt = 0
+            last_error: str | None = None
+            last_status: int | None = None
+            while attempt <= max_retries:
+                try:
+                    async with session.post(url, json=payload) as response:
+                        chunks = []
+                        async for chunk in response.content:
+                            if chunk:
+                                chunks.append(chunk)
+                        elapsed_ms = (time.perf_counter() - start) * 1000.0
+                        if response.status == 200:
+                            _validate_stream_response_chunks(
+                                chunks,
+                                f"Stress request {request_id} to URL {url_index}",
+                            )
+                            return {
+                                "ok": True,
+                                "request_id": request_id,
+                                "status": response.status,
+                                "attempts": attempt + 1,
+                                "latency_ms": elapsed_ms,
+                            }
+
+                        body = b"".join(chunks).decode("utf-8", errors="replace")
+                        last_status = response.status
+                        last_error = body[:1000]
+                        if (
+                            response.status in retryable_statuses
+                            and attempt < max_retries
+                        ):
+                            attempt += 1
+                            await _retry_delay(attempt)
+                            continue
+
+                        return {
+                            "ok": False,
+                            "request_id": request_id,
+                            "status": response.status,
+                            "attempts": attempt + 1,
+                            "latency_ms": elapsed_ms,
+                            "error": last_error,
+                        }
+                except Exception as exc:
+                    elapsed_ms = (time.perf_counter() - start) * 1000.0
+                    last_error = repr(exc)
+                    if attempt < max_retries:
+                        attempt += 1
+                        await _retry_delay(attempt)
+                        continue
+                    return {
+                        "ok": False,
+                        "request_id": request_id,
+                        "status": last_status,
+                        "attempts": attempt + 1,
+                        "latency_ms": elapsed_ms,
+                        "error": last_error,
+                    }
+
+            elapsed_ms = (time.perf_counter() - start) * 1000.0
+            return {
+                "ok": False,
+                "request_id": request_id,
+                "status": last_status,
+                "attempts": max_retries + 1,
+                "latency_ms": elapsed_ms,
+                "error": last_error or "retry loop exhausted",
+            }
+
+    logger.info(
+        "Sending %d %s payloads with concurrency=%d retries=%d",
+        len(payloads),
+        summary_label,
+        max_concurrency,
+        max_retries,
+    )
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        tasks = [
+            send_single_request(session, request_id, payload)
+            for request_id, payload in enumerate(payloads)
+        ]
+        results = await asyncio.gather(*tasks)
+
+    successes = [result for result in results if result["ok"]]
+    failures = [result for result in results if not result["ok"]]
+    latencies = [result["latency_ms"] for result in successes]
+    retry_count = sum(max(0, result.get("attempts", 1) - 1) for result in results)
+    summary = {
+        "total": len(results),
+        "successful": len(successes),
+        "failed": len(failures),
+        "retries": retry_count,
+        "latency_ms": {
+            "min": min(latencies) if latencies else 0.0,
+            "p50": _percentile_ms(latencies, 50.0),
+            "p95": _percentile_ms(latencies, 95.0),
+            "p99": _percentile_ms(latencies, 99.0),
+            "max": max(latencies) if latencies else 0.0,
+        },
+        "errors": failures[:10],
+    }
+    logger.info("%s summary: %s", summary_label, json.dumps(summary, indent=2))
+    if failures:
+        total_payloads = len(payloads)
+        failure_count = len(failures)
+        failure_sample = failures[:3]
+        payloads = []
+        raise AssertionError(
+            f"Expected all {total_payloads} requests to succeed after retries, "
+            f"got {failure_count} failures: {failure_sample}"
+        )
+    return summary
 
 
 async def send_request_via_python_kv_router(
