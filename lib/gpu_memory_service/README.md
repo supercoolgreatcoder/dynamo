@@ -57,15 +57,15 @@ GMS follows a client-server architecture where the **server** owns GPU memory al
 
 ### Server
 
-The GMS server runs as an independent process that manages GPU memory without ever mapping it to its own address space. This design allows the server to:
+The GMS server runs independently from inference workers and owns the exported CUDA VMM handles. Normal weight allocations remain unmapped in the daemon; persistent KV allocations are also mapped into daemon virtual address space for direct-access and storage-tier operations. This design allows the server to:
 
-- **Survive GPU driver failures** - no CUDA context means no vulnerability to driver resets
 - **Outlive client processes** - memory persists across client crashes
 - **Arbitrate access** - enforce single-writer, multiple-reader semantics
+- **Limit daemon mappings** - only persistent allocations that need daemon-side access are mapped
 
 The server consists of three main components:
 
-1. **Memory Manager** - Allocates physical GPU memory via CUDA VMM (`cuMemCreate`) and eagerly exports one shareable file descriptor (`cuMemExportToShareableHandle`) per allocation. Later export RPCs `dup()` that cached FD instead of calling back into CUDA again. Critically, it never calls `cuMemMap` - clients handle all virtual address mapping. Allocation requests retry on OOM until they succeed or the optional retry timeout is reached.
+1. **Memory Manager** - Allocates physical GPU memory via CUDA VMM (`cuMemCreate`) and eagerly exports one shareable file descriptor (`cuMemExportToShareableHandle`) per allocation. Later export RPCs `dup()` that cached FD instead of calling back into CUDA again. Weight layouts are mapped only by clients. The persistent-allocation manager additionally maps persistent KV in the daemon for direct-access and storage-tier operations. Allocation requests retry on OOM until they succeed or the optional retry timeout is reached.
 
 2. **State Machine (FSM)** - Manages global lock state, waiter coordination, and disconnect cleanup.
 
@@ -529,9 +529,9 @@ class GMSClientMemoryManager:
 
 ---
 
-## Framework Integration (vLLM / SGLang)
+## Framework Integration (vLLM / SGLang / TensorRT-LLM)
 
-GMS provides pre-built integrations for vLLM and SGLang. Enable GMS by passing `--load-format gms` when launching an engine.
+GMS provides pre-built integrations for vLLM, SGLang, and TensorRT-LLM. Enable GMS by passing `--load-format gms` when launching an engine.
 
 ### How It Works
 
@@ -579,12 +579,40 @@ The integration patches `torch_memory_saver` to route both weight and KV-cache o
 - Other tags are not supported in GMS mode
 - The `--enable-memory-saver` flag is required to activate the memory saver pathway
 
+#### TensorRT-LLM
+
+```bash
+python -m dynamo.trtllm \
+  --model <model> \
+  --load-format gms
+```
+
+**KV management is KVCacheManager V2 only.** TensorRT-LLM + GMS is supported on
+the V2 KV path exclusively; the legacy V1 KV connector is **not** supported and
+is never used. When `--load-format gms` is set, the worker:
+
+- Loads model weights through GMS (the `weights` tag), identical to vLLM/SGLang.
+- **Forces `use_kv_cache_manager_v2=True`** and sets `event_buffer_max_size=0`
+  (`_configure_gms_v2_kv_cache`). The V1 connector manager and event-buffer
+  paths silently fall back to the V1 manager, so they are kept disabled.
+- **Rejects `--connector` / `kv_connector_config`** in GMS mode (V2 cannot use a
+  KV connector). Passing one is a hard error, not a silent V1 fallback.
+- Coordinates the KV cache with **V2 KV *slot leases*** (`install_kv_leases_v2`),
+  not a `kv_cache` GMS daemon tag. The leases arbitrate per-segment RW ownership
+  host-side via `/dev/shm`, so unlike vLLM/SGLang there is **no `kv_cache` GMS
+  server** for TRT-LLM — only the `weights` server. Enable the lease integration
+  with `GMS_KV_LEASES=1` (or `GMS_TRTLLM_KV_LEASES=1`).
+
+> Summary: for TensorRT-LLM, "GMS KV management" == KVCacheManager V2 + slot
+> leases. There is no V1 connector support and no plan to add it.
+
 ### Shadow Engine Failover (Pause / Resume)
 
-Both integrations support releasing and reclaiming GPU memory for shadow engine patterns. The API names differ by framework:
+All integrations support releasing and reclaiming GPU memory for shadow engine patterns. The API names differ by framework:
 
 - **vLLM**: `sleep` / `wake_up` (via `/engine/control/sleep` and `/engine/control/wake_up` HTTP endpoints)
 - **SGLang**: `release_memory_occupation` / `resume_memory_occupation` (via the corresponding HTTP endpoints)
+- **TensorRT-LLM**: `release_memory_occupation` / `resume_memory_occupation` (weights via GMS; KV via V2 slot leases — see above)
 
 Under the hood, pausing calls `unmap_all_vas()` + `abort()` to release GPU memory while preserving VA reservations. Resuming is tag-specific:
 
