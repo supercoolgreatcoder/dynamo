@@ -489,6 +489,7 @@ def test_partial_only_removed_event_does_not_publish_empty_batch():
     pub.should_drop_event = MagicMock(return_value=False)
     pub.processing_initial_created_events = True
     pub.partial_block_hashes = {123}
+    pub.synthetic_block_hashes = {}
     pub.zmq_kv_event_publisher = None
     pub.kv_event_publishers = {0: kv_event_publisher}
 
@@ -688,7 +689,7 @@ def _build_kv_event_publisher_stub():
     pub.zmq_kv_event_publisher = MagicMock()
     pub.partial_block_hashes = set()
     pub.synthetic_block_hashes = {}
-    pub._last_engine_event_id = None
+    pub._last_engine_event_id_by_rank = {}
     pub._stop_event = threading.Event()
     return pub, publisher_mod
 
