@@ -171,7 +171,11 @@ def build_impl(monkeypatch, tmp_path):
     [
         ("weights", GrantedLockType.RW, [("weights", torch.device("cuda", 0))]),
         ("weights", GrantedLockType.RO, []),
-        ("kv_cache", GrantedLockType.RW, [("kv_pool", torch.device("cuda", 0))]),
+        (
+            "kv_cache",
+            GrantedLockType.RW,
+            [("kv_pool:cuda0", torch.device("cuda", 0))],
+        ),
         ("cuda_graph", GrantedLockType.RW, []),
     ],
 )
@@ -256,7 +260,7 @@ def test_private_bootstrap_kv_resume_promotes_to_shared_namespace(build_impl):
         ("remap_persistent_vas", "sglang-test", True),
     ]
     assert persistent_allocator_calls[-1][4:] == (False, True)
-    assert retarget_calls == [("kv_pool", "sglang-test", True)]
+    assert retarget_calls == [("kv_pool:cuda0", "sglang-test", True)]
     assert release_calls == ["sglang-test|bootstrap=1"]
     assert impl._kv_engine_id == "sglang-test"
     assert impl._kv_private_bootstrap is False
