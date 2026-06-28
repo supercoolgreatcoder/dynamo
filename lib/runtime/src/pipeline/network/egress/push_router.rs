@@ -61,6 +61,8 @@ fn response_inactivity_timeout() -> Option<std::time::Duration> {
         .map(std::time::Duration::from_secs)
 }
 
+
+
 /// RAII handle for one in-flight unit of work charged against
 /// [`RoutingOccupancyState`]. The counter is incremented at construction; the
 /// matching decrement is emitted on drop (or by [`Self::into_tracked_stream`]).
@@ -398,12 +400,18 @@ fn spawn_instance_removal_watcher(
                             }
                             Some(Ok(_)) => {}
                             Some(Err(e)) => {
+                                if cancel_token.is_cancelled() {
+                                    break 'reconnect;
+                                }
                                 tracing::warn!(
                                     endpoint = %endpoint_name,
                                     "Instance removal watcher stream error: {e}"
                                 );
                             }
                             None => {
+                                if cancel_token.is_cancelled() {
+                                    break 'reconnect;
+                                }
                                 tracing::warn!(
                                     endpoint = %endpoint_name,
                                     "Instance removal watcher stream ended; reconnecting"
