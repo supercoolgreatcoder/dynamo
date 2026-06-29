@@ -1458,6 +1458,7 @@ mod tests {
             None,
             Arc::new(TEST_MODEL.to_string()),
             metrics.clone(),
+            None,
         )
         .await
         .expect("Failed to build RetryManager");
@@ -1503,6 +1504,7 @@ mod tests {
             None,
             Arc::new(TEST_MODEL.to_string()),
             metrics.clone(),
+            None,
         )
         .await
         .expect("Failed to build RetryManager");
@@ -1612,6 +1614,7 @@ mod tests {
             None,
             Arc::new(TEST_MODEL.to_string()),
             metrics.clone(),
+            None,
         )
         .await
         .expect("Failed to build RetryManager");
