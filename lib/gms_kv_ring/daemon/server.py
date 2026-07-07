@@ -1675,6 +1675,14 @@ class Daemon:
     def stop(self) -> None:
         if self._stop_event is not None:
             self._stop_event.set()
+        # Release any outstanding leased host regions (drop pins + deregister)
+        # before tearing down the transport they registered against (X6/X7).
+        registry = getattr(self, "_leased_region_registry", None)
+        if registry is not None:
+            try:
+                registry.close()
+            except Exception:
+                logger.exception("[Daemon] leased_region_registry.close failed")
         # Tear down cross-node transport if it was constructed.
         if self.transport is not None:
             try:
@@ -1891,9 +1899,35 @@ class Daemon:
             descriptor["generation"] = int(generation)
         return descriptor
 
+    def _host_region_registry(self):
+        # Lazily created so __init__ ordering is untouched. Holds the host-tier
+        # pin + NIXL registration for every exported region until TTL/ack, so the
+        # raw pointer in a descriptor can never outlive its pin (X6/X7).
+        reg = getattr(self, "_leased_region_registry", None)
+        if reg is None:
+            from gms_kv_ring.daemon.leased_region_registry import (
+                LeasedRegionRegistry,
+            )
+
+            try:
+                ttl_s = float(os.environ.get("GMS_KVR_HOST_REGION_TTL_S", "60"))
+            except ValueError:
+                ttl_s = 60.0
+            reg = self._leased_region_registry = LeasedRegionRegistry(
+                deregister=getattr(self.transport, "deregister_buffer", None),
+                ttl_s=max(1.0, ttl_s),
+            )
+        return reg
+
     def _host_content_descriptor(self, content_hash: bytes, ca: dict) -> Optional[dict]:
         if self.transport is None or self.host_tier is None:
             return None
+        registry = self._host_region_registry()
+        # Opportunistically reclaim regions whose TTL elapsed (bounded work, off
+        # the remote read path). This is the janitor X7 asked for.
+        registry.sweep()
+        generation = int(ca["generation"]) if ca.get("generation") is not None else 0
+        daemon_epoch = int(getattr(self, "epoch", 0))
         try:
             engine_id = ca["engine_id"]
             regions = []
@@ -1902,23 +1936,36 @@ class Daemon:
                 lease = self.host_tier.pin(engine_id, layer, offset)
                 if lease is None:
                     return None
-                with lease as slot:
-                    self.transport.register_buffer(
-                        slot.host_ptr,
-                        int(size),
-                        label=f"host:{content_hash.hex()[:8]}:{int(layer)}",
-                    )
-                    regions.append(
-                        {
-                            "remote_ptr": int(slot.host_ptr),
-                            "ptr": int(slot.host_ptr),
-                            "size": int(size),
-                            "tier": "host",
-                            "layer": int(layer),
-                            "offset": int(offset),
-                        }
-                    )
-                    total_size += int(size)
+                # Do NOT use `with lease:` — that would drop the pin at block exit
+                # and leave the exported pointer dangling. Hand the lease to the
+                # registry, which holds the pin (and the NIXL registration) until
+                # the region's TTL expires or it is explicitly released.
+                slot = lease.slot
+                self.transport.register_buffer(
+                    slot.host_ptr,
+                    int(size),
+                    label=f"host:{content_hash.hex()[:8]}:{int(layer)}",
+                )
+                region_id = registry.register(
+                    lease,
+                    int(slot.host_ptr),
+                    int(size),
+                    generation=generation,
+                    daemon_epoch=daemon_epoch,
+                )
+                regions.append(
+                    {
+                        "remote_ptr": int(slot.host_ptr),
+                        "ptr": int(slot.host_ptr),
+                        "size": int(size),
+                        "tier": "host",
+                        "layer": int(layer),
+                        "offset": int(offset),
+                        "region_id": int(region_id),
+                        "daemon_epoch": daemon_epoch,
+                    }
+                )
+                total_size += int(size)
             if not regions:
                 return None
             descriptor = {
@@ -1928,6 +1975,7 @@ class Daemon:
                 "tier": "host",
                 "ranges": regions,
                 "sealed": True,
+                "daemon_epoch": daemon_epoch,
             }
             if ca.get("generation") is not None:
                 descriptor["generation"] = int(ca["generation"])
