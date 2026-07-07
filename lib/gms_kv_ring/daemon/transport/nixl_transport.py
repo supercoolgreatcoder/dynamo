@@ -498,6 +498,34 @@ class NixlTransport:
         with self._lock:
             self._registered.add(key)
 
+    def deregister_buffer(self, ptr: int, size: int, label: str = "") -> None:
+        """Tear down a NIXL registration created by register_buffer (X6).
+
+        Best-effort and idempotent: without this the daemon leaked one NIXL
+        registration per host region it ever exported. Safe to call after the
+        pin has been dropped.
+        """
+        key = (int(ptr), int(size))
+        with self._lock:
+            if key not in self._registered:
+                return
+            self._registered.discard(key)
+        if self._closed:
+            return
+        deregister = getattr(self._agent, "deregister_memory", None)
+        if deregister is None:
+            return
+        try:
+            deregister(
+                [(int(ptr), int(size), 0, label or f"buf@{ptr:x}")],
+                mem_type="DRAM",
+            )
+        except Exception:  # noqa: BLE001
+            logger.debug(
+                "[NixlTransport] deregister_memory(%#x, %d) failed", ptr, size,
+                exc_info=True,
+            )
+
     # ----- outbound transfer -----
 
     def send(
