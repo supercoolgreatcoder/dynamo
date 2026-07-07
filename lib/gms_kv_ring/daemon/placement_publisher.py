@@ -9,27 +9,11 @@ See `docs/CROSS_NODE_DESIGN.md` §3 (placement event types) and
 `PEGAFLOW_COMPARISON.md` §3 (why this is dynamo's indexer not a
 Pegaflow-style MetaServer).
 
-Two implementations:
-
-  - `LoggingPlacementPublisher` (default): writes events to the
-    Python logger. Production deployments wire a real publisher
-    that pushes to dynamo's ZMQ/NATS channel. The logging
-    implementation is the standalone-GMS-without-dynamo path —
-    placements aren't seen across nodes but local cache still
-    works.
-
-  - `ZmqPlacementPublisher` (stub, requires `pyzmq`): pushes
-    JSON-encoded events on a ZMQ PUB socket bound to the
-    daemon's configured endpoint. Receiver-side integration with
-    dynamo's `KV_EVENT_SUBJECT` channel is documented but not
-    wired here — dynamo's Rust publisher and our Python publisher
-    speak different concrete protocols today. Bringing them
-    together requires either:
-      - a Rust sidecar that bridges this stub's protocol to
-        dynamo's `PlacementEvent` Rust type, or
-      - a PyO3 binding from `lib/llm/src/kv_router/publisher/`
-        into Python.
-    Both are P4b follow-ups.
+`LoggingPlacementPublisher` (default) writes events to the Python logger.
+Production deployments that route across nodes wire a real publisher
+(components-side `DynamoGmsPlacementPublisher`) that pushes to dynamo's
+ZMQ/NATS channel. The logging implementation is the standalone-GMS-without-
+dynamo path — placements aren't seen across nodes but local cache still works.
 
 Wire format (this implementation):
 
@@ -189,121 +173,7 @@ class LoggingPlacementPublisher:
         self._daemon_epoch = int(epoch)
 
 
-# ---- ZMQ implementation (stub) ---------------------------------------------
-
-
-class ZmqPlacementPublisher:
-    """Pushes events on a ZMQ PUB socket. Requires `pyzmq`.
-
-    Wire format: JSON object per message (same shape as
-    `LoggingPlacementPublisher`).
-
-    Caveats — see module docstring. The dynamo-side ZMQ subscriber
-    speaks dynamo's `PlacementEvent` Rust type, not this JSON. A
-    Rust sidecar or PyO3 binding is needed to bridge them.
-    Currently this publisher writes to ZMQ but no consumer in
-    dynamo reads it. Useful for:
-      - Inspecting events with `zmqcat` for debugging.
-      - Testing against a custom Python subscriber.
-      - Validating the publisher path before the dynamo bridge ships."""
-
-    def __init__(
-        self,
-        daemon_id: str,
-        daemon_epoch: int,
-        bind_endpoint: str = "tcp://*:5560",
-    ) -> None:
-        try:
-            import zmq
-        except ImportError as exc:
-            raise RuntimeError(
-                "pyzmq not installed; use LoggingPlacementPublisher",
-            ) from exc
-        self._daemon_id = daemon_id
-        self._daemon_epoch = int(daemon_epoch)
-        self._ctx = zmq.Context.instance()
-        self._sock = self._ctx.socket(zmq.PUB)
-        self._sock.set_hwm(1000)  # bounded queue
-        self._sock.bind(bind_endpoint)
-        self._closed = False
-        self._stats = {"stored": 0, "removed": 0, "dropped": 0}
-        self._lock = threading.Lock()
-
-    def _emit(self, ev: dict) -> None:
-        import zmq
-
-        if self._closed:
-            with self._lock:
-                self._stats["dropped"] += 1
-            return
-        try:
-            self._sock.send_string(json.dumps(ev), flags=zmq.NOBLOCK)
-        except zmq.Again:
-            # HWM hit; drop. Indexer will reconverge.
-            with self._lock:
-                self._stats["dropped"] += 1
-            logger.warning(
-                "[ZmqPlacementPublisher] HWM reached, dropping event",
-            )
-
-    def publish_stored(
-        self,
-        content_hash: bytes,
-        tier: str,
-        bytes_size: int,
-        metadata: Optional[dict] = None,
-    ) -> None:
-        ev = {
-            "type": "stored",
-            "daemon_id": self._daemon_id,
-            "daemon_epoch": self._daemon_epoch,
-            "content_hash": content_hash.hex(),
-            "tier": tier,
-            "bytes_size": int(bytes_size),
-            "ts": time.time(),
-        }
-        if metadata:
-            ev["metadata"] = metadata
-        self._emit(ev)
-        with self._lock:
-            self._stats["stored"] += 1
-
-    def publish_removed(
-        self,
-        content_hash: bytes,
-        tier: str,
-    ) -> None:
-        ev = {
-            "type": "removed",
-            "daemon_id": self._daemon_id,
-            "daemon_epoch": self._daemon_epoch,
-            "content_hash": content_hash.hex(),
-            "tier": tier,
-            "ts": time.time(),
-        }
-        self._emit(ev)
-        with self._lock:
-            self._stats["removed"] += 1
-
-    def close(self) -> None:
-        if self._closed:
-            return
-        self._closed = True
-        try:
-            self._sock.close(linger=0)
-        except Exception:
-            logger.exception("[ZmqPlacementPublisher] socket close")
-
-    def stats(self) -> dict[str, int]:
-        with self._lock:
-            return dict(self._stats)
-
-    def set_daemon_epoch(self, epoch: int) -> None:
-        self._daemon_epoch = int(epoch)
-
-
 __all__ = [
     "PlacementPublisher",
     "LoggingPlacementPublisher",
-    "ZmqPlacementPublisher",
 ]
