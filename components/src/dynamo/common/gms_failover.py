@@ -324,7 +324,62 @@ async def run_gms_failover_post_lock_fence(
             fence_ms,
         )
         await asyncio.sleep(fence_ms / 1000.0)
+    _bump_kv_lease_epoch_after_fence(backend_name, role)
     _reclaim_foreign_kv_leases_after_fence(backend_name, role)
+
+
+def _kv_fence_epoch_enabled() -> bool:
+    # Off by default: enabling the epoch bump requires the promoting engine's
+    # warm lease clients to adopt the new epoch (adopt_fence_epoch), else they
+    # self-fence. Flip on for cluster validation once that wiring is confirmed
+    # per engine. See kv_lease_client.promote_kv_lease_epoch_in_shm_dir (X1).
+    return _truthy_env("DYN_GMS_KV_FENCE_EPOCH", default=False)
+
+
+def _bump_kv_lease_epoch_after_fence(backend_name: str, role: str) -> None:
+    """Fence older incarnations out of the shared KV pool by bumping the epoch.
+
+    Runs on the promoting engine right after it won the failover lock. This is
+    the X1 fencing token: a fenced-out zombie primary fails closed on its next
+    lease acquire (a single u64 compare on the hot path). Best-effort and gated.
+    """
+
+    if not _kv_fence_epoch_enabled():
+        return
+    if not _truthy_env("GMS_KV_LEASES") and not _truthy_env(
+        f"GMS_{_normalize_lease_engine_name(backend_name).upper()}_KV_LEASES"
+    ):
+        return
+    try:
+        from gpu_memory_service.integrations.common.kv_lease_client import (
+            promote_kv_lease_epoch_in_shm_dir,
+            promote_local_kv_lease_epoch,
+            resolve_lease_device,
+        )
+
+        # Prefer bumping via this process's live clients: they bump the ring AND
+        # adopt the new epoch atomically, so the promoting engine does not
+        # self-fence. Only fall back to the raw dir-level bump when there are no
+        # live clients (e.g. a cold-restart replacement pod).
+        new_epoch = promote_local_kv_lease_epoch()
+        if not new_epoch:
+            engine = _normalize_lease_engine_name(backend_name)
+            device = resolve_lease_device(f"GMS_{engine.upper()}_KV_LEASE_DEVICE")
+            new_epoch = promote_kv_lease_epoch_in_shm_dir(engine, device)
+        if new_epoch:
+            logger.info(
+                "[GMS failover] %s %s bumped KV lease failover epoch to %d",
+                backend_name,
+                role,
+                new_epoch,
+            )
+    except Exception:
+        logger.debug(
+            "[GMS failover] %s %s KV lease epoch bump skipped",
+            backend_name,
+            role,
+            exc_info=True,
+        )
 
 
 def _controller_from(owner: Any) -> Any:
@@ -492,7 +547,15 @@ async def prepare_gms_failover(
         backend_name,
         role,
     )
-    await controller.quiesce(tag_list)
+    # H-D: only the SGLang controller exposes quiesce() (an alias for pause);
+    # the vLLM and TRT-LLM controllers expose pause()/resume()/mark_resumed()
+    # only, so an unconditional controller.quiesce() raised AttributeError and
+    # left those warm shadows cold. Prefer quiesce when present, else pause.
+    quiesce = getattr(controller, "quiesce", None)
+    if quiesce is not None:
+        await quiesce(tag_list)
+    else:
+        await controller.pause(tag_list)
 
     set_health_status = getattr(runtime, "set_health_status", None)
     keep_shadow_ready = _keep_shadow_ready()

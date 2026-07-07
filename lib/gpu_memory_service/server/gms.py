@@ -149,16 +149,28 @@ class GMS:
             )
         self._persistent_layout_count = now
 
-    def get_runtime_state(self) -> GetRuntimeStateResponse:
-        session = self._sessions.snapshot()
+    def _project_persistent_layout(self, session) -> tuple[ServerState, int]:
+        """Project the persistent KV layout onto the FSM state/allocation count.
+
+        Persistent KV bypasses the single-writer FSM (the kv_cache daemon never
+        drives the weights FSM), so while the FSM reports EMPTY an active
+        persistent claim still means an RW KV layout exists. Returns the
+        (state, allocation_count) that both get_runtime_state() and the
+        GetLockState RPC report, so the two never disagree — previously
+        GetLockState returned the raw FSM state and therefore looked EMPTY
+        whenever the layout was persistent-only.
+        """
         state = session.state
         allocation_count = self._allocations.allocation_count
-        # Project the persistent KV layout onto the reported state when the
-        # FSM itself is idle (the kv_cache daemon never drives the weights FSM).
         persistent_claims = self._persistent.active_claim_count
         if persistent_claims > 0 and state == ServerState.EMPTY:
             state = ServerState.RW
             allocation_count = persistent_claims
+        return state, allocation_count
+
+    def get_runtime_state(self) -> GetRuntimeStateResponse:
+        session = self._sessions.snapshot()
+        state, allocation_count = self._project_persistent_layout(session)
         return GetRuntimeStateResponse(
             state=state.name,
             has_rw_session=session.has_rw_session,
@@ -364,9 +376,12 @@ class GMS:
 
         if msg_type is GetLockStateRequest:
             snapshot = self._sessions.snapshot()
+            # Project persistent KV the same way get_runtime_state does, so a
+            # persistent-only (RW_PERSISTENT) layout doesn't look EMPTY here.
+            projected_state, _ = self._project_persistent_layout(snapshot)
             return (
                 GetLockStateResponse(
-                    state=snapshot.state.name,
+                    state=projected_state.name,
                     has_rw_session=snapshot.has_rw_session,
                     ro_session_count=snapshot.ro_session_count,
                     waiting_writers=snapshot.waiting_writers,

@@ -15,6 +15,7 @@ import struct
 import tempfile
 import threading
 import time
+import weakref
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -24,9 +25,66 @@ _KV_LEASE_SHM_VERSION = 1
 _KV_LEASE_SHM_HEADER_SIZE = 64
 # Per-block record: state (u32) | generation (u32) | owner_hash (u64).
 _KV_LEASE_SHM_RECORD_SIZE = 16
+# Header: magic(I) version(I) total_blocks(I) record_size(I) free_count(Q) epoch(Q).
 _KV_LEASE_SHM_HEADER_STRUCT = struct.Struct("<IIIIQQ")
+# Byte offset of the failover epoch (the trailing u64) within the mmap header.
+# Reading/writing it is a single aligned load/store on the already-mapped buffer,
+# so the fencing check adds no syscall on the acquire hot path and promotion is a
+# single store — X1's fencing token with negligible latency impact.
+_KV_LEASE_SHM_EPOCH_OFFSET = struct.calcsize("<IIIIQ")
+_KV_LEASE_SHM_EPOCH_STRUCT = struct.Struct("<Q")
 
 logger = logging.getLogger(__name__)
+
+
+class KVLeaseFencedError(RuntimeError):
+    """Raised when this client's failover epoch is behind the shared ring's.
+
+    A newer incarnation (the promoted shadow) has bumped the epoch, so this
+    client is a fenced-out zombie primary and must not acquire/write. Fail
+    closed — this is the X1 split-brain guard.
+    """
+
+
+# Every live SharedMemoryKVLeaseClient in THIS process registers here so the
+# failover promotion path can bump + adopt the epoch on the promoting process's
+# own clients (which would otherwise self-fence). A zombie primary lives in a
+# different process, so its clients are absent here and stay fenced.
+_LIVE_CLIENTS: "weakref.WeakSet" = weakref.WeakSet()
+
+
+def promote_local_kv_lease_epoch() -> int:
+    """Bump + adopt the failover epoch on every live lease client in this process.
+
+    Called by a promoting engine after it wins the failover lock. Each client
+    bumps its own ring epoch and adopts it atomically (promote_fence_epoch), so
+    this process becomes the authority on its rings and any older incarnation in
+    another process fails closed on its next acquire. Returns the highest epoch
+    written (0 if there are no live clients — e.g. a cold restart, where the
+    caller should fall back to the raw dir-level bump).
+    """
+    by_ring: dict[str, list] = {}
+    for client in list(_LIVE_CLIENTS):
+        by_ring.setdefault(client.shm_path, []).append(client)
+
+    highest = 0
+    for group in by_ring.values():
+        # Bump each ring exactly once (multiple in-process clients share a ring,
+        # e.g. TP-local allocators); the rest adopt the same epoch so none of
+        # this process's clients leapfrog and self-fence.
+        bumped = False
+        for client in group:
+            try:
+                if not bumped:
+                    highest = max(highest, int(client.promote_fence_epoch()))
+                    bumped = True
+                else:
+                    client.adopt_fence_epoch()
+            except Exception:  # noqa: BLE001
+                logger.debug(
+                    "[GMS fence] promote/adopt on live client failed", exc_info=True
+                )
+    return highest
 _LEASE_PRESSURE_LOG_STATE: dict[str, tuple[float, int]] = {}
 _LEASE_PRESSURE_LOG_LOCK = threading.Lock()
 
@@ -226,6 +284,13 @@ class SharedMemoryKVLeaseClient:
         self._reservation_fd = _open_reservation_lock_file(self.reservation_path)
         self._reservation_cache_sig: tuple[int, int, int] | None = None
         self._reservation_cache = KVLeaseReservation()
+        # Snapshot the failover epoch this incarnation is allowed to write under.
+        # A promoted shadow bumps the ring epoch; any client whose cached epoch
+        # is behind is fenced out (see _check_fence / acquire).
+        self._fence_epoch = self.read_fence_epoch()
+        # Register so the failover path can adopt the bumped epoch on this
+        # process's own clients (self-fence-safe promotion).
+        _LIVE_CLIENTS.add(self)
         self._sync_file_reservation_to_shm()
 
     @classmethod
@@ -343,6 +408,74 @@ class SharedMemoryKVLeaseClient:
             if locked:
                 fcntl.flock(fd, fcntl.LOCK_UN)
 
+    # ---- Failover epoch fencing (X1) ------------------------------------
+    # The epoch is a single u64 in the shared mmap header. Reads are one aligned
+    # load (no syscall) so the acquire hot path is unaffected; promotion is one
+    # store so switchover stays ~instant.
+
+    def read_fence_epoch(self) -> int:
+        """Read the current failover epoch from the shared ring header."""
+        return int(
+            _KV_LEASE_SHM_EPOCH_STRUCT.unpack_from(
+                self._mmap, _KV_LEASE_SHM_EPOCH_OFFSET
+            )[0]
+        )
+
+    @property
+    def fence_epoch(self) -> int:
+        """The epoch this incarnation is writing under (cached at attach/promote)."""
+        return self._fence_epoch
+
+    def is_fenced_out(self) -> bool:
+        """True if a newer incarnation has bumped the ring epoch past ours."""
+        return self.read_fence_epoch() > self._fence_epoch
+
+    def _check_fence(self) -> None:
+        current = self.read_fence_epoch()
+        if current > self._fence_epoch:
+            raise KVLeaseFencedError(
+                f"KV lease client fenced out: namespace={self.namespace} "
+                f"owner={self.owner_id} my_epoch={self._fence_epoch} "
+                f"ring_epoch={current}"
+            )
+
+    def promote_fence_epoch(self) -> int:
+        """Bump the ring epoch and adopt it — call once when this engine promotes.
+
+        Fences every older incarnation out of the shared pool on their next
+        acquire. Done under the reservation flock so the read-modify-write is
+        atomic across processes; this runs only at failover, never on the hot
+        path, so the flock cost is irrelevant to steady-state latency.
+        """
+        fd = self._reservation_fd
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        try:
+            current = self.read_fence_epoch()
+            new_epoch = current + 1
+            _KV_LEASE_SHM_EPOCH_STRUCT.pack_into(
+                self._mmap, _KV_LEASE_SHM_EPOCH_OFFSET, new_epoch
+            )
+            # Flush the single header word so peers observe the bump promptly.
+            try:
+                self._mmap.flush(0, _KV_LEASE_SHM_HEADER_SIZE)
+            except (ValueError, OSError):
+                pass
+            self._fence_epoch = new_epoch
+            logger.info(
+                "[GMS fence] %s promoted to failover epoch %d (owner=%s)",
+                self.namespace,
+                new_epoch,
+                self.owner_id,
+            )
+            return new_epoch
+        finally:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+
+    def adopt_fence_epoch(self) -> int:
+        """Adopt the ring's current epoch without bumping (a fresh standby resync)."""
+        self._fence_epoch = self.read_fence_epoch()
+        return self._fence_epoch
+
     def close(self) -> None:
         try:
             self._mmap.close()
@@ -361,6 +494,11 @@ class SharedMemoryKVLeaseClient:
         requested = int(count)
         if requested <= 0:
             return []
+
+        # Fence check: one aligned u64 load + compare. A fenced-out zombie
+        # primary (older epoch than the promoted shadow) fails closed here
+        # before it can lease — and therefore write — any block (X1).
+        self._check_fence()
 
         infos = self._try_lockless_acquire(
             requested,
@@ -750,6 +888,54 @@ def reclaim_foreign_kv_leases_in_shm_dir(
         reclaimed_blocks=reclaimed,
         errors=errors,
     )
+
+
+def promote_kv_lease_epoch_in_shm_dir(
+    engine: str,
+    device: int,
+    *,
+    shm_dir: str | None = None,
+) -> int:
+    """Bump the failover epoch on every rank-local lease ring in the dir.
+
+    Called by a promoting engine after it wins the failover lock: it fences
+    every older incarnation out of the shared pool (their next acquire raises
+    KVLeaseFencedError). Returns the highest new epoch written (0 if none).
+
+    IMPORTANT: the promoting engine's *own* warm lease clients cache the epoch
+    at attach and would self-fence after this bump; they must re-read it via
+    SharedMemoryKVLeaseClient.adopt_fence_epoch() (or bump via
+    promote_fence_epoch() on the live client instead of calling this helper).
+    This raw-mmap helper exists for the failover path, which has no client ref.
+    """
+
+    base_dir = Path(shm_dir or _kv_lease_shm_dir(engine))
+    highest = 0
+    for path in sorted(base_dir.glob("gms-kv-lease-*.shm")):
+        try:
+            fd = os.open(path, os.O_RDWR)
+        except FileNotFoundError:
+            continue
+        try:
+            header = _read_shm_header(fd)
+            if not _valid_shm_header(header):
+                continue
+            buf = os.pread(fd, _KV_LEASE_SHM_EPOCH_STRUCT.size, _KV_LEASE_SHM_EPOCH_OFFSET)
+            current = _KV_LEASE_SHM_EPOCH_STRUCT.unpack(buf)[0] if len(buf) == 8 else 0
+            new_epoch = int(current) + 1
+            os.pwrite(
+                fd,
+                _KV_LEASE_SHM_EPOCH_STRUCT.pack(new_epoch),
+                _KV_LEASE_SHM_EPOCH_OFFSET,
+            )
+            highest = max(highest, new_epoch)
+        except Exception:
+            logger.debug(
+                "GMS KV failover epoch bump failed for %s", path, exc_info=True
+            )
+        finally:
+            os.close(fd)
+    return highest
 
 
 def _read_reservation_file(path: str) -> KVLeaseReservation:
