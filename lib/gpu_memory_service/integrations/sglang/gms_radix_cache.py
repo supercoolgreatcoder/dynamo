@@ -1347,6 +1347,13 @@ def make_gms_radix_cache_class():
             leaf is synchronously spilled to the GMS daemon before its HBM
             slots are returned to SGLang's allocator, so live decode state is
             untouched and later cache hits restore from the CPU/storage tier.
+
+            X8: this mutates the radix tree and the token_to_kv_pool_allocator,
+            which the SGLang scheduler thread also mutates. It MUST run on the
+            scheduler thread. The transition-reclaim watcher (a separate daemon
+            thread) must not call this directly — it calls
+            submit_transition_reclaim() and the request is drained here via
+            drain_transition_reclaim() from get_next_batch_to_run().
             """
             if not self._is_active() or self.disable:
                 return 0
@@ -1356,6 +1363,49 @@ def make_gms_radix_cache_class():
                     force_host_tier=self._host_tier_fallback,
                 )
             )
+
+        def submit_transition_reclaim(self, target_blocks: int) -> int:
+            """Request a transition reclaim; runs later on the scheduler thread.
+
+            Called from the transition-reclaim watcher daemon thread. Records the
+            largest outstanding deficit (thread-safe) and returns 0 — the actual
+            eviction happens in drain_transition_reclaim(), which the scheduler
+            thread invokes each step. This is the X8 fix: detection stays off the
+            hot path, but the tree/allocator mutation is serialized with all other
+            scheduler-thread KV mutations.
+            """
+            blocks = max(0, int(target_blocks))
+            if blocks <= 0:
+                return 0
+            lock = getattr(self, "_transition_reclaim_lock", None)
+            if lock is None:
+                # Lazily created here so the pending mailbox works even if the
+                # cache was built before this attribute existed.
+                lock = self._transition_reclaim_lock = threading.Lock()
+                self._pending_transition_reclaim_blocks = 0
+            with lock:
+                if blocks > self._pending_transition_reclaim_blocks:
+                    self._pending_transition_reclaim_blocks = blocks
+            return 0
+
+        def drain_transition_reclaim(self) -> int:
+            """Run any pending transition reclaim on the current (scheduler) thread."""
+            lock = getattr(self, "_transition_reclaim_lock", None)
+            if lock is None:
+                return 0
+            with lock:
+                pending = int(getattr(self, "_pending_transition_reclaim_blocks", 0))
+                self._pending_transition_reclaim_blocks = 0
+            if pending <= 0:
+                return 0
+            try:
+                return int(self.reclaim_cached_kv(pending))
+            except Exception:  # noqa: BLE001
+                logger.debug(
+                    "[GMS transition] scheduler-thread reclaim drain failed",
+                    exc_info=True,
+                )
+                return 0
 
         def _do_evict_core(
             self,

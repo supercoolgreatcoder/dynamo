@@ -75,6 +75,13 @@ register_gms_loader()
 patch_empty_cache()
 patch_memory_snapshot()
 install_kv_leases()
+# X9: fail startup if leases are enabled but the BlockPool patch didn't take,
+# rather than silently running shared KV with two writers.
+from gpu_memory_service.integrations.common.integration_selftest import (  # noqa: E402
+    gms_verify_integration,
+)
+
+gms_verify_integration("vllm")
 install_engine_core_hook()
 install_vmm_ipc_kv()
 

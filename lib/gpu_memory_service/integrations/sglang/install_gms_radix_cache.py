@@ -136,13 +136,17 @@ def _swap_tree_cache(scheduler) -> None:
         )
 
         namespace_suffix = _lease_namespace_suffix(old.token_to_kv_pool_allocator)
+        # X8: the watcher runs on a daemon thread; it must not mutate the radix
+        # tree/allocator directly (that races the scheduler thread). It only
+        # *requests* a reclaim; the scheduler thread drains it each step.
         watcher = start_kv_transition_reclaim_watcher(
             "sglang",
-            new.reclaim_cached_kv,
+            new.submit_transition_reclaim,
             namespace_suffix=namespace_suffix,
         )
         if watcher is not None:
             new._gms_transition_reclaim_watcher = watcher
+            _install_transition_reclaim_drain(scheduler, new)
     except Exception:  # noqa: BLE001
         logger.debug(
             "[GMSRadixCache install] transition reclaim watcher not started",
@@ -152,6 +156,38 @@ def _swap_tree_cache(scheduler) -> None:
         "[GMSRadixCache install] swapped tree_cache → " "GMSRadixCache (gds_active=%s)",
         bool(gds is not None and gds.is_available()),
     )
+
+
+def _install_transition_reclaim_drain(scheduler, cache) -> None:
+    """Drain pending transition reclaim on the scheduler thread each step (X8).
+
+    The watcher only enqueues a deficit; the actual eviction must run on the
+    scheduler thread so it is serialized with normal KV mutation. We wrap the
+    scheduler's per-step get_next_batch_to_run so the drain fires exactly once
+    per scheduler iteration, on the scheduler thread, whether or not the step is
+    otherwise evicting. Idempotent: re-installing over an already-wrapped
+    scheduler is a no-op.
+    """
+
+    original = getattr(scheduler, "get_next_batch_to_run", None)
+    if original is None or getattr(original, "_gms_transition_drain_wrapped", False):
+        return
+
+    def wrapped(*args, **kwargs):
+        try:
+            cache.drain_transition_reclaim()
+        except Exception:  # noqa: BLE001
+            logger.debug("[GMS transition] drain hook failed", exc_info=True)
+        return original(*args, **kwargs)
+
+    wrapped._gms_transition_drain_wrapped = True
+    try:
+        scheduler.get_next_batch_to_run = wrapped
+    except Exception:  # noqa: BLE001
+        logger.debug(
+            "[GMS transition] could not install scheduler-thread drain hook",
+            exc_info=True,
+        )
 
 
 def _lease_namespace_suffix(allocator) -> str:
