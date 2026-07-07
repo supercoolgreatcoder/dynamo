@@ -110,10 +110,35 @@ def setup_gms(
     # access during V2 KV executor init — see GMS_TRTLLM_MPI_WORKER_SETUP notes).
     import os as _os
 
-    if _patch_mpi_workers and _os.environ.get(
+    _mpi_worker_setup_on = _os.environ.get(
         "GMS_TRTLLM_MPI_WORKER_SETUP", ""
-    ).strip().lower() not in ("", "0", "false", "no", "off"):
+    ).strip().lower() not in ("", "0", "false", "no", "off")
+    if _patch_mpi_workers and _mpi_worker_setup_on:
         _install_mpi_worker_gms(extra)
+    elif _patch_mpi_workers and not _mpi_worker_setup_on:
+        # X9 (process-correct): with MPI worker setup off, TP>1 rank workers are
+        # fresh processes that never import this module, so their KV allocations
+        # bypass GMS lease arbitration entirely — the trtllm analogue of the
+        # sglang/vLLM wrong-process gap. There is no clean per-step Python hook in
+        # the C++ executor to self-test, so warn loudly instead of a silent
+        # comment. Single-process mode (TLLM_WORKER_USE_SINGLE_PROCESS) has no
+        # spawned ranks and is unaffected.
+        from gpu_memory_service.integrations.common.kv_lease_client import (
+            kv_leases_enabled,
+        )
+
+        _single_process = _os.environ.get(
+            "TLLM_WORKER_USE_SINGLE_PROCESS", ""
+        ).strip().lower() in ("1", "true", "yes", "on")
+        if kv_leases_enabled("trtllm") and not _single_process:
+            logger.warning(
+                "[GMS] TensorRT-LLM KV leases are enabled but MPI worker setup is "
+                "OFF (GMS_TRTLLM_MPI_WORKER_SETUP unset). For TP>1, spawned rank "
+                "workers will allocate shared KV WITHOUT lease arbitration — two "
+                "writers on one pool. Enable GMS_TRTLLM_MPI_WORKER_SETUP=1, or run "
+                "single-process (TLLM_WORKER_USE_SINGLE_PROCESS=1), or disable "
+                "leases (GMS_TRTLLM_KV_LEASES=0)."
+            )
 
     logger.info("[GMS] TensorRT-LLM integration enabled (mode=%s)", lock_mode)
 
