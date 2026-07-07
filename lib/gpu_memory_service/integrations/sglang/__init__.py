@@ -114,6 +114,12 @@ def setup_gms(server_args) -> Type["GMSModelLoader"]:
 
     install_vmm_ipc_kv.install_lazy()
     install_kv_leases.install()
+    # X9: fail startup if leases are enabled but the allocator patch didn't take.
+    from gpu_memory_service.integrations.common.integration_selftest import (
+        gms_verify_integration,
+    )
+
+    gms_verify_integration("sglang")
 
     # Import triggers patches at module level
     from gpu_memory_service.integrations.sglang.model_loader import GMSModelLoader

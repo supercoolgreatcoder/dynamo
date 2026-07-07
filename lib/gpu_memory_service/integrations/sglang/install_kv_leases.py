@@ -408,6 +408,11 @@ def install(factory: Callable[[object, int], KVLeaseClient] | None = None) -> bo
     Paged.clear = patched_paged_clear  # type: ignore[method-assign]
 
     _patched = True
+    from gpu_memory_service.integrations.common.integration_selftest import (
+        mark_installed,
+    )
+
+    mark_installed("sglang", "kv_leases")
     logger.info("[GMS-KVLease] patched SGLang token/page allocators")
     return True
 

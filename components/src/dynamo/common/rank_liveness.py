@@ -278,6 +278,23 @@ class RankLivenessMonitor:
                 ):
                     missing = sorted(self._expected_ranks.difference(last_seen))
                     if missing:
+                        # H-C: if we have NEVER seen a heartbeat from any rank, the
+                        # channel itself is almost certainly broken (blocked ZMQ /
+                        # wrong connect-addr), not a dead rank. Firing here would
+                        # suicide a perfectly healthy primary. Only a startup timeout
+                        # AFTER at least one rank has registered means a specific rank
+                        # is genuinely absent — otherwise log and disable the monitor.
+                        if not last_seen:
+                            logger.warning(
+                                "[GMS liveness] no heartbeats from any expected rank "
+                                "within %.0fms startup grace; assuming a misconfigured "
+                                "liveness channel (blocked ZMQ / wrong connect-addr) "
+                                "rather than a dead rank — disabling monitor without "
+                                "failover (expected ranks=%s)",
+                                self._startup_grace * 1000,
+                                sorted(self._expected_ranks),
+                            )
+                            return
                         self._fire(missing[0], "startup-timeout")
                         return
 

@@ -52,6 +52,65 @@ from .publisher import StatLoggerFactory
 
 logger = logging.getLogger(__name__)
 
+
+def _fence_vllm_gpu_workers(engine_client: Any, *, wait_s: float = 0.5) -> None:
+    """SIGKILL this leader's local EngineCore GPU worker processes and wait.
+
+    H-A: on a worker-rank loss the leader must free its own GPU/KV working set
+    *before* it releases the failover flock — otherwise the promoted shadow calls
+    resume_memory_occupation and starts allocating on the same GPU while the dying
+    leader's EngineCore is still resident (double-occupancy -> OOM / corruption).
+
+    The EngineCore procs hold the GPU memory; the async collective is already
+    broken (a TP rank is gone), so a graceful drain is impossible. Kill them hard
+    and join briefly, mirroring the SGLang child-fence path. Best-effort: if the
+    vLLM process layout doesn't match, log and let the caller proceed to release.
+    """
+
+    try:
+        engine_core = getattr(engine_client, "engine_core", None)
+        resources = getattr(engine_core, "resources", None)
+        manager = getattr(resources, "engine_manager", None)
+        procs = list(getattr(manager, "processes", []) or [])
+    except Exception:
+        logger.debug("[GMS failover] vLLM worker fence: could not resolve procs", exc_info=True)
+        return
+
+    if not procs:
+        logger.debug("[GMS failover] vLLM worker fence: no local EngineCore procs to kill")
+        return
+
+    killed = []
+    for proc in procs:
+        try:
+            if proc.is_alive():
+                proc.kill()
+                killed.append(proc.pid)
+        except Exception:
+            logger.debug("[GMS failover] vLLM worker fence: kill failed", exc_info=True)
+
+    deadline = _time.monotonic() + wait_s
+    for proc in procs:
+        try:
+            remaining = max(0.0, deadline - _time.monotonic())
+            proc.join(timeout=remaining)
+        except Exception:
+            pass
+
+    alive = []
+    for proc in procs:
+        try:
+            if proc.is_alive():
+                alive.append(proc.pid)
+        except Exception:
+            pass
+    if alive:
+        logger.warning(
+            "[GMS failover] vLLM EngineCore fence timed out; still-running pids=%s", alive
+        )
+    else:
+        logger.info("[GMS failover] fenced vLLM EngineCore GPU workers pids=%s", killed)
+
 # (engine_client, vllm_config, default_sampling_params, prometheus_temp_dir, component_gauges)
 # component_gauges is None on the embedding-worker path: pooling engines
 # have no KV cache / scheduler gauges, so setup_vllm_engine() skips the
@@ -468,16 +527,24 @@ class WorkerFactory:
 
         def on_rank_lost(rank: int, reason: str) -> None:
             logger.warning(
-                "[GMS liveness] vLLM worker rank %d lost (%s); releasing lock + "
-                "shutting down broken leader for fast shadow promotion",
+                "[GMS liveness] vLLM worker rank %d lost (%s); fencing GPU workers, "
+                "then releasing lock + shutting down broken leader for fast shadow promotion",
                 rank,
                 reason,
             )
+            # H-A: free this leader's GPU/KV working set BEFORE releasing the flock, so
+            # the promoted shadow doesn't resume onto a GPU the dying leader still occupies.
             try:
-                asyncio.run_coroutine_threadsafe(
+                _fence_vllm_gpu_workers(getattr(handler, "engine_client", None))
+            except Exception:
+                logger.debug("[GMS liveness] GPU worker fence on rank loss failed", exc_info=True)
+            try:
+                fut = asyncio.run_coroutine_threadsafe(
                     release_attached_gms_failover_lock(handler, backend_name="vllm"),
                     loop,
                 )
+                # Ensure the release actually completes before we tear the leader down.
+                fut.result(timeout=5.0)
             except Exception:
                 logger.debug("[GMS liveness] lock release on rank loss failed", exc_info=True)
             # The cohort is broken (a TP rank is gone); bring the leader down so it

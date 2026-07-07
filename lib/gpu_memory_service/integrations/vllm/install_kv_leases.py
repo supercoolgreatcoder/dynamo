@@ -406,6 +406,11 @@ def install(factory: Callable[[int], KVLeaseClient] | None = None) -> bool:
     BlockPool.free_blocks = patched_free_blocks  # type: ignore[method-assign]
     BlockPool.get_num_free_blocks = patched_get_num_free_blocks  # type: ignore[method-assign]
     _patched = True
+    from gpu_memory_service.integrations.common.integration_selftest import (
+        mark_installed,
+    )
+
+    mark_installed("vllm", "kv_leases")
     logger.info("[GMS-KVLease] patched vLLM BlockPool")
     return True
 

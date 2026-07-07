@@ -50,12 +50,14 @@ def test_fire_is_exactly_once_even_if_callback_raises():
     assert calls == [(1, "first")]
 
 
-def test_expected_rank_that_never_registers_fires_startup_timeout():
+def test_no_heartbeats_ever_disables_without_firing():
+    # H-C: an expected rank that never registers, with ZERO heartbeats from any
+    # rank, is treated as a misconfigured/blocked channel — not a dead rank — so
+    # the monitor disables itself rather than suiciding a healthy primary.
     endpoint = _endpoint()
     fired = threading.Event()
-    calls: list[tuple[int, str]] = []
     monitor = rl.RankLivenessMonitor(
-        lambda rank, reason: (calls.append((rank, reason)), fired.set()),
+        lambda _rank, _reason: fired.set(),
         bind_addr=endpoint,
         timeout_ms_override=100,
         expected_ranks={1},
@@ -64,9 +66,40 @@ def test_expected_rank_that_never_registers_fires_startup_timeout():
 
     monitor.start()
     try:
-        _wait(fired)
-        assert calls == [(1, "startup-timeout")]
+        time.sleep(0.2)  # well past the 40ms startup grace
+        assert not fired.is_set()
     finally:
+        monitor.stop()
+
+
+def test_startup_timeout_fires_for_absent_rank_after_channel_proven():
+    # H-C: once at least one expected rank has registered (channel proven), a
+    # different expected rank that never registers is genuinely absent -> fire.
+    endpoint = _endpoint()
+    fired = threading.Event()
+    calls: list[tuple[int, str]] = []
+    monitor = rl.RankLivenessMonitor(
+        lambda rank, reason: (calls.append((rank, reason)), fired.set()),
+        bind_addr=endpoint,
+        timeout_ms_override=100,
+        expected_ranks={1, 2},
+        startup_grace_ms_override=150,
+    )
+    client = rl.RankLivenessClient(
+        "unused",
+        1,
+        interval_ms=20,
+        connect_addr=endpoint,
+    )
+
+    monitor.start()
+    time.sleep(0.02)
+    client.start()  # rank 1 registers; rank 2 never does
+    try:
+        _wait(fired, timeout=2.0)
+        assert calls == [(2, "startup-timeout")]
+    finally:
+        client.stop()
         monitor.stop()
 
 
@@ -117,14 +150,16 @@ def test_registered_rank_silence_fires_liveness_timeout():
         monitor.stop()
 
 
-def test_unexpected_multipart_identity_does_not_arm_monitor():
+def test_unexpected_multipart_identity_does_not_fire():
+    # An unexpected rank identity is ignored, so it never enters last_seen; with
+    # no heartbeat from any *expected* rank the channel is unproven, and H-C
+    # means the monitor disables without firing (rather than suiciding).
     import zmq
 
     endpoint = _endpoint()
     fired = threading.Event()
-    calls: list[tuple[int, str]] = []
     monitor = rl.RankLivenessMonitor(
-        lambda rank, reason: (calls.append((rank, reason)), fired.set()),
+        lambda _rank, _reason: fired.set(),
         bind_addr=endpoint,
         timeout_ms_override=100,
         expected_ranks={1},
@@ -139,8 +174,8 @@ def test_unexpected_multipart_identity_does_not_arm_monitor():
     socket.connect(endpoint)
     try:
         socket.send(b"hb")
-        _wait(fired)
-        assert calls == [(1, "startup-timeout")]
+        time.sleep(0.25)  # past the 80ms startup grace
+        assert not fired.is_set()
     finally:
         socket.close(0)
         monitor.stop()
