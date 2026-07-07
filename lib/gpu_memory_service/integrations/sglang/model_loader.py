@@ -49,6 +49,22 @@ patch_static_state_for_gms()
 patch_serving_collective_timeout_for_gms()
 logger.info("[GMS] Applied patches")
 
+# X9 (process-correct): the SGLang scheduler is spawned via multiprocessing and
+# re-imports THIS module (load_format=gms triggers the GMSModelLoader import) but
+# NOT the launcher-side __init__ bootstrap that installs KV leases. In a spawned
+# child the allocator classes are freshly re-imported and unpatched, so the
+# process that actually allocates KV must install the lease patch HERE and
+# self-test in-process — otherwise the scheduler is a dual-writer on the shared
+# pool while the launcher's self-test (a different process) reports green. Both
+# calls are idempotent, so re-running them in the launcher is harmless.
+from gpu_memory_service.integrations.common.integration_selftest import (  # noqa: E402
+    gms_verify_integration,
+)
+from gpu_memory_service.integrations.sglang import install_kv_leases  # noqa: E402
+
+install_kv_leases.install()
+gms_verify_integration("sglang")
+
 
 class GMSModelLoader:
     """SGLang model loader that loads/imports weights via GPU Memory Service."""

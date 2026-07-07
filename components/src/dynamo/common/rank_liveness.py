@@ -239,8 +239,27 @@ class RankLivenessMonitor:
         sock.setsockopt(zmq.HEARTBEAT_IVL, int(self._timeout * 1000 / 3))
         sock.setsockopt(zmq.HEARTBEAT_TIMEOUT, int(self._timeout * 1000))
         sock.bind(self._bind_addr)
+        # Instant crash propagation: watch the ROUTER's own connection events. When a
+        # worker's socket drops — which the OS does on process death (TCP FIN/RST) —
+        # libzmq raises EVENT_DISCONNECTED within ~ms, so a rank>0 crash fires
+        # on_rank_lost near-instantly instead of waiting a full heartbeat-timeout.
+        # (ROUTER_NOTIFY would be cleaner but libzmq 4.3.x rejects it; the socket
+        # monitor is the portable API and works back to libzmq 4.0.) The
+        # heartbeat-timeout below stays as the fallback for ungraceful partitions
+        # where no FIN/RST arrives (node power-loss, network black-hole).
+        from zmq.utils.monitor import recv_monitor_message
+
+        mon = None
+        try:
+            mon = sock.get_monitor_socket(zmq.EVENT_DISCONNECTED)
+        except (AttributeError, zmq.ZMQError):
+            logger.info(
+                "[GMS liveness] socket monitor unavailable; heartbeat-timeout only"
+            )
         poller = zmq.Poller()
         poller.register(sock, zmq.POLLIN)
+        if mon is not None:
+            poller.register(mon, zmq.POLLIN)
 
         last_seen: dict[int, float] = {}
         started = time.monotonic()
@@ -249,6 +268,30 @@ class RankLivenessMonitor:
             while not self._stop.is_set():
                 events = dict(poller.poll(poll_ms))
                 now = time.monotonic()
+
+                # Instant crash propagation: a peer's socket dropped. The monitor
+                # reports the connection, not the ZMQ identity, so we can't name the
+                # rank from the event alone — but a dropped worker after we have seen
+                # ranks alive means the cohort is broken, and the leader's failover
+                # action (fence + release flock) is rank-agnostic. Fire only once we
+                # have proven ranks (last_seen non-empty), so startup reconnect churn
+                # and never-registered peers can't trip a spurious failover.
+                if mon is not None and mon in events:
+                    disconnected = False
+                    while mon.poll(0):
+                        msg = recv_monitor_message(mon)
+                        if msg.get("event") == zmq.EVENT_DISCONNECTED:
+                            disconnected = True
+                    if disconnected and last_seen:
+                        rank = sorted(last_seen)[-1]  # best-effort: the highest seen (worker) rank
+                        logger.warning(
+                            "[GMS liveness] worker socket disconnected (rank ~%d); "
+                            "instant crash propagation -> failover",
+                            rank,
+                        )
+                        self._fire(rank, "socket-disconnect")
+                        return
+
                 if sock in events:
                     while True:
                         try:
@@ -309,6 +352,12 @@ class RankLivenessMonitor:
                         self._fire(rank, "liveness-timeout")
                         return
         finally:
+            if mon is not None:
+                try:
+                    sock.disable_monitor()
+                    mon.close(0)
+                except Exception:  # noqa: BLE001
+                    pass
             sock.close(0)
 
     def _fire(self, rank: int, reason: str) -> bool:

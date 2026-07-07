@@ -179,3 +179,79 @@ def test_unexpected_multipart_identity_does_not_fire():
     finally:
         socket.close(0)
         monitor.stop()
+
+
+def _free_tcp_endpoint() -> str:
+    import socket as _socket
+
+    s = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()
+    return f"tcp://127.0.0.1:{port}"
+
+
+def test_socket_disconnect_fires_instantly_not_on_timeout():
+    """Instant crash propagation (ROUTER_NOTIFY): a dropped rank>0 socket fires
+    on_rank_lost in ~ms via the disconnect event, well before the heartbeat-timeout
+    would. The long timeout override proves the fire came from the disconnect, not
+    the silence poll."""
+    import zmq
+
+    endpoint = _free_tcp_endpoint()
+    fired = threading.Event()
+    calls: list[tuple[int, str]] = []
+    monitor = rl.RankLivenessMonitor(
+        lambda rank, reason: (calls.append((rank, reason)), fired.set()),
+        bind_addr=endpoint,
+        timeout_ms_override=4000,  # long: only a socket disconnect can fire fast
+        expected_ranks={1},
+        startup_grace_ms_override=4000,
+    )
+    sock = zmq.Context.instance().socket(zmq.DEALER)
+    sock.setsockopt(zmq.IDENTITY, b"rank-1")
+    sock.setsockopt(zmq.LINGER, 0)
+
+    monitor.start()
+    time.sleep(0.05)
+    sock.connect(endpoint)
+    sock.send(b"hb")  # register -> enters last_seen
+    time.sleep(0.25)
+    t0 = time.monotonic()
+    sock.close(0)  # drop the worker socket -> ROUTER NOTIFY_DISCONNECT
+    try:
+        assert fired.wait(2.0), "socket disconnect did not fire on_rank_lost"
+        dt = time.monotonic() - t0
+        assert calls and calls[0][1] == "socket-disconnect", calls
+        assert dt < 1.5, f"fired in {dt:.2f}s; expected ~instant, far under the 4s timeout"
+    finally:
+        monitor.stop()
+
+
+def test_disconnect_before_any_heartbeat_does_not_fire():
+    """A socket that connects then drops WITHOUT ever heartbeating (startup churn)
+    must not trip a spurious failover — only ranks seen alive are armed."""
+    import zmq
+
+    endpoint = _free_tcp_endpoint()
+    fired = threading.Event()
+    monitor = rl.RankLivenessMonitor(
+        lambda _r, _reason: fired.set(),
+        bind_addr=endpoint,
+        timeout_ms_override=4000,
+        expected_ranks={1},
+        startup_grace_ms_override=4000,
+    )
+    sock = zmq.Context.instance().socket(zmq.DEALER)
+    sock.setsockopt(zmq.IDENTITY, b"rank-1")
+    sock.setsockopt(zmq.LINGER, 0)
+
+    monitor.start()
+    time.sleep(0.05)
+    sock.connect(endpoint)
+    time.sleep(0.1)
+    sock.close(0)  # never sent a heartbeat -> not in last_seen -> must not fire
+    try:
+        assert not fired.wait(0.8), "spurious fire on disconnect of a never-seen rank"
+    finally:
+        monitor.stop()

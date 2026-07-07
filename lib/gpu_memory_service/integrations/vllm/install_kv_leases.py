@@ -134,11 +134,22 @@ def install_engine_core_hook() -> bool:
     if not kv_leases_enabled("vllm"):
         return False
 
+    # X9 (process-correct): vLLM builds BlockPool in the spawned EngineCore
+    # scheduler process, not in this worker process. This hook is the ONLY thing
+    # that makes that process install the lease patch. If leases are enabled but
+    # the hook can't be applied, the EngineCore runs unhooked → shared KV with two
+    # writers and no arbitration. Fail loud instead of the old silent return False
+    # (which the worker-side BlockPool self-test could not catch — wrong process).
     try:
         from vllm.v1.engine.core import EngineCoreProc
-    except Exception:  # noqa: BLE001
-        logger.debug("[GMS-KVLease] EngineCoreProc not importable", exc_info=True)
-        return False
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(
+            "GMS integration self-test failed: KV leases are enabled for vLLM but "
+            "vllm.v1.engine.core.EngineCoreProc is not importable, so the EngineCore "
+            "scheduler-process lease hook cannot be installed (upstream symbol drift). "
+            "The scheduler would allocate shared KV with no lease arbitration — "
+            "refusing to start. Set GMS_VLLM_KV_LEASES=0 to run without leases."
+        ) from exc
 
     current = EngineCoreProc.run_engine_core
     if getattr(current, "_gms_kv_lease_engine_core_wrapper", False):

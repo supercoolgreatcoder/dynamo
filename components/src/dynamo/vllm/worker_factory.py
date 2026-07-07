@@ -522,6 +522,11 @@ class WorkerFactory:
         nnodes = int(getattr(config.engine_args, "nnodes", 1) or 1)
         if nnodes <= 1:
             return None
+        # Idempotent: called from every activation path (F3), only one fires per
+        # process, but guard against a double-start leaking a second monitor.
+        existing = getattr(handler, "_gms_rank_liveness_monitor", None)
+        if existing is not None:
+            return existing
 
         loop = asyncio.get_running_loop()
 
@@ -538,15 +543,34 @@ class WorkerFactory:
                 _fence_vllm_gpu_workers(getattr(handler, "engine_client", None))
             except Exception:
                 logger.debug("[GMS liveness] GPU worker fence on rank loss failed", exc_info=True)
+
+            # F4: unregister from discovery BEFORE releasing the flock (mirrors
+            # sglang's _release_after_fence). If the flock is released first, the
+            # shadow promotes while this dying leader is still an advertised
+            # endpoint, so the router can route requests to a leader that is about
+            # to SIGTERM. Do both on the event loop so the order is guaranteed.
+            async def _unregister_then_release() -> None:
+                endpoint = getattr(handler, "generate_endpoint", None)
+                unregister = getattr(endpoint, "unregister_endpoint_instance", None)
+                if callable(unregister):
+                    try:
+                        await unregister()
+                    except Exception:
+                        logger.debug(
+                            "[GMS liveness] endpoint unregister on rank loss failed",
+                            exc_info=True,
+                        )
+                await release_attached_gms_failover_lock(handler, backend_name="vllm")
+
             try:
-                fut = asyncio.run_coroutine_threadsafe(
-                    release_attached_gms_failover_lock(handler, backend_name="vllm"),
-                    loop,
-                )
-                # Ensure the release actually completes before we tear the leader down.
+                fut = asyncio.run_coroutine_threadsafe(_unregister_then_release(), loop)
+                # Ensure unregister+release actually complete before we tear the leader down.
                 fut.result(timeout=5.0)
             except Exception:
-                logger.debug("[GMS liveness] lock release on rank loss failed", exc_info=True)
+                logger.debug(
+                    "[GMS liveness] unregister+release on rank loss failed",
+                    exc_info=True,
+                )
             # The cohort is broken (a TP rank is gone); bring the leader down so it
             # stops holding the GPU/KV and the shadow (now lock holder) serves.
             os.kill(os.getpid(), signal.SIGTERM)
@@ -663,6 +687,10 @@ class WorkerFactory:
                     "[GMS failover] Skipping promotion warmup for pre-init "
                     "active lock; warmup is shadow-only"
                 )
+            # F3: this process is now the active lock holder — start rank-liveness
+            # monitoring here too, not only on the static-primary path, or a
+            # promoted shadow loses rank-liveness after the first failover.
+            self._maybe_start_rank_liveness_monitor(handler, config)
             logger.info(
                 "[Shadow] Failover lock already acquired before engine init; "
                 "registering with discovery"
@@ -776,6 +804,8 @@ class WorkerFactory:
                     "[Shadow] Pre-lock warmup already ran; skipping post-lock "
                     "promotion warmup"
                 )
+            # F3: promoted shadow is now the active lock holder — arm rank-liveness.
+            self._maybe_start_rank_liveness_monitor(handler, config)
             logger.info("[Shadow] Lock acquired, registering with discovery")
             return
 
@@ -798,6 +828,8 @@ class WorkerFactory:
         handler._pause_controller.mark_resumed()
         if promotion_warmup is not None:
             await promotion_warmup()
+        # F3: promoted legacy-shadow is now the active lock holder — arm rank-liveness.
+        self._maybe_start_rank_liveness_monitor(handler, config)
         logger.info("[Shadow] Engine awake, registering with discovery")
 
     async def _create_decode_worker(
