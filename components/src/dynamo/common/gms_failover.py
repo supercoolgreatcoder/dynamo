@@ -236,6 +236,13 @@ async def release_attached_gms_failover_lock(
 
 
 def _failover_reclaim_foreign_leases_enabled() -> bool:
+    # F1: reclaiming another owner's leases is only safe once the fence has
+    # actually fired — the epoch bump is what guarantees the previous primary
+    # (and any child that outlived the flock release) fails closed before we
+    # re-hand its blocks out. With the fence disabled there is no such barrier,
+    # so reclaim must be inert regardless of its own env toggle.
+    if not _kv_fence_epoch_enabled():
+        return False
     return _truthy_env("DYN_GMS_FAILOVER_RECLAIM_FOREIGN_LEASES", default=True)
 
 
@@ -329,11 +336,13 @@ async def run_gms_failover_post_lock_fence(
 
 
 def _kv_fence_epoch_enabled() -> bool:
-    # Off by default: enabling the epoch bump requires the promoting engine's
-    # warm lease clients to adopt the new epoch (adopt_fence_epoch), else they
-    # self-fence. Flip on for cluster validation once that wiring is confirmed
-    # per engine. See kv_lease_client.promote_kv_lease_epoch_in_shm_dir (X1).
-    return _truthy_env("DYN_GMS_KV_FENCE_EPOCH", default=False)
+    # On by default (F1). The bump is now cohort-based and self-adopting: the
+    # promoting engine stamps (epoch+1, its cohort_hash), and its own lease
+    # clients — including EngineCore/scheduler subprocesses that inherit the
+    # cohort env — self-adopt on the next acquire, so enabling the fence no
+    # longer self-fences the promoted engine (the A1 wrong-process bug is gone).
+    # See kv_lease_client.promote_kv_lease_epoch_in_shm_dir / _check_fence (X1).
+    return _truthy_env("DYN_GMS_KV_FENCE_EPOCH", default=True)
 
 
 def _bump_kv_lease_epoch_after_fence(backend_name: str, role: str) -> None:
@@ -353,19 +362,18 @@ def _bump_kv_lease_epoch_after_fence(backend_name: str, role: str) -> None:
     try:
         from gpu_memory_service.integrations.common.kv_lease_client import (
             promote_kv_lease_epoch_in_shm_dir,
-            promote_local_kv_lease_epoch,
             resolve_lease_device,
         )
 
-        # Prefer bumping via this process's live clients: they bump the ring AND
-        # adopt the new epoch atomically, so the promoting engine does not
-        # self-fence. Only fall back to the raw dir-level bump when there are no
-        # live clients (e.g. a cold-restart replacement pod).
-        new_epoch = promote_local_kv_lease_epoch()
-        if not new_epoch:
-            engine = _normalize_lease_engine_name(backend_name)
-            device = resolve_lease_device(f"GMS_{engine.upper()}_KV_LEASE_DEVICE")
-            new_epoch = promote_kv_lease_epoch_in_shm_dir(engine, device)
+        # Single promotion path: stamp (epoch+1, my cohort_hash) into every
+        # rank-local ring header under its flock. This process's own live
+        # clients and its scheduler/EngineCore subprocesses share the cohort and
+        # self-adopt the new epoch on their next acquire (no live-client
+        # registry, no separate adopt step) — so this raw dir-level bump is
+        # correct whether or not warm clients exist in THIS process.
+        engine = _normalize_lease_engine_name(backend_name)
+        device = resolve_lease_device(f"GMS_{engine.upper()}_KV_LEASE_DEVICE")
+        new_epoch = promote_kv_lease_epoch_in_shm_dir(engine, device)
         if new_epoch:
             logger.info(
                 "[GMS failover] %s %s bumped KV lease failover epoch to %d",
