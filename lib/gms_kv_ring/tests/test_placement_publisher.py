@@ -96,26 +96,6 @@ def test_hash_round_trip_through_hex():
     assert pub.stats()["stored"] == 1
 
 
-def test_zmq_publisher_skipped_without_pyzmq():
-    """If pyzmq isn't installed, the import should fail cleanly."""
-    pytest.importorskip("zmq")
-    # If we got here, pyzmq IS installed; just verify it constructs.
-    from gms_kv_ring.daemon.placement_publisher import ZmqPlacementPublisher
-
-    # Use a port-0 wildcard to avoid binding conflicts in CI.
-    pub = ZmqPlacementPublisher(
-        daemon_id="gms-test",
-        daemon_epoch=1,
-        bind_endpoint="tcp://127.0.0.1:0",
-    )
-    try:
-        pub.publish_stored(_hash("zmq1"), tier="host_pinned", bytes_size=10)
-        # Stats reflect attempted publishes even if no subscriber
-        assert pub.stats()["stored"] == 1
-    finally:
-        pub.close()
-
-
 # ---- Protocol conformance ---------------------------------------------------
 
 

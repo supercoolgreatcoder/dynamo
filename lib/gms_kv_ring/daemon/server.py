@@ -572,6 +572,34 @@ class Daemon:
                 if self._scrub_idle_s > 0:
                     if self._scrub_stop.wait(self._scrub_idle_s):
                         return
+            # H1: TTL-sweep outstanding leased remote descriptors on the same
+            # low cadence, not only opportunistically on publish. Without a real
+            # timer, a region whose transfer never acks would hold its pin +
+            # NIXL registration until the next publish (or forever on an idle
+            # daemon). Cheap: O(expired), off the remote-read hot path.
+            reg = getattr(self, "_leased_region_registry", None)
+            if reg is not None:
+                try:
+                    reg.sweep()
+                except Exception:  # noqa: BLE001
+                    logger.debug(
+                        "[Daemon] leased_region_registry periodic sweep failed",
+                        exc_info=True,
+                    )
+            # H1: reclaim receive-side staging reservations whose owner went
+            # silent past reservation_stale_s. This janitor existed but was never
+            # driven (no TTL owner); the periodic loop is that owner now. Only
+            # evicts RESERVED slots past the staleness threshold, so an in-flight
+            # transfer is never reclaimed out from under a live receiver.
+            staging = getattr(self, "staging_tier", None)
+            if staging is not None:
+                try:
+                    staging.evict_stale_reservations()
+                except Exception:  # noqa: BLE001
+                    logger.debug(
+                        "[Daemon] staging stale-reservation eviction failed",
+                        exc_info=True,
+                    )
             # End-of-pass sleep before the next full scan. A
             # zero-slot pool also lands here, so we still wake up
             # periodically for new slots.
@@ -2250,10 +2278,18 @@ class Daemon:
                     )
                 if payload is None:
                     continue
+                # C1: one-sided NIXL READs of router-supplied pointers are
+                # untrusted input. Honor the daemon's verify-on-receive setting
+                # (hash the bytes against the advertised content hash) instead of
+                # unconditionally trusting the wire — a mismatched block drops to
+                # CORRUPT here rather than being committed and re-advertised to
+                # the placement plane. No-ops when the daemon runs verify mode
+                # "none" (self._verify_on_receive False), so trusted deployments
+                # keep the zero-hash fast path.
                 result = self.staging_tier.commit_or_reject(
                     block["reservation_id"],
                     payload,
-                    verify_content_hash=False,
+                    verify_content_hash=True,
                 )
                 if isinstance(result, CommitOk):
                     accepted += 1

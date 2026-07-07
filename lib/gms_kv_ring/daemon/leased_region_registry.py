@@ -69,6 +69,11 @@ class LeasedRegionRegistry:
         self._lock = threading.Lock()
         self._regions: dict[int, _LeasedRegion] = {}
         self._ids = itertools.count(1)
+        # Refcount NIXL registrations by (ptr, size). Two regions can advertise the
+        # same host buffer (a duplicate publish); tearing one down must NOT
+        # deregister the memory the other still needs (a UAF-class bug). Only the
+        # last region for a given (ptr, size) triggers the actual deregister.
+        self._regcount: dict[tuple[int, int], int] = {}
 
     def register(
         self,
@@ -97,6 +102,8 @@ class LeasedRegionRegistry:
                 daemon_epoch=int(daemon_epoch),
                 expiry_monotonic=expiry,
             )
+            key = (int(ptr), int(size))
+            self._regcount[key] = self._regcount.get(key, 0) + 1
         return region_id
 
     def release(self, region_id: int) -> bool:
@@ -142,7 +149,20 @@ class LeasedRegionRegistry:
 
     def _teardown(self, region: _LeasedRegion) -> None:
         # Deregister first (stop remote access), then drop the pin (allow free).
+        # Only deregister when the LAST region sharing this (ptr, size) goes away,
+        # so a duplicate publish can't deregister a buffer another region still
+        # advertises.
+        should_deregister = False
         if self._deregister is not None:
+            key = (region.ptr, region.size)
+            with self._lock:
+                remaining = self._regcount.get(key, 1) - 1
+                if remaining <= 0:
+                    self._regcount.pop(key, None)
+                    should_deregister = True
+                else:
+                    self._regcount[key] = remaining
+        if should_deregister:
             try:
                 self._deregister(region.ptr, region.size)
             except Exception:  # noqa: BLE001

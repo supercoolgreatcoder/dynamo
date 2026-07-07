@@ -84,6 +84,53 @@ def test_deregister_ordered_before_pin_drop():
     assert order == ["dereg", "unpin"]
 
 
+def test_duplicate_ptr_size_deregisters_only_on_last_release():
+    """H1 refcount: two regions on the same (ptr,size) must not cross-deregister.
+
+    A duplicate publish registers the same host buffer twice. Tearing the first
+    region down must drop its own pin but NOT deregister the NIXL memory the
+    second region still advertises — else the survivor points at freed memory.
+    """
+    clock = [0.0]
+    dereg = []
+    reg = _registry(clock, dereg)
+    first, second = _FakeLease(), _FakeLease()
+
+    r1 = reg.register(first, 0xABC, 512, generation=1, daemon_epoch=1)
+    r2 = reg.register(second, 0xABC, 512, generation=2, daemon_epoch=1)
+
+    # First release: pin dropped, but the shared buffer stays registered.
+    assert reg.release(r1) is True
+    assert first.released == 1
+    assert dereg == []  # NOT deregistered — second region still uses it
+
+    # Last release: now the buffer is actually deregistered.
+    assert reg.release(r2) is True
+    assert second.released == 1
+    assert dereg == [(0xABC, 512)]
+
+
+def test_refcount_survives_ttl_sweep_of_one_duplicate():
+    """A swept duplicate must not deregister a buffer a live region still holds."""
+    clock = [0.0]
+    dereg = []
+    reg = _registry(clock, dereg)
+    a, b = _FakeLease(), _FakeLease()
+
+    reg.register(a, 0x5, 64, generation=1, daemon_epoch=1, ttl_s=5.0)
+    reg.register(b, 0x5, 64, generation=1, daemon_epoch=1, ttl_s=50.0)
+
+    clock[0] = 6.0  # only 'a' expired
+    assert reg.sweep() == 1
+    assert a.released == 1
+    assert dereg == []  # 'b' still advertises (0x5, 64)
+
+    clock[0] = 51.0
+    assert reg.sweep() == 1
+    assert b.released == 1
+    assert dereg == [(0x5, 64)]
+
+
 def test_close_releases_all():
     clock = [0.0]
     dereg = []
