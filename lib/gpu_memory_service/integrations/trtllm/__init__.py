@@ -69,6 +69,12 @@ def setup_gms(
     from gpu_memory_service.integrations.trtllm import install_kv_leases_v2
 
     install_kv_leases_v2.install()
+    # X9: fail startup if leases are enabled but the SlotAllocator patch didn't take.
+    from gpu_memory_service.integrations.common.integration_selftest import (
+        gms_verify_integration,
+    )
+
+    gms_verify_integration("trtllm")
 
     # Under GMS the custom IPC-workspace all-reduce strategies (AUTO/ONESHOT/TWOSHOT)
     # share buffers across ranks via CUDA/VMM IPC, which conflicts with GMS-managed

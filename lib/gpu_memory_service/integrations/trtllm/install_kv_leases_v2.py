@@ -489,6 +489,11 @@ def install(factory: Callable[[object, int, str], KVLeaseClient] | None = None) 
         KVCacheManager.shutdown = patched_manager_shutdown  # type: ignore[method-assign]
 
     _patched = True
+    from gpu_memory_service.integrations.common.integration_selftest import (
+        mark_installed,
+    )
+
+    mark_installed("trtllm", "kv_leases")
     logger.info("[GMS-KVLease] patched TRT-LLM V2 GPU SlotAllocator")
     return True
 
