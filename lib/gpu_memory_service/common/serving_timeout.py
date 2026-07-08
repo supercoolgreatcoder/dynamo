@@ -116,7 +116,9 @@ def apply_serving_collective_timeout(seconds: float | None = None) -> bool:
                 set_fn(td, pg)
                 applied += 1
             except Exception:
-                logger.debug("[GMS serving-timeout] set on a sub-PG failed", exc_info=True)
+                logger.debug(
+                    "[GMS serving-timeout] set on a sub-PG failed", exc_info=True
+                )
     except Exception:
         logger.debug("[GMS serving-timeout] iterating PGs failed", exc_info=True)
 

@@ -101,9 +101,7 @@ def _wrap_init(cls, name: str) -> None:
     original_init = cls.__init__
 
     def _patched_init(self, *args, **kwargs):
-        logger.debug(
-            "[GMS-VMM-IPC] %s init in pid=%d", name, os.getpid()
-        )
+        logger.debug("[GMS-VMM-IPC] %s init in pid=%d", name, os.getpid())
         # The device is one of the constructor args on current SGLang,
         # but may be passed positionally as plain "cuda". In that case
         # SGLang has already set the rank-local current device.
@@ -133,9 +131,7 @@ def _wrap_init(cls, name: str) -> None:
         return original_init(self, *args, **kwargs)
 
     cls.__init__ = _patched_init  # type: ignore[method-assign]
-    logger.debug(
-        "[GMS-VMM-IPC] patched %s init in pid=%d", name, os.getpid()
-    )
+    logger.debug("[GMS-VMM-IPC] patched %s init in pid=%d", name, os.getpid())
 
 
 def install() -> bool:

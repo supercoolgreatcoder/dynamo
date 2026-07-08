@@ -164,7 +164,11 @@ class RankLivenessClient:
                 try:
                     sock.send(b"hb", flags=zmq.NOBLOCK)
                 except zmq.ZMQError:
-                    logger.debug("[GMS liveness] rank %d heartbeat send failed", self._rank, exc_info=True)
+                    logger.debug(
+                        "[GMS liveness] rank %d heartbeat send failed",
+                        self._rank,
+                        exc_info=True,
+                    )
                 self._stop.wait(self._interval)
         finally:
             sock.close(0)
@@ -191,9 +195,7 @@ class RankLivenessMonitor:
         self._on_rank_lost = on_rank_lost
         self._bind_addr = bind_addr or leader_bind_addr()
         timeout_value = (
-            timeout_ms()
-            if timeout_ms_override is None
-            else max(1, timeout_ms_override)
+            timeout_ms() if timeout_ms_override is None else max(1, timeout_ms_override)
         )
         self._timeout = timeout_value / 1000.0
         self._expected_ranks = (
@@ -283,7 +285,9 @@ class RankLivenessMonitor:
                         if msg.get("event") == zmq.EVENT_DISCONNECTED:
                             disconnected = True
                     if disconnected and last_seen:
-                        rank = sorted(last_seen)[-1]  # best-effort: the highest seen (worker) rank
+                        rank = sorted(last_seen)[
+                            -1
+                        ]  # best-effort: the highest seen (worker) rank
                         logger.warning(
                             "[GMS liveness] worker socket disconnected (rank ~%d); "
                             "instant crash propagation -> failover",
@@ -370,7 +374,6 @@ class RankLivenessMonitor:
         except Exception:
             logger.exception("[GMS liveness] on_rank_lost callback failed")
         return True
-
 
     @staticmethod
     def _rank_of(identity: bytes) -> Optional[int]:

@@ -73,11 +73,15 @@ def _fence_vllm_gpu_workers(engine_client: Any, *, wait_s: float = 0.5) -> None:
         manager = getattr(resources, "engine_manager", None)
         procs = list(getattr(manager, "processes", []) or [])
     except Exception:
-        logger.debug("[GMS failover] vLLM worker fence: could not resolve procs", exc_info=True)
+        logger.debug(
+            "[GMS failover] vLLM worker fence: could not resolve procs", exc_info=True
+        )
         return
 
     if not procs:
-        logger.debug("[GMS failover] vLLM worker fence: no local EngineCore procs to kill")
+        logger.debug(
+            "[GMS failover] vLLM worker fence: no local EngineCore procs to kill"
+        )
         return
 
     killed = []
@@ -106,10 +110,12 @@ def _fence_vllm_gpu_workers(engine_client: Any, *, wait_s: float = 0.5) -> None:
             pass
     if alive:
         logger.warning(
-            "[GMS failover] vLLM EngineCore fence timed out; still-running pids=%s", alive
+            "[GMS failover] vLLM EngineCore fence timed out; still-running pids=%s",
+            alive,
         )
     else:
         logger.info("[GMS failover] fenced vLLM EngineCore GPU workers pids=%s", killed)
+
 
 # (engine_client, vllm_config, default_sampling_params, prometheus_temp_dir, component_gauges)
 # component_gauges is None on the embedding-worker path: pooling engines
@@ -542,7 +548,9 @@ class WorkerFactory:
             try:
                 _fence_vllm_gpu_workers(getattr(handler, "engine_client", None))
             except Exception:
-                logger.debug("[GMS liveness] GPU worker fence on rank loss failed", exc_info=True)
+                logger.debug(
+                    "[GMS liveness] GPU worker fence on rank loss failed", exc_info=True
+                )
 
             # F4: unregister from discovery BEFORE releasing the flock (mirrors
             # sglang's _release_after_fence). If the flock is released first, the
@@ -575,9 +583,7 @@ class WorkerFactory:
             # stops holding the GPU/KV and the shadow (now lock holder) serves.
             os.kill(os.getpid(), signal.SIGTERM)
 
-        monitor = rl.RankLivenessMonitor(
-            on_rank_lost, expected_ranks=range(1, nnodes)
-        )
+        monitor = rl.RankLivenessMonitor(on_rank_lost, expected_ranks=range(1, nnodes))
         setattr(handler, "_gms_rank_liveness_monitor", monitor)
         monitor.start()
         logger.info("[GMS liveness] started vLLM leader rank-liveness monitor")

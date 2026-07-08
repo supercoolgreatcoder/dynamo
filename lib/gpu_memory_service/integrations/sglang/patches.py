@@ -18,6 +18,7 @@ from typing import Optional
 
 import gpu_memory_service.integrations.sglang as gms_sglang
 import torch
+from gpu_memory_service.integrations.sglang.kv_identity import shared_kv_enabled
 from gpu_memory_service.integrations.sglang.memory_saver import (
     GMSMemorySaverImpl,
     get_gms_memory_saver_impl,
@@ -283,13 +284,7 @@ def patch_shared_kv_pool_geometry() -> None:
     def patched_resolve_memory_pool_config(self, pre_model_load_memory):
         config = original_resolve(self, pre_model_load_memory)
 
-        shared_kv = os.environ.get("GMS_SGLANG_SHARED_KV", "0").lower() in (
-            "1",
-            "true",
-            "yes",
-            "on",
-        )
-        if not shared_kv or not kv_leases_enabled("sglang"):
+        if not shared_kv_enabled() or not kv_leases_enabled("sglang"):
             return config
 
         page_size = int(self.server_args.page_size)

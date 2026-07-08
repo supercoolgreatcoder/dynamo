@@ -7,7 +7,6 @@ import datetime
 from types import SimpleNamespace
 
 import pytest
-
 from gpu_memory_service.common import serving_timeout
 
 pytestmark = pytest.mark.pre_merge

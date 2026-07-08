@@ -4,7 +4,6 @@
 """Startup patch-contract self-test (X9, redesign 5)."""
 
 import pytest
-
 from gpu_memory_service.integrations.common import integration_selftest as st
 
 

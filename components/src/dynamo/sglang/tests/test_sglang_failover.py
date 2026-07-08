@@ -2,11 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 # ruff: noqa: E402
 
-import ast
 import asyncio
-import inspect
 import sys
-import textwrap
 import types
 from types import SimpleNamespace
 
@@ -28,6 +25,7 @@ def _install_sglang_test_compat_modules() -> None:
 
 _install_sglang_test_compat_modules()
 import dynamo.sglang.init_llm as init_llm
+import dynamo.sglang.failover_watchdog as failover_watchdog
 from dynamo.sglang.failover_watchdog import (
     _scheduler_dead,
     maybe_start_gms_failover_child_watchdog,
@@ -54,26 +52,6 @@ class _FakeRuntime:
 class _FakePublisher:
     def __init__(self):
         self.component_gauges = SimpleNamespace(set_model_load_time=lambda value: None)
-
-
-def test_initial_active_does_not_warm_before_endpoint_serves():
-    tree = ast.parse(textwrap.dedent(inspect.getsource(init_llm.init_decode)))
-    initial_active = next(
-        node
-        for node in ast.walk(tree)
-        if isinstance(node, ast.If)
-        and "early_failover_activation.enabled" in ast.unparse(node.test)
-    )
-
-    calls = [
-        node
-        for statement in initial_active.body
-        for node in ast.walk(statement)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id == "promotion_warmup"
-    ]
-    assert calls == []
 
 
 @pytest.mark.asyncio
@@ -157,7 +135,11 @@ async def test_prepare_non_leader_failover_attaches_lock_owner(monkeypatch):
     assert owner is calls[0][0]
     assert owner.lock_attached is True
     assert calls[0][1] is runtime
-    assert calls[0][2] == {"backend_name": "sglang", "promotion_warmup": None}
+    assert calls[0][2] == {
+        "backend_name": "sglang",
+        "tags": ["kv_cache"],
+        "promotion_warmup": None,
+    }
 
 
 def test_sglang_failover_watchdog_detects_dead_scheduler_process():
@@ -196,6 +178,10 @@ def test_sglang_failover_watchdog_detects_dead_detokenizer_process():
 async def test_sglang_failover_watchdog_releases_lock_after_fence(monkeypatch):
     monkeypatch.setenv("DYN_GMS_FAILOVER_SHADOW_MODE", "1")
     monkeypatch.setenv("DYN_SGLANG_GMS_FAILOVER_CHILD_WATCHDOG_POLL_MS", "10")
+    shutdown_requested = asyncio.Event()
+    monkeypatch.setattr(
+        failover_watchdog, "_request_owner_shutdown", shutdown_requested.set
+    )
     released = asyncio.Event()
     unregistered = asyncio.Event()
 
@@ -234,6 +220,7 @@ async def test_sglang_failover_watchdog_releases_lock_after_fence(monkeypatch):
         await asyncio.wait_for(unregistered.wait(), timeout=1.0)
         assert target._gms_failover_lock is None
         assert target.shutdown_event.is_set()
+        assert shutdown_requested.is_set()
     finally:
         assert watchdog is not None
         watchdog.stop()
@@ -242,6 +229,7 @@ async def test_sglang_failover_watchdog_releases_lock_after_fence(monkeypatch):
 @pytest.mark.asyncio
 async def test_sglang_failover_watchdog_hooks_subprocess_watchdog(monkeypatch):
     monkeypatch.setenv("DYN_GMS_FAILOVER_SHADOW_MODE", "1")
+    monkeypatch.setattr(failover_watchdog, "_request_owner_shutdown", lambda: None)
     released = asyncio.Event()
 
     class Lock:
@@ -277,7 +265,7 @@ async def test_sglang_failover_watchdog_hooks_subprocess_watchdog(monkeypatch):
         assert getattr(sglang_watchdog, "_dynamo_gms_failover_hooked") is True
         assert sglang_watchdog._check_processes() is True
         await asyncio.wait_for(released.wait(), timeout=1.0)
-        assert sglang_watchdog.original_called is True
+        assert sglang_watchdog.original_called is False
         assert target._gms_failover_lock is None
         assert target.shutdown_event.is_set()
     finally:

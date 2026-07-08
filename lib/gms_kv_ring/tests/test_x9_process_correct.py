@@ -23,9 +23,7 @@ import pytest
 pytest.importorskip("gms_rust_ring")
 
 _INTEGRATIONS = (
-    Path(__file__).resolve().parents[2]
-    / "gpu_memory_service"
-    / "integrations"
+    Path(__file__).resolve().parents[2] / "gpu_memory_service" / "integrations"
 )
 
 
@@ -48,9 +46,9 @@ def test_sglang_model_loader_installs_leases_and_selftests_in_child():
     calls = _module_level_calls(_INTEGRATIONS / "sglang" / "model_loader.py")
     # install_kv_leases.install() -> attr 'install'; gms_verify_integration(...) -> name.
     assert "install" in calls, "child-side block must call install_kv_leases.install()"
-    assert "gms_verify_integration" in calls, (
-        "child-side block must self-test in the allocating process"
-    )
+    assert (
+        "gms_verify_integration" in calls
+    ), "child-side block must self-test in the allocating process"
 
 
 def test_vllm_engine_core_hook_raises_when_leases_on_but_unhookable(monkeypatch):

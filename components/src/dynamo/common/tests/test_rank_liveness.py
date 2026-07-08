@@ -11,7 +11,12 @@ import pytest
 
 from dynamo.common import rank_liveness as rl
 
-pytestmark = pytest.mark.pre_merge
+pytestmark = [
+    pytest.mark.pre_merge,
+    pytest.mark.unit,
+    pytest.mark.none,
+    pytest.mark.gpu_0,
+]
 
 
 def _endpoint() -> str:
@@ -223,7 +228,9 @@ def test_socket_disconnect_fires_instantly_not_on_timeout():
         assert fired.wait(2.0), "socket disconnect did not fire on_rank_lost"
         dt = time.monotonic() - t0
         assert calls and calls[0][1] == "socket-disconnect", calls
-        assert dt < 1.5, f"fired in {dt:.2f}s; expected ~instant, far under the 4s timeout"
+        assert (
+            dt < 1.5
+        ), f"fired in {dt:.2f}s; expected ~instant, far under the 4s timeout"
     finally:
         monitor.stop()
 

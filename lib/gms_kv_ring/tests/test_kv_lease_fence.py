@@ -86,9 +86,9 @@ def test_fence_offset_lands_in_unclaimed_header_space():
     last_field_end = const("L_RESERVED_OWNER_HASH") + 8
     fence_end = _KV_LEASE_SHM_FENCE_OFFSET + _KV_LEASE_SHM_FENCE_STRUCT.size
 
-    assert _KV_LEASE_SHM_FENCE_OFFSET >= last_field_end, (
-        "fence overlaps a live Rust header field — the byte-24 drift bug"
-    )
+    assert (
+        _KV_LEASE_SHM_FENCE_OFFSET >= last_field_end
+    ), "fence overlaps a live Rust header field — the byte-24 drift bug"
     assert _KV_LEASE_SHM_FENCE_OFFSET != _L_ACTIVE_MUTATIONS
     assert fence_end <= header_size == _KV_LEASE_SHM_HEADER_SIZE
 

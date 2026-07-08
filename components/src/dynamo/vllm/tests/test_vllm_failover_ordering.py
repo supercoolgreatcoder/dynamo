@@ -15,16 +15,22 @@ from pathlib import Path
 
 import pytest
 
-_WF = (
-    Path(__file__).resolve().parents[1] / "worker_factory.py"
-)
+_WF = Path(__file__).resolve().parents[1] / "worker_factory.py"
 
-pytestmark = pytest.mark.pre_merge
+pytestmark = [
+    pytest.mark.pre_merge,
+    pytest.mark.unit,
+    pytest.mark.none,
+    pytest.mark.gpu_0,
+]
 
 
 def _func(tree, name):
     for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == name:
+        if (
+            isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name == name
+        ):
             return node
     raise AssertionError(f"{name} not found in worker_factory.py")
 
@@ -48,9 +54,9 @@ def test_rank_liveness_armed_on_every_lock_acquiring_path():
         and isinstance(n.func, ast.Attribute)
         and n.func.attr == "_maybe_start_rank_liveness_monitor"
     ]
-    assert len(starts) >= 4, (
-        f"expected rank-liveness armed on all 4 lock-acquiring paths, found {len(starts)}"
-    )
+    assert (
+        len(starts) >= 4
+    ), f"expected rank-liveness armed on all 4 lock-acquiring paths, found {len(starts)}"
 
 
 def test_on_rank_lost_unregisters_before_releasing_the_flock():
@@ -72,6 +78,6 @@ def test_on_rank_lost_unregisters_before_releasing_the_flock():
     ]
     assert unregister_lines, "unregister_endpoint_instance not referenced"
     assert release_lines, "release_attached_gms_failover_lock not called"
-    assert min(unregister_lines) < min(release_lines), (
-        "flock must be released AFTER discovery unregister (F4)"
-    )
+    assert min(unregister_lines) < min(
+        release_lines
+    ), "flock must be released AFTER discovery unregister (F4)"

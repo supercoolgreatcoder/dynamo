@@ -89,6 +89,17 @@ def _terminate_pid(pid: int) -> None:
         logger.warning("[GMS failover] cannot SIGKILL SGLang child pid=%s", pid)
 
 
+def _request_owner_shutdown() -> None:
+    """Close the failed request plane after its ownership handoff is complete.
+
+    The TP children are already fenced, so graceful draining cannot complete;
+    SIGTERM would add the normal five-second grace period and then wait on
+    handlers whose engine no longer exists.  This kills only the Dynamo/SGLang
+    engine process.  The GMS sidecars continue owning weights and KV memory.
+    """
+    os.kill(os.getpid(), signal.SIGKILL)
+
+
 def _child_pids(engine: Any) -> list[int]:
     get_all_child_pids = getattr(engine, "get_all_child_pids", None)
     if callable(get_all_child_pids):
@@ -210,6 +221,12 @@ class SGLangGmsFailoverChildWatchdog:
                 self._trigger_failure(
                     f"SGLang subprocess watchdog detected child failure name={failed[0]}"
                 )
+                # The GMS watchdog already fenced every child, unregistered the
+                # endpoint, released ownership, and requested shutdown.  Do not
+                # call SGLang's original failure path: it sends SIGQUIT, whose
+                # crash-diagnostics handler intentionally sleeps for five seconds
+                # before closing the request-plane stream.
+                return True
             return check_processes()
 
         setattr(watchdog, "_check_processes", patched_check_processes)
@@ -264,6 +281,10 @@ class SGLangGmsFailoverChildWatchdog:
         shutdown_event = getattr(self._target, "shutdown_event", None)
         if shutdown_event is not None:
             shutdown_event.set()
+        logger.info(
+            "[GMS failover] sglang controlled handoff complete; closing request plane"
+        )
+        _request_owner_shutdown()
 
 
 def maybe_start_gms_failover_child_watchdog(
@@ -310,7 +331,9 @@ def maybe_start_rank_liveness(
 
     if node_rank >= 1:
         if not leader_host:
-            logger.warning("[GMS liveness] no leader host for worker rank %d; skipping", node_rank)
+            logger.warning(
+                "[GMS liveness] no leader host for worker rank %d; skipping", node_rank
+            )
             return None
         client = rl.RankLivenessClient(leader_host, node_rank)
         if target is not None:
@@ -324,10 +347,14 @@ def maybe_start_rank_liveness(
     def on_rank_lost(rank: int, reason: str) -> None:
         watchdog = getattr(target, "_gms_failover_child_watchdog", None)
         if watchdog is not None:
-            watchdog._trigger_failure(f"cross-node rank {rank} liveness lost ({reason})")
+            watchdog._trigger_failure(
+                f"cross-node rank {rank} liveness lost ({reason})"
+            )
             return
         logger.warning(
-            "[GMS liveness] rank %d lost (%s); fencing + releasing lock directly", rank, reason
+            "[GMS liveness] rank %d lost (%s); fencing + releasing lock directly",
+            rank,
+            reason,
         )
         try:
             _fence_children(engine)
@@ -337,9 +364,7 @@ def maybe_start_rank_liveness(
             release_attached_gms_failover_lock(target, backend_name="sglang"), loop
         )
 
-    monitor = rl.RankLivenessMonitor(
-        on_rank_lost, expected_ranks=expected_ranks
-    )
+    monitor = rl.RankLivenessMonitor(on_rank_lost, expected_ranks=expected_ranks)
     setattr(target, "_gms_rank_liveness_monitor", monitor)
     monitor.start()
     return monitor
