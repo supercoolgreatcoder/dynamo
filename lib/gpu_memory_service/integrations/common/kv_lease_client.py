@@ -598,8 +598,7 @@ class SharedMemoryKVLeaseClient:
     @staticmethod
     def _lease_infos_to_records(infos) -> list[KVLease]:
         return [
-            KVLease(int(block_id), int(generation))
-            for block_id, generation in infos
+            KVLease(int(block_id), int(generation)) for block_id, generation in infos
         ]
 
     def _log_acquire_failure(

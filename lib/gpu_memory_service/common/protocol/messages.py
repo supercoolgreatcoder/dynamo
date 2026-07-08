@@ -195,7 +195,6 @@ class ListPersistentAllocationsResponse(
 # ----------------------------------------------------------------------
 
 
-
 class ErrorResponse(msgspec.Struct, tag="error_response"):
     error: str
     code: int = 0

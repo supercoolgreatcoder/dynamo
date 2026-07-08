@@ -237,6 +237,7 @@ def test_shared_claim_allows_multiple_attached_engines(fake_cuda):
     assert m.shared_claim_count("eng-A", "kv_pool") == 0
     assert m.is_claimed("eng-A", "kv_pool") is False
 
+
 def test_shared_claimant_cannot_release_allocation_used_by_peer(fake_cuda):
     m = PersistentAllocationManager(device=0)
     m.claim("eng-A", "kv_pool", 4096, shared=True)
@@ -248,8 +249,6 @@ def test_shared_claimant_cannot_release_allocation_used_by_peer(fake_cuda):
 
     assert m.unclaim("eng-A", "kv_pool") is True
     assert m.release("eng-A", "kv_pool") is True
-
-
 
 
 def test_shared_claim_can_reattach_to_larger_existing_allocation(fake_cuda):
@@ -410,6 +409,7 @@ def test_claim_release_round_trip_via_rpc(gms):
     assert isinstance(resp2, ReleasePersistentAllocationResponse)
     assert resp2.released is True
 
+
 def test_repeated_shared_claim_from_one_session_is_idempotent(gms):
     conn = _make_dummy_conn()
     request = ClaimPersistentAllocationRequest(
@@ -458,6 +458,7 @@ def test_shared_claimant_cannot_release_peer_allocation_via_rpc(gms):
     )
     assert isinstance(response, ReleasePersistentAllocationResponse)
     assert response.released is True
+
 
 def test_export_returns_fd_via_rpc(gms):
     conn = _make_dummy_conn()

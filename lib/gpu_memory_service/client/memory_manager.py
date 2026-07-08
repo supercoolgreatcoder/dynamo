@@ -105,7 +105,9 @@ class _ScratchMapping:
     aligned_size: int  # CUDA-granularity server allocation size
     va_reserved_size: int  # scratch-rounded local VA reservation
     tag: str
-    mapped_size: int = 0  # bytes actually backed by scratch physical (0 if reserve-only)
+    mapped_size: int = (
+        0  # bytes actually backed by scratch physical (0 if reserve-only)
+    )
     scratch_handle: int = 0  # 0 after unmap_all_vas drops the physical
 
 
@@ -257,11 +259,7 @@ class GMSClientMemoryManager:
         # Persistent KV allocators use kv_pool-derived allocation tags such as
         # ``kv_pool:cuda0`` while connecting to the kv_cache GMS server. Refresh
         # those managers against kv_cache, not the allocation subtag.
-        if (
-            self._aborted
-            and self.tag is not None
-            and self._uses_canonical_socket_path
-        ):
+        if self._aborted and self.tag is not None and self._uses_canonical_socket_path:
             from gpu_memory_service.common.utils import (
                 get_socket_path,
                 invalidate_uuid_cache,
@@ -1042,6 +1040,26 @@ class GMSClientMemoryManager:
         allocator, also flips future allocations for the tag to server-backed
         routing.
         """
+        allocator_state = None
+        if self.tag is not None:
+            from gpu_memory_service.client.torch.allocator import _tag_states
+
+            state = _tag_states.get(self.tag)
+            if state is not None and state.manager is self:
+                required_grant = (
+                    GrantedLockType.RW_PERSISTENT
+                    if state.is_persistent
+                    else GrantedLockType.RW
+                )
+                if self.granted_lock_type != required_grant:
+                    raise RuntimeError(
+                        "prepare_scratch_for_reallocation requires "
+                        f"{required_grant.value} grant before disabling scratch routing: "
+                        f"tag={self.tag!r} "
+                        f"granted_lock_type={self.granted_lock_type}"
+                    )
+                allocator_state = state
+
         for base_va, scratch in self._scratch_mappings.items():
             if scratch.scratch_handle != 0:
                 raise RuntimeError(
@@ -1068,19 +1086,8 @@ class GMSClientMemoryManager:
                 "[GMS] Moved %d scratch VA records into _mappings for reallocation",
                 moved,
             )
-        if self.tag is not None:
-            from gpu_memory_service.client.torch.allocator import _tag_states
-
-            state = _tag_states.get(self.tag)
-            if state is not None and state.manager is self:
-                if self.granted_lock_type != GrantedLockType.RW:
-                    raise RuntimeError(
-                        "prepare_scratch_for_reallocation requires RW grant "
-                        "before disabling scratch routing: "
-                        f"tag={self.tag!r} "
-                        f"granted_lock_type={self.granted_lock_type}"
-                    )
-                state.is_scratch = False
+        if allocator_state is not None:
+            allocator_state.is_scratch = False
         return moved
 
     def prepare_reserve_only_scratch_for_persistent_remap(self) -> int:

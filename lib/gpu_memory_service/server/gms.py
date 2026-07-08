@@ -626,5 +626,4 @@ class GMS:
                 False,
             )
 
-
         raise ValueError(f"Unknown request: {msg_type.__name__}")

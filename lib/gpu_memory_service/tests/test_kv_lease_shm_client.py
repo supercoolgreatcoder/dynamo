@@ -46,12 +46,8 @@ def _crash_in_lease_transition(path: str, operation: str, phase: int) -> None:
         struct.pack_into("<I", buf, _LEASE_RECORD_OFFSET, _LEASE_STATE_TRANSITION)
         if phase >= 1:
             if operation == "acquire":
-                generation = struct.unpack_from(
-                    "<I", buf, _LEASE_RECORD_OFFSET + 4
-                )[0]
-                struct.pack_into(
-                    "<I", buf, _LEASE_RECORD_OFFSET + 4, generation + 1
-                )
+                generation = struct.unpack_from("<I", buf, _LEASE_RECORD_OFFSET + 4)[0]
+                struct.pack_into("<I", buf, _LEASE_RECORD_OFFSET + 4, generation + 1)
             else:
                 struct.pack_into("<Q", buf, _LEASE_RECORD_OFFSET + 8, 0)
         if phase >= 2:
