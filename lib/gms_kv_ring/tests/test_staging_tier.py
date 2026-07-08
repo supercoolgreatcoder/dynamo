@@ -23,7 +23,6 @@ import threading
 import zlib
 
 import pytest
-
 from gms_kv_ring.daemon.staging_tier import (
     AlreadyReady,
     CommitCorrupt,
@@ -62,9 +61,10 @@ def test_content_hash_modes_are_full_width_and_collision_resistant():
 
     data = b"content-address-contract"
     assert hash_fn_for_mode("sha256")(data) == hashlib.sha256(data).digest()
-    assert hash_fn_for_mode("blake2b_256")(data) == hashlib.blake2b(
-        data, digest_size=32
-    ).digest()
+    assert (
+        hash_fn_for_mode("blake2b_256")(data)
+        == hashlib.blake2b(data, digest_size=32).digest()
+    )
     assert len(hash_fn_for_mode("blake2b_256")(data)) == 32
 
 
@@ -426,9 +426,7 @@ def test_scrub_pins_slot_against_concurrent_capacity_eviction():
         assert tier._slots[content_hash].refcount == 1
         other_reservation = tier.reserve_or_wait(_hash(other), "B")
         assert isinstance(other_reservation, Reservation)
-        attempted.append(
-            tier.commit_or_reject(other_reservation.reservation_id, other)
-        )
+        attempted.append(tier.commit_or_reject(other_reservation.reservation_id, other))
         return original_read(ptr, size)
 
     alloc.read = read_while_reserving

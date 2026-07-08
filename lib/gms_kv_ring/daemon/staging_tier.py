@@ -689,6 +689,7 @@ class StagingTier:
 
             if slot.refcount == 0 and slot.state is _State.CORRUPT:
                 self._drop_slot_locked(handle.content_hash)
+
     # ----- Background sweeps -----
 
     def scrub_step(self) -> int:
