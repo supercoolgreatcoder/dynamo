@@ -2,8 +2,11 @@
 # SPDX-License-Identifier: Apache-2.0
 # ruff: noqa: E402
 
+import ast
 import asyncio
+import inspect
 import sys
+import textwrap
 import types
 from types import SimpleNamespace
 
@@ -11,16 +14,6 @@ import pytest
 
 
 def _install_sglang_test_compat_modules() -> None:
-    if "sglang.srt.observability.trace" not in sys.modules:
-        observability_module = sys.modules.setdefault(
-            "sglang.srt.observability",
-            types.ModuleType("sglang.srt.observability"),
-        )
-        trace_module = types.ModuleType("sglang.srt.observability.trace")
-        trace_module.set_global_trace_level = lambda *_args, **_kwargs: None
-        setattr(observability_module, "trace", trace_module)
-        sys.modules["sglang.srt.observability.trace"] = trace_module
-
     if "dynamo.sglang.register" not in sys.modules:
         register_module = types.ModuleType("dynamo.sglang.register")
 
@@ -61,6 +54,26 @@ class _FakeRuntime:
 class _FakePublisher:
     def __init__(self):
         self.component_gauges = SimpleNamespace(set_model_load_time=lambda value: None)
+
+
+def test_initial_active_does_not_warm_before_endpoint_serves():
+    tree = ast.parse(textwrap.dedent(inspect.getsource(init_llm.init_decode)))
+    initial_active = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.If)
+        and "early_failover_activation.enabled" in ast.unparse(node.test)
+    )
+
+    calls = [
+        node
+        for statement in initial_active.body
+        for node in ast.walk(statement)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "promotion_warmup"
+    ]
+    assert calls == []
 
 
 @pytest.mark.asyncio

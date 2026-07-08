@@ -264,7 +264,10 @@ async def init_decode(
 
     if early_failover_activation is not None and early_failover_activation.enabled:
         early_failover_activation.attach_to(handler)
-        await promotion_warmup()
+        # This engine acquired the lock before initialization, so it is the
+        # initial active rather than a resumed warm shadow. SGLang cannot run
+        # handler.generate reliably before the endpoint starts serving. The
+        # real promotion path below warms after resume and before registration.
     else:
         shadow_prewarmed = False
         if (
