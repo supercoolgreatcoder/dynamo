@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from gms_kv_ring.daemon.rpc_types import (
     Handler,
@@ -150,9 +150,7 @@ def handle_register_content_addresses_batch(daemon: "Daemon", msg: Message) -> R
                 else:
                     sealed = bool(sealed_raw)
                 generation_raw = item.get("generation")
-                generation = (
-                    None if generation_raw is None else int(generation_raw)
-                )
+                generation = None if generation_raw is None else int(generation_raw)
                 metadata = item.get("metadata")
                 if metadata is not None and not isinstance(metadata, dict):
                     metadata = None
@@ -217,10 +215,7 @@ def handle_register_content_address(daemon: "Daemon", msg: Message) -> Response:
     content_hash = required_digest(msg)
     engine_id = str(msg["engine_id"])
     ranges_raw = msg.get("ranges", []) or []
-    ranges = [
-        (int(r["layer"]), int(r["offset"]), int(r["size"]))
-        for r in ranges_raw
-    ]
+    ranges = [(int(r["layer"]), int(r["offset"]), int(r["size"])) for r in ranges_raw]
     sealed_raw = msg.get("sealed", True)
     if isinstance(sealed_raw, str):
         sealed = sealed_raw.lower() not in (
@@ -302,9 +297,7 @@ def handle_notify_kv_arrived(daemon: "Daemon", msg: Message) -> Response:
             )
             published += 1
         except Exception:  # noqa: BLE001
-            logger.exception(
-                "[Daemon] notify_kv_arrived: publish_stored failed"
-            )
+            logger.exception("[Daemon] notify_kv_arrived: publish_stored failed")
     return {"ok": True, "published": published}
 
 
@@ -365,8 +358,7 @@ def handle_restore_staging_ranges(daemon: "Daemon", msg: Message) -> Response:
             )
             if consume is None:
                 logger.warning(
-                    "restore-staging-ranges: hash=%s "
-                    "generation=%d not READY",
+                    "restore-staging-ranges: hash=%s " "generation=%d not READY",
                     content_hash.hex()[:16],
                     generation,
                 )
@@ -396,11 +388,7 @@ def handle_restore_staging_ranges(daemon: "Daemon", msg: Message) -> Response:
                     break
                 offset_i = int(offset)
                 size_i = int(size)
-                if (
-                    offset_i < 0
-                    or size_i <= 0
-                    or offset_i + size_i > int(ld.size)
-                ):
+                if offset_i < 0 or size_i <= 0 or offset_i + size_i > int(ld.size):
                     logger.warning(
                         "restore-staging-ranges: invalid "
                         "range layer=%d offset=%d size=%d "
@@ -487,11 +475,7 @@ def handle_restore_host_blocks(daemon: "Daemon", msg: Message) -> Response:
     with daemon._lock:
         dest_pool = daemon._pools.get(engine_id)
         src_pool = daemon._pools.get(src_engine_id)
-    if (
-        dest_pool is None
-        or src_pool is None
-        or dest_pool.restore_consumer is None
-    ):
+    if dest_pool is None or src_pool is None or dest_pool.restore_consumer is None:
         return {
             "ok": False,
             "error": "engine restore consumer or source pool not attached",
@@ -678,6 +662,7 @@ def handle_staging_scan(daemon: "Daemon", msg: Message) -> Response:
         for h, hit in raw_hits.items()
     }
     return {"ok": True, "hits": hits}
+
 
 HANDLERS: dict[str, Handler] = {
     "notify_kv_arrived": handle_notify_kv_arrived,

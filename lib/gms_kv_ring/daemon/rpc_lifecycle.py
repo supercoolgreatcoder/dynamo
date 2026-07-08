@@ -128,6 +128,7 @@ def handle_prune_storage(daemon: "Daemon", msg: Message) -> Response:
 def handle_storage_stats(daemon: "Daemon", msg: Message) -> Response:
     return {"ok": True, "stats": daemon.storage_stats()}
 
+
 HANDLERS: dict[str, Handler] = {
     "attach_engine_pool": handle_attach_engine_pool,
     "attach_evict_ring": handle_attach_evict_ring,

@@ -8,7 +8,6 @@ from __future__ import annotations
 import json
 import logging
 
-import pytest
 from gms_kv_ring.daemon.placement_publisher import LoggingPlacementPublisher
 
 

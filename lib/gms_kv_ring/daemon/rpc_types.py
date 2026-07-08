@@ -35,7 +35,9 @@ def error_response(exc: Exception) -> Response:
     return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
 
 
-def dispatch_table(daemon: "Daemon", msg: Message, handlers: dict[str, Handler]) -> Response:
+def dispatch_table(
+    daemon: "Daemon", msg: Message, handlers: dict[str, Handler]
+) -> Response:
     op = msg.get("op")
     handler = handlers.get(op) if isinstance(op, str) else None
     if handler is None:
