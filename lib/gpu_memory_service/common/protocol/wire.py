@@ -55,17 +55,23 @@ async def send_message(writer, msg: Message, fd: int = -1) -> None:
 
         def do_send_fd():
             raw_fd = transport_sock.fileno()
+            # os.dup shares the open file *description* with the asyncio transport socket, so:
+            #   (a) close the dup on EVERY path — detach() releases it without closing, so the
+            #       success path leaked an fd per FD-send (-> EMFILE -> daemon os._exit); and
+            #   (b) toggling blocking mode flips O_NONBLOCK on the *shared* description (i.e. on
+            #       the event-loop's transport socket), so save+restore it around send_fds.
             dup_fd = os.dup(raw_fd)
             try:
                 sock = socket.socket(fileno=dup_fd)
+                was_blocking = sock.getblocking()
                 try:
                     sock.setblocking(True)
                     socket.send_fds(sock, [frame], [fd])
                 finally:
+                    sock.setblocking(was_blocking)
                     sock.detach()
-            except Exception:
+            finally:
                 os.close(dup_fd)
-                raise
 
         await asyncio.get_running_loop().run_in_executor(None, do_send_fd)
     else:

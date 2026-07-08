@@ -267,9 +267,28 @@ class GMSRPCServer:
                     return
                 continue
             except (InvalidTransition, AssertionError) as exc:
+                # Genuine FSM/invariant corruption: the daemon's in-memory state can no longer be
+                # trusted, so failing hard is correct.
                 fail("fatal server error", exc_info=exc)
             except Exception as exc:
-                fail("fatal server error", exc_info=exc)
+                # X4: an unexpected *per-request* error must NOT os._exit the daemon — that frees
+                # every persistent KV pool on the GPU (persistent allocations live only in daemon
+                # memory). Log it, tell the client, and drop THIS connection; the daemon survives so
+                # other engines' KV stays resident. Only invariant corruption above is fatal.
+                logger.error(
+                    "Unexpected error handling %s on session %s: %s",
+                    type(msg).__name__,
+                    conn.session_id,
+                    exc,
+                    exc_info=exc,
+                )
+                try:
+                    await send_message(
+                        conn.writer, ErrorResponse(error=f"internal error: {exc}")
+                    )
+                except Exception:
+                    pass
+                return
 
             try:
                 await send_message(conn.writer, response, fd)

@@ -236,6 +236,13 @@ async def release_attached_gms_failover_lock(
 
 
 def _failover_reclaim_foreign_leases_enabled() -> bool:
+    # F1: reclaiming another owner's leases is only safe once the fence has
+    # actually fired — the epoch bump is what guarantees the previous primary
+    # (and any child that outlived the flock release) fails closed before we
+    # re-hand its blocks out. With the fence disabled there is no such barrier,
+    # so reclaim must be inert regardless of its own env toggle.
+    if not _kv_fence_epoch_enabled():
+        return False
     return _truthy_env("DYN_GMS_FAILOVER_RECLAIM_FOREIGN_LEASES", default=True)
 
 
@@ -324,7 +331,63 @@ async def run_gms_failover_post_lock_fence(
             fence_ms,
         )
         await asyncio.sleep(fence_ms / 1000.0)
+    _bump_kv_lease_epoch_after_fence(backend_name, role)
     _reclaim_foreign_kv_leases_after_fence(backend_name, role)
+
+
+def _kv_fence_epoch_enabled() -> bool:
+    # On by default (F1). The bump is now cohort-based and self-adopting: the
+    # promoting engine stamps (epoch+1, its cohort_hash), and its own lease
+    # clients — including EngineCore/scheduler subprocesses that inherit the
+    # cohort env — self-adopt on the next acquire, so enabling the fence no
+    # longer self-fences the promoted engine (the A1 wrong-process bug is gone).
+    # See kv_lease_client.promote_kv_lease_epoch_in_shm_dir / _check_fence (X1).
+    return _truthy_env("DYN_GMS_KV_FENCE_EPOCH", default=True)
+
+
+def _bump_kv_lease_epoch_after_fence(backend_name: str, role: str) -> None:
+    """Fence older incarnations out of the shared KV pool by bumping the epoch.
+
+    Runs on the promoting engine right after it won the failover lock. This is
+    the X1 fencing token: a fenced-out zombie primary fails closed on its next
+    lease acquire (a single u64 compare on the hot path). Best-effort and gated.
+    """
+
+    if not _kv_fence_epoch_enabled():
+        return
+    if not _truthy_env("GMS_KV_LEASES") and not _truthy_env(
+        f"GMS_{_normalize_lease_engine_name(backend_name).upper()}_KV_LEASES"
+    ):
+        return
+    try:
+        from gpu_memory_service.integrations.common.kv_lease_client import (
+            promote_kv_lease_epoch_in_shm_dir,
+            resolve_lease_device,
+        )
+
+        # Single promotion path: stamp (epoch+1, my cohort_hash) into every
+        # rank-local ring header under its flock. This process's own live
+        # clients and its scheduler/EngineCore subprocesses share the cohort and
+        # self-adopt the new epoch on their next acquire (no live-client
+        # registry, no separate adopt step) — so this raw dir-level bump is
+        # correct whether or not warm clients exist in THIS process.
+        engine = _normalize_lease_engine_name(backend_name)
+        device = resolve_lease_device(f"GMS_{engine.upper()}_KV_LEASE_DEVICE")
+        new_epoch = promote_kv_lease_epoch_in_shm_dir(engine, device)
+        if new_epoch:
+            logger.info(
+                "[GMS failover] %s %s bumped KV lease failover epoch to %d",
+                backend_name,
+                role,
+                new_epoch,
+            )
+    except Exception:
+        logger.debug(
+            "[GMS failover] %s %s KV lease epoch bump skipped",
+            backend_name,
+            role,
+            exc_info=True,
+        )
 
 
 def _controller_from(owner: Any) -> Any:
@@ -492,7 +555,15 @@ async def prepare_gms_failover(
         backend_name,
         role,
     )
-    await controller.quiesce(tag_list)
+    # H-D: only the SGLang controller exposes quiesce() (an alias for pause);
+    # the vLLM and TRT-LLM controllers expose pause()/resume()/mark_resumed()
+    # only, so an unconditional controller.quiesce() raised AttributeError and
+    # left those warm shadows cold. Prefer quiesce when present, else pause.
+    quiesce = getattr(controller, "quiesce", None)
+    if quiesce is not None:
+        await quiesce(tag_list)
+    else:
+        await controller.pause(tag_list)
 
     set_health_status = getattr(runtime, "set_health_status", None)
     keep_shadow_ready = _keep_shadow_ready()

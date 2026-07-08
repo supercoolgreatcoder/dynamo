@@ -389,3 +389,53 @@ async def test_release_attached_gms_failover_lock_without_lock_is_noop():
     released = await release_attached_gms_failover_lock(handler, backend_name="test")
 
     assert released is False
+
+
+# --- F1: fence-on-by-default + reclaim gated on the fence (review-v2) ----------
+
+from dynamo.common import gms_failover as _fo  # noqa: E402
+
+
+def test_kv_fence_epoch_enabled_by_default(monkeypatch):
+    """F1: the epoch fence is on unless explicitly disabled (cohort model is safe)."""
+    monkeypatch.delenv("DYN_GMS_KV_FENCE_EPOCH", raising=False)
+    assert _fo._kv_fence_epoch_enabled() is True
+    monkeypatch.setenv("DYN_GMS_KV_FENCE_EPOCH", "0")
+    assert _fo._kv_fence_epoch_enabled() is False
+
+
+def test_foreign_lease_reclaim_requires_the_fence(monkeypatch):
+    """Reclaim must be inert when the fence is off — no fence, no reclaim barrier."""
+    monkeypatch.delenv("DYN_GMS_FAILOVER_RECLAIM_FOREIGN_LEASES", raising=False)
+
+    # Fence on (default) → reclaim allowed.
+    monkeypatch.setenv("DYN_GMS_KV_FENCE_EPOCH", "1")
+    assert _fo._failover_reclaim_foreign_leases_enabled() is True
+
+    # Fence off → reclaim forced off regardless of its own toggle.
+    monkeypatch.setenv("DYN_GMS_KV_FENCE_EPOCH", "0")
+    monkeypatch.setenv("DYN_GMS_FAILOVER_RECLAIM_FOREIGN_LEASES", "1")
+    assert _fo._failover_reclaim_foreign_leases_enabled() is False
+
+
+@pytest.mark.asyncio
+async def test_bump_uses_single_dir_level_cohort_path(monkeypatch):
+    """The bump path is promote_kv_lease_epoch_in_shm_dir only (no promote_local)."""
+    monkeypatch.setenv("DYN_GMS_KV_FENCE_EPOCH", "1")
+    monkeypatch.setenv("GMS_KV_LEASES", "1")
+
+    calls = {}
+
+    import gpu_memory_service.integrations.common.kv_lease_client as klc
+
+    monkeypatch.setattr(klc, "resolve_lease_device", lambda *_a, **_k: 0)
+    monkeypatch.setattr(
+        klc,
+        "promote_kv_lease_epoch_in_shm_dir",
+        lambda engine, device, **kw: calls.setdefault("dir", (engine, device)) or 3,
+    )
+    # There must be no live-client bump helper left to call.
+    assert not hasattr(klc, "promote_local_kv_lease_epoch")
+
+    await run_gms_failover_post_lock_fence(backend_name="sglang", role="shadow")
+    assert calls["dir"] == ("sglang", 0)
