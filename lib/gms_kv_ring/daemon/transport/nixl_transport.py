@@ -478,53 +478,55 @@ class NixlTransport:
     # ----- memory registration -----
 
     def register_buffer(self, ptr: int, size: int, label: str = "") -> None:
-        """Register a host-pinned buffer with NIXL so peers can RDMA
-        into / out of it. Idempotent for the same (ptr, size) pair."""
-        if self._closed:
-            raise TransportClosed("transport is closed")
+        """Register a host-pinned buffer with NIXL.
+
+        Registration is idempotent for one ``(ptr, size)`` pair and serialized
+        with deregistration so a concurrent publisher cannot inherit a region
+        while its previous registration is being torn down.
+        """
         key = (int(ptr), int(size))
         with self._lock:
+            if self._closed:
+                raise TransportClosed("transport is closed")
             if key in self._registered:
                 return
-        try:
-            self._agent.register_memory(
-                [(int(ptr), int(size), 0, label or f"buf@{ptr:x}")],
-                mem_type="DRAM",
-            )
-        except Exception as exc:
-            raise TransportClosed(
-                f"register_memory({ptr:x}, {size}) failed: {exc}",
-            ) from exc
-        with self._lock:
+            try:
+                self._agent.register_memory(
+                    [(key[0], key[1], 0, label or f"buf@{ptr:x}")],
+                    mem_type="DRAM",
+                )
+            except Exception as exc:
+                raise TransportClosed(
+                    f"register_memory({ptr:x}, {size}) failed: {exc}",
+                ) from exc
             self._registered.add(key)
 
     def deregister_buffer(self, ptr: int, size: int, label: str = "") -> None:
-        """Tear down a NIXL registration created by register_buffer (X6).
+        """Tear down a NIXL registration created by :meth:`register_buffer`.
 
-        Best-effort and idempotent: without this the daemon leaked one NIXL
-        registration per host region it ever exported. Safe to call after the
-        pin has been dropped.
+        Failure is reported to the lease registry, which must retain the pin;
+        silently freeing a still-registered buffer would permit remote UAF.
         """
         key = (int(ptr), int(size))
         with self._lock:
             if key not in self._registered:
                 return
+            if self._closed:
+                self._registered.discard(key)
+                return
+            deregister = getattr(self._agent, "deregister_memory", None)
+            if deregister is None:
+                raise TransportClosed("NIXL agent does not support deregister_memory")
+            try:
+                deregister(
+                    [(key[0], key[1], 0, label or f"buf@{ptr:x}")],
+                    mem_type="DRAM",
+                )
+            except Exception as exc:  # noqa: BLE001
+                raise TransportClosed(
+                    f"deregister_memory({ptr:x}, {size}) failed: {exc}",
+                ) from exc
             self._registered.discard(key)
-        if self._closed:
-            return
-        deregister = getattr(self._agent, "deregister_memory", None)
-        if deregister is None:
-            return
-        try:
-            deregister(
-                [(int(ptr), int(size), 0, label or f"buf@{ptr:x}")],
-                mem_type="DRAM",
-            )
-        except Exception:  # noqa: BLE001
-            logger.debug(
-                "[NixlTransport] deregister_memory(%#x, %d) failed", ptr, size,
-                exc_info=True,
-            )
 
     # ----- outbound transfer -----
 

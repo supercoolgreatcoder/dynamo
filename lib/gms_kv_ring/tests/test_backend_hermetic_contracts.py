@@ -167,6 +167,46 @@ def test_nixl_transfer_error_still_releases_every_resource():
     assert len(agent.deregistered) == 2
 
 
+def test_nixl_transport_keeps_registration_after_deregister_failure():
+    from gms_kv_ring.daemon.transport.nixl_transport import (
+        NixlTransport,
+        TransportClosed,
+    )
+
+    class Agent:
+        def __init__(self):
+            self.fail_deregister = True
+            self.registered = []
+            self.deregistered = []
+
+        def register_memory(self, descriptors, *, mem_type):
+            self.registered.append((descriptors, mem_type))
+
+        def deregister_memory(self, descriptors, *, mem_type):
+            self.deregistered.append((descriptors, mem_type))
+            if self.fail_deregister:
+                raise RuntimeError("busy")
+
+    agent = Agent()
+    transport = object.__new__(NixlTransport)
+    transport._agent = agent
+    transport._closed = False
+    transport._lock = threading.Lock()
+    transport._registered = set()
+
+    transport.register_buffer(0x1000, 64, label="host")
+    transport.register_buffer(0x1000, 64, label="host")
+    assert len(agent.registered) == 1
+
+    with pytest.raises(TransportClosed, match="deregister_memory"):
+        transport.deregister_buffer(0x1000, 64, label="host")
+    assert (0x1000, 64) in transport._registered
+
+    agent.fail_deregister = False
+    transport.deregister_buffer(0x1000, 64, label="host")
+    assert (0x1000, 64) not in transport._registered
+
+
 class _TransportAgent:
     def __init__(self, states=("IN_PROGRESS", "DONE"), metadata=True):
         self.states = list(states)
