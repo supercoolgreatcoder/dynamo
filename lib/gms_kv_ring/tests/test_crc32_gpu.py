@@ -125,19 +125,18 @@ def test_gds_promote_verifies_destination_in_hbm(tmp_path):
     import time
 
     from gms_kv_ring.daemon.backends_nixl import (
-        NixlBackend,
         _HEADER_FMT,
         _MAGIC,
-        _NixlSlot,
         _VERSION,
+        NixlBackend,
+        _NixlSlot,
     )
 
     payload = bytearray((i * 37 & 0xFF) for i in range(4097))
     crc = zlib.crc32(payload) & 0xFFFFFFFF
     path = tmp_path / "slot.bin"
     path.write_bytes(
-        struct.pack(_HEADER_FMT, _MAGIC, _VERSION, crc, len(payload), 0)
-        + payload
+        struct.pack(_HEADER_FMT, _MAGIC, _VERSION, crc, len(payload), 0) + payload
     )
     backend = object.__new__(NixlBackend)
     backend.plugin = "GDS"

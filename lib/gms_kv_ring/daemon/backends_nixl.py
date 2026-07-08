@@ -1259,11 +1259,7 @@ class NixlBackend(StorageBackend):
     def release_engine(self, engine_id) -> int:
         eid = str(engine_id)
         with self._lock:
-            items = [
-                (key, slot)
-                for key, slot in self._slots.items()
-                if key[0] == eid
-            ]
+            items = [(key, slot) for key, slot in self._slots.items() if key[0] == eid]
             removed = self._commit_removals_locked(items)
         for _key, slot in removed:
             self._free_file(slot)

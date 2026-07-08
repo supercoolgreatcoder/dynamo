@@ -42,13 +42,21 @@ def test_storage_release_does_not_delete_replacement(tmp_path):
     first_bytes = b"first generation"
     first_buf = ctypes.create_string_buffer(first_bytes)
     first = st.demote(
-        "eng", 0, 0, ctypes.addressof(first_buf), len(first_bytes),
+        "eng",
+        0,
+        0,
+        ctypes.addressof(first_buf),
+        len(first_bytes),
         zlib.crc32(first_bytes),
     )
     second_bytes = b"second generation"
     second_buf = ctypes.create_string_buffer(second_bytes)
     second = st.demote(
-        "eng", 0, 0, ctypes.addressof(second_buf), len(second_bytes),
+        "eng",
+        0,
+        0,
+        ctypes.addressof(second_buf),
+        len(second_bytes),
         zlib.crc32(second_bytes),
     )
 

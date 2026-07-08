@@ -168,14 +168,10 @@ def test_nixl_backend_release_slot_unlinks(tmp_path):
 
 def test_nixl_release_keeps_slot_when_tombstone_fails(tmp_path, monkeypatch):
     manifest = str(tmp_path / "manifest.jsonl")
-    nb = NixlBackend(
-        str(tmp_path / "store"), plugin="POSIX", manifest_path=manifest
-    )
+    nb = NixlBackend(str(tmp_path / "store"), plugin="POSIX", manifest_path=manifest)
     payload = b"durable" * 128
     src_addr, _src_buf = _pinned(payload)
-    slot = nb.demote(
-        "eng", 0, 0, src_addr, len(payload), zlib.crc32(payload)
-    )
+    slot = nb.demote("eng", 0, 0, src_addr, len(payload), zlib.crc32(payload))
 
     def fail_tombstone(*_args):
         raise OSError("manifest fsync failed")

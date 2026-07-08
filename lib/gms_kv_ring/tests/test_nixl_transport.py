@@ -46,7 +46,7 @@ if not os.environ.get("GMS_KVR_TEST_NIXL_TRANSPORT"):
 
 def _probe_ucx_loopback() -> None:
     """Contain native UCX capability failures in a sacrificial process."""
-    probe = r'''
+    probe = r"""
 import ctypes, hashlib, socket
 from gms_kv_ring.daemon.transport import NixlTransport
 
@@ -75,7 +75,7 @@ finally:
         a.close()
     if b is not None:
         b.close()
-'''
+"""
     try:
         result = subprocess.run(
             [sys.executable, "-c", probe],
