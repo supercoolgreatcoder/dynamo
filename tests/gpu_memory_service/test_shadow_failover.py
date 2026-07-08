@@ -159,9 +159,9 @@ def _resume_shadow_after_primary_failover(
         result = resume_future.result(timeout=resume_timeout_s)
         kv_with_shadow = kv_cache_gms.get_runtime_state()
         assert kv_with_shadow.state == ServerState.RW
-        assert kv_with_shadow.allocation_count == kv_with_primary.allocation_count, (
-            "failover changed the committed shared KV allocation count"
-        )
+        assert (
+            kv_with_shadow.allocation_count == kv_with_primary.allocation_count
+        ), "failover changed the committed shared KV allocation count"
         return result
 
 

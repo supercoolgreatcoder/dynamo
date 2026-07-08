@@ -201,7 +201,9 @@ def _patch_disable_mnnvl() -> None:
     try:
         from tensorrt_llm import _mnnvl_utils as _mn
     except Exception:  # pragma: no cover - import shape varies by version
-        logger.debug("[GMS] could not import _mnnvl_utils to disable MNNVL", exc_info=True)
+        logger.debug(
+            "[GMS] could not import _mnnvl_utils to disable MNNVL", exc_info=True
+        )
         return
     cls = getattr(_mn, "MnnvlMemory", None)
     if cls is None or getattr(cls, "_gms_mnnvl_disabled", False):
@@ -216,7 +218,9 @@ def _patch_disable_mnnvl() -> None:
         logger.debug("[GMS] failed to patch supports_mnnvl", exc_info=True)
         return
     cls._gms_mnnvl_disabled = True
-    logger.info("[GMS] disabled MNNVL probe (avoids nvml NvLink-capability crash, multi-node)")
+    logger.info(
+        "[GMS] disabled MNNVL probe (avoids nvml NvLink-capability crash, multi-node)"
+    )
 
 
 def _patch_warmup_lease_bypass() -> None:
@@ -230,10 +234,12 @@ def _patch_warmup_lease_bypass() -> None:
     rank-divergence -> captured-all-reduce deadlock. Per-request leases (failover) unaffected.
     """
     try:
-        from tensorrt_llm._torch.pyexecutor.model_engine import PyTorchModelEngine
         from gpu_memory_service.integrations.trtllm import install_kv_leases_v2 as _kv
+        from tensorrt_llm._torch.pyexecutor.model_engine import PyTorchModelEngine
     except Exception:  # pragma: no cover - import shape varies by version
-        logger.debug("[GMS] could not import PyTorchModelEngine for warmup bypass", exc_info=True)
+        logger.debug(
+            "[GMS] could not import PyTorchModelEngine for warmup bypass", exc_info=True
+        )
         return
     if getattr(PyTorchModelEngine, "_gms_warmup_bypass_patched", False):
         return
@@ -268,10 +274,7 @@ def _patch_hang_detector_timeout() -> None:
     checkpoint too), so a small value is warmup-safe and won't false-positive.
     """
     try:
-        from gpu_memory_service.common.serving_timeout import (
-            enabled,
-            serving_timeout_s,
-        )
+        from gpu_memory_service.common.serving_timeout import enabled, serving_timeout_s
     except Exception:  # pragma: no cover
         return
     if not enabled():
@@ -279,7 +282,9 @@ def _patch_hang_detector_timeout() -> None:
     try:
         from tensorrt_llm._torch.pyexecutor import hang_detector as _hd
     except Exception:  # pragma: no cover - import shape varies by version
-        logger.debug("[GMS serving-timeout] could not import HangDetector", exc_info=True)
+        logger.debug(
+            "[GMS serving-timeout] could not import HangDetector", exc_info=True
+        )
         return
     cls = getattr(_hd, "HangDetector", None)
     if cls is None or getattr(cls, "_gms_timeout_patched", False):
@@ -379,13 +384,31 @@ def _install_mpi_worker_gms(model_loader_extra_config: dict[str, Any] | None) ->
         # DYN_GMS_* carries the serving-timeout config; TORCH_NCCL_* carries the NCCL
         # watchdog/teardown knobs — both must reach the spawned ranks where the engine runs.
         _prefixes = (
-            "TRTLLM", "TLLM", "GMS", "CUDA", "NCCL", "HF_", "OMPI_", "MPI",
-            "DYN_GMS", "TORCH_NCCL",
+            "TRTLLM",
+            "TLLM",
+            "GMS",
+            "CUDA",
+            "NCCL",
+            "HF_",
+            "OMPI_",
+            "MPI",
+            "DYN_GMS",
+            "TORCH_NCCL",
         )
         _exact = {
-            "CUDA_HOME", "CUDA_PATH", "LIBRARY_PATH", "LD_LIBRARY_PATH", "PATH",
-            "CPATH", "CC", "CXX", "TRITON_LIBCUDA_PATH", "PYTHONPATH",
-            "FAILOVER_LOCK_PATH", "HOME", "TLLM_WORKER_USE_SINGLE_PROCESS",
+            "CUDA_HOME",
+            "CUDA_PATH",
+            "LIBRARY_PATH",
+            "LD_LIBRARY_PATH",
+            "PATH",
+            "CPATH",
+            "CC",
+            "CXX",
+            "TRITON_LIBCUDA_PATH",
+            "PYTHONPATH",
+            "FAILOVER_LOCK_PATH",
+            "HOME",
+            "TLLM_WORKER_USE_SINGLE_PROCESS",
         }
         env = {
             k: v
@@ -402,6 +425,4 @@ def _install_mpi_worker_gms(model_loader_extra_config: dict[str, Any] | None) ->
 
     cls._start_mpi_pool = _start_mpi_pool
     cls._gms_worker_init_patched = True
-    logger.info(
-        "[GMS] patched MpiPoolSession: propagate GMS env + init workers (TP>1)"
-    )
+    logger.info("[GMS] patched MpiPoolSession: propagate GMS env + init workers (TP>1)")
