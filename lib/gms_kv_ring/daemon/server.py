@@ -41,19 +41,20 @@ import os
 import struct
 import threading
 import time
-from dataclasses import dataclass
+import zlib
 from typing import Optional
+
+from gms_kv_ring.daemon.consumers import (
+    EnginePool,
+    LayerDesc,
+    _ensure_cuda_context,
+    _EvictConsumer,
+    _RestoreConsumer,
+    _SourceClientPool,
+)
 
 logger = logging.getLogger(__name__)
 
-from gms_kv_ring.daemon.rpc_content import HANDLERS as CONTENT_HANDLERS
-from gms_kv_ring.daemon.rpc_lifecycle import HANDLERS as LIFECYCLE_HANDLERS
-
-
-from gms_kv_ring.daemon.consumers import (
-    EnginePool, LayerDesc, _EvictConsumer, _RestoreConsumer,
-    _SourceClientPool, _ensure_cuda_context,
-)
 
 class Daemon:
     """One-GPU daemon serving at most one ACTIVE engine at a time.
@@ -147,10 +148,7 @@ class Daemon:
             #   blake2b_256      - cryptographic; sync verify
             import os as _os
 
-            from gms_kv_ring.daemon.staging_tier import (
-                StagingTier,
-                hash_fn_for_mode,
-            )
+            from gms_kv_ring.daemon.staging_tier import StagingTier, hash_fn_for_mode
 
             hash_mode = _os.environ.get("GMS_HASH_MODE", "sha256")
             # Fail closed rather than silently selecting an algorithm which
@@ -571,6 +569,34 @@ class Daemon:
                 if self._scrub_idle_s > 0:
                     if self._scrub_stop.wait(self._scrub_idle_s):
                         return
+            # H1: TTL-sweep outstanding leased remote descriptors on the same
+            # low cadence, not only opportunistically on publish. Without a real
+            # timer, a region whose transfer never acks would hold its pin +
+            # NIXL registration until the next publish (or forever on an idle
+            # daemon). Cheap: O(expired), off the remote-read hot path.
+            reg = getattr(self, "_leased_region_registry", None)
+            if reg is not None:
+                try:
+                    reg.sweep()
+                except Exception:  # noqa: BLE001
+                    logger.debug(
+                        "[Daemon] leased_region_registry periodic sweep failed",
+                        exc_info=True,
+                    )
+            # H1: reclaim receive-side staging reservations whose owner went
+            # silent past reservation_stale_s. This janitor existed but was never
+            # driven (no TTL owner); the periodic loop is that owner now. Only
+            # evicts RESERVED slots past the staleness threshold, so an in-flight
+            # transfer is never reclaimed out from under a live receiver.
+            staging = getattr(self, "staging_tier", None)
+            if staging is not None:
+                try:
+                    staging.evict_stale_reservations()
+                except Exception:  # noqa: BLE001
+                    logger.debug(
+                        "[Daemon] staging stale-reservation eviction failed",
+                        exc_info=True,
+                    )
             # End-of-pass sleep before the next full scan. A
             # zero-slot pool also lands here, so we still wake up
             # periodically for new slots.
@@ -1674,12 +1700,27 @@ class Daemon:
     def stop(self) -> None:
         if self._stop_event is not None:
             self._stop_event.set()
+        # Release any outstanding leased host regions (drop pins + deregister)
+        # before tearing down the transport they registered against (X6/X7).
+        registry = getattr(self, "_leased_region_registry", None)
+        if registry is not None:
+            try:
+                registry.close()
+            except Exception:
+                logger.exception("[Daemon] leased_region_registry.close failed")
         # Tear down cross-node transport if it was constructed.
         if self.transport is not None:
             try:
                 self.transport.close()
             except Exception:
                 logger.exception("[Daemon] transport.close failed")
+        # If a live-agent deregistration failed, close() revoked remote access.
+        # Retry now so retained fail-safe pins can be released before shutdown.
+        if registry is not None and len(registry):
+            try:
+                registry.close()
+            except Exception:
+                logger.exception("[Daemon] post-transport registry close failed")
         if self.placement_publisher is not None:
             try:
                 self.placement_publisher.close()
@@ -1838,32 +1879,61 @@ class Daemon:
     def _staging_hit_placement_metadata(
         self, hit, extra: Optional[dict] = None
     ) -> Optional[dict]:
-        if self.transport is None:
+        if self.transport is None or self.staging_tier is None:
             return extra
+        handle = self.staging_tier.begin_consume(
+            hit.content_hash,
+            int(hit.generation),
+        )
+        if handle is None:
+            return extra
+        pinned = self.staging_tier.consume_pointer(handle)
+        if pinned is None:
+            self.staging_tier.end_consume(handle)
+            return extra
+        ptr, size, _crc32 = pinned
+        registry = self._host_region_registry()
+        region_id = None
         try:
-            self.transport.register_buffer(
-                int(hit.bytes_ptr),
-                int(hit.bytes_size),
-                label=f"staging:{hit.content_hash.hex()[:8]}",
+            # A callable is a valid registry lease. Its lifetime pins the READY
+            # staging slot, preventing LRU eviction while a peer can READ it.
+            region_id = registry.register(
+                lambda: self.staging_tier.end_consume(handle),
+                ptr,
+                size,
+                generation=int(hit.generation),
+                daemon_epoch=int(getattr(self, "epoch", 0)),
             )
             descriptor = {
-                "remote_ptr": int(hit.bytes_ptr),
-                "ptr": int(hit.bytes_ptr),
-                "size": int(hit.bytes_size),
+                "remote_ptr": ptr,
+                "ptr": ptr,
+                "size": size,
                 "tier": "external",
                 "ranges": [
                     {
-                        "remote_ptr": int(hit.bytes_ptr),
-                        "ptr": int(hit.bytes_ptr),
-                        "size": int(hit.bytes_size),
+                        "remote_ptr": ptr,
+                        "ptr": ptr,
+                        "size": size,
                         "tier": "external",
+                        "region_id": int(region_id),
+                        "daemon_epoch": int(getattr(self, "epoch", 0)),
+                        "crc32": int(_crc32),
                     }
                 ],
                 "generation": int(hit.generation),
+                "daemon_epoch": int(getattr(self, "epoch", 0)),
                 "sealed": True,
             }
-            return self._gms_source_metadata(descriptor, extra)
+            metadata = self._gms_source_metadata(descriptor, extra)
+            if metadata is extra:
+                registry.release(region_id)
+            return metadata
         except Exception:  # noqa: BLE001
+            # register() takes ownership only after its callback succeeds.
+            if region_id is None:
+                self.staging_tier.end_consume(handle)
+            else:
+                registry.release(region_id)
             logger.exception(
                 "[Daemon] failed to build staging GMS placement descriptor"
             )
@@ -1890,9 +1960,33 @@ class Daemon:
             descriptor["generation"] = int(generation)
         return descriptor
 
+    def _host_region_registry(self):
+        # Lazily created so __init__ ordering is untouched. Holds the host-tier
+        # pin + NIXL registration for every exported region until TTL/ack, so the
+        # raw pointer in a descriptor can never outlive its pin (X6/X7).
+        reg = getattr(self, "_leased_region_registry", None)
+        if reg is None:
+            from gms_kv_ring.daemon.leased_region_registry import LeasedRegionRegistry
+
+            try:
+                ttl_s = float(os.environ.get("GMS_KVR_HOST_REGION_TTL_S", "60"))
+            except ValueError:
+                ttl_s = 60.0
+            reg = self._leased_region_registry = LeasedRegionRegistry(
+                register=getattr(self.transport, "register_buffer", None),
+                deregister=getattr(self.transport, "deregister_buffer", None),
+                ttl_s=max(1.0, ttl_s),
+            )
+        return reg
+
     def _host_content_descriptor(self, content_hash: bytes, ca: dict) -> Optional[dict]:
         if self.transport is None or self.host_tier is None:
             return None
+        registry = self._host_region_registry()
+        registry.sweep()
+        generation = int(ca["generation"]) if ca.get("generation") is not None else 0
+        daemon_epoch = int(getattr(self, "epoch", 0))
+        region_ids: list[int] = []
         try:
             engine_id = ca["engine_id"]
             regions = []
@@ -1900,24 +1994,35 @@ class Daemon:
             for layer, offset, size in ca.get("ranges") or []:
                 lease = self.host_tier.pin(engine_id, layer, offset)
                 if lease is None:
+                    for region_id in region_ids:
+                        registry.release(region_id)
                     return None
-                with lease as slot:
-                    self.transport.register_buffer(
-                        slot.host_ptr,
+                try:
+                    region_id = registry.register(
+                        lease,
+                        int(lease.slot.host_ptr),
                         int(size),
-                        label=f"host:{content_hash.hex()[:8]}:{int(layer)}",
+                        generation=generation,
+                        daemon_epoch=daemon_epoch,
                     )
-                    regions.append(
-                        {
-                            "remote_ptr": int(slot.host_ptr),
-                            "ptr": int(slot.host_ptr),
-                            "size": int(size),
-                            "tier": "host",
-                            "layer": int(layer),
-                            "offset": int(offset),
-                        }
-                    )
-                    total_size += int(size)
+                except Exception:
+                    lease.release()
+                    raise
+                region_ids.append(region_id)
+                regions.append(
+                    {
+                        "remote_ptr": int(lease.slot.host_ptr),
+                        "ptr": int(lease.slot.host_ptr),
+                        "size": int(size),
+                        "tier": "host",
+                        "layer": int(layer),
+                        "offset": int(offset),
+                        "region_id": int(region_id),
+                        "daemon_epoch": daemon_epoch,
+                        "crc32": int(lease.slot.crc),
+                    }
+                )
+                total_size += int(size)
             if not regions:
                 return None
             descriptor = {
@@ -1927,11 +2032,14 @@ class Daemon:
                 "tier": "host",
                 "ranges": regions,
                 "sealed": True,
+                "daemon_epoch": daemon_epoch,
             }
             if ca.get("generation") is not None:
                 descriptor["generation"] = int(ca["generation"])
             return descriptor
         except Exception:  # noqa: BLE001
+            for region_id in region_ids:
+                registry.release(region_id)
             logger.exception("[Daemon] failed to build host GMS placement descriptor")
             return None
 
@@ -1944,13 +2052,18 @@ class Daemon:
         descriptor = self._host_content_descriptor(content_hash, entry)
         if descriptor is None:
             return extra
-        return self._gms_source_metadata(descriptor, extra)
+        metadata = self._gms_source_metadata(descriptor, extra)
+        if metadata is extra:
+            registry = self._host_region_registry()
+            for region in descriptor.get("ranges", []):
+                registry.release(int(region["region_id"]))
+        return metadata
 
     @staticmethod
     def _read_descriptor_regions(
         descriptor: dict,
-    ) -> tuple[list[tuple[int, int]], int] | None:
-        """Return remote READ regions in copy order for one descriptor."""
+    ) -> tuple[list[tuple[int, int, Optional[int]]], int] | None:
+        """Return ``(ptr, size, crc32?)`` regions in remote READ order."""
         if not isinstance(descriptor, dict):
             return None
         sealed_raw = descriptor.get("sealed", True)
@@ -1971,7 +2084,7 @@ class Daemon:
         if not raw_ranges:
             raw_ranges = [descriptor]
 
-        regions: list[tuple[int, int]] = []
+        regions: list[tuple[int, int, Optional[int]]] = []
         for region in raw_ranges:
             if not isinstance(region, dict):
                 return None
@@ -1979,14 +2092,16 @@ class Daemon:
             try:
                 ptr = int(ptr_raw)
                 size = int(region.get("size", 0))
+                crc_raw = region.get("crc32")
+                expected_crc = None if crc_raw is None else int(crc_raw) & 0xFFFFFFFF
             except (TypeError, ValueError):
                 return None
             if ptr <= 0 or size <= 0:
                 return None
-            regions.append((ptr, size))
+            regions.append((ptr, size, expected_crc))
         if not regions:
             return None
-        return regions, sum(size for _ptr, size in regions)
+        return regions, sum(size for _ptr, size, _crc in regions)
 
     def _read_bootstrap_into_staging(self, msg: dict) -> dict:
         """NIXL-READ router placement descriptors into local staging.
@@ -2146,7 +2261,7 @@ class Daemon:
             for block in chunk:
                 local_ptr = self.staging_receive_buffer.ptr_at(block["offset"])
                 cursor = 0
-                for remote_ptr, size in block["regions"]:
+                for remote_ptr, size, _expected_crc in block["regions"]:
                     xfer_items.append((local_ptr + cursor, size, remote_ptr))
                     cursor += size
                 if cursor != block["total_size"]:
@@ -2200,6 +2315,29 @@ class Daemon:
                         block["total_size"],
                     )
                 if payload is None:
+                    continue
+                # Router block keys hash token prefixes, not the KV payload,
+                # so comparing payload bytes to content_hash rejects valid data.
+                # Validate the per-region payload CRC carried by leased host and
+                # staging descriptors instead; descriptors without CRC retain the
+                # NIXL transport-integrity behavior used by HBM sources.
+                cursor = 0
+                crc_mismatch = False
+                for _ptr, size, expected_crc in block["regions"]:
+                    if expected_crc is not None:
+                        actual_crc = (
+                            zlib.crc32(payload[cursor : cursor + size]) & 0xFFFFFFFF
+                        )
+                        if actual_crc != expected_crc:
+                            crc_mismatch = True
+                            break
+                    cursor += size
+                if crc_mismatch:
+                    self.staging_tier.fail_reservation(
+                        block["reservation_id"],
+                        "source payload CRC mismatch",
+                    )
+                    failed += 1
                     continue
                 result = self.staging_tier.commit_or_reject(
                     block["reservation_id"],
@@ -2272,623 +2410,9 @@ class Daemon:
                 pass
 
     def _dispatch(self, msg: dict) -> dict:
-        op = msg.get("op")
-        try:
-            handler = LIFECYCLE_HANDLERS.get(op)
-            if handler is not None:
-                return handler(self, msg)
-            handler = CONTENT_HANDLERS.get(op)
-            if handler is not None:
-                return handler(self, msg)
-            if op == "transport_info":
-                # Sender uses this to learn the receiver's NIXL agent
-                # name + listen port for metadata exchange via
-                # send_local_metadata/fetch_remote_metadata. Returns
-                # zeros when transport isn't enabled.
-                if self.transport is None:
-                    return {
-                        "ok": True,
-                        "agent_name": "",
-                        "listen_port": 0,
-                        "receive_buffer_bytes": 0,
-                    }
-                return {
-                    "ok": True,
-                    "agent_name": self.transport.agent_name(),
-                    "listen_port": self.transport.listen_port(),
-                    "receive_buffer_bytes": (
-                        self.staging_receive_buffer.capacity()
-                        if self.staging_receive_buffer
-                        else 0
-                    ),
-                }
-            if op == "transport_add_peer":
-                # Out-of-band peer registration. Router calls this on
-                # each daemon to teach it about its peers' NIXL agent
-                # names + IPs + ports. Uses send_local_metadata +
-                # fetch_remote_metadata internally.
-                if self.transport is None:
-                    return {"ok": False, "error": "transport not enabled"}
-                try:
-                    self.transport.add_peer_by_name(
-                        nixl_name=str(msg["nixl_name"]),
-                        ip_addr=str(msg["ip_addr"]),
-                        port=int(msg["port"]),
-                        label=str(msg.get("label", "")),
-                    )
-                except Exception as exc:
-                    return {"ok": False, "error": str(exc)}
-                return {"ok": True}
-            if op == "transfer_blocks_batch":
-                # Per-request batched cross-node push (matches Dynamo's
-                # one-xfer-per-request shape). Caller supplies N items:
-                #   { content_hash, target_reservation_id,
-                #     target_remote_ptr, size }
-                # We look up each hash in our host_tier registration,
-                # copy bytes into the send buffer (N independent
-                # offsets), and issue ONE multi-region NIXL xfer with
-                # a multi-record notif. Eliminates per-WRITE
-                # concurrency entirely — one logical xfer per request,
-                # no queueing, no per-peer cap matters here.
-                if self.transport is None or self.staging_send_buffer is None:
-                    return {
-                        "ok": False,
-                        "error": "transport or send buffer not enabled",
-                    }
-                items = msg.get("items") or []
-                if not items:
-                    return {
-                        "ok": False,
-                        "error": "transfer_blocks_batch: items must be non-empty",
-                    }
-                target_nixl_name = str(msg["target_nixl_name"])
-                target_ip = str(msg.get("target_ip", ""))
-                target_port = int(msg.get("target_port", 0))
-                timeout_s = float(msg.get("timeout_s", 30.0))
-                import ctypes as _ct
+        from gms_kv_ring.daemon.rpc_dispatch import dispatch
 
-                # Prepare per-item: pull bytes from host_tier, copy
-                # into send buffer.
-                xfer_items: list = []  # (local_ptr, size, remote_ptr, rid, hash)
-                send_offsets: list = []  # (offset, size) for rollback/free
-                resolve_errors: list = []
-                for it in items:
-                    try:
-                        content_hash = bytes.fromhex(str(it["content_hash"]))
-                    except Exception:
-                        resolve_errors.append("invalid content_hash")
-                        continue
-                    target_rid = str(it["target_reservation_id"])
-                    target_ptr = int(it["target_remote_ptr"])
-                    with self._content_hash_lock:
-                        entry = self._content_hash_index.get(content_hash)
-                    if entry is None:
-                        resolve_errors.append(
-                            f"hash not registered: {content_hash.hex()[:16]}",
-                        )
-                        continue
-                    if not entry.get("sealed", True):
-                        resolve_errors.append(
-                            f"hash not sealed: {content_hash.hex()[:16]}",
-                        )
-                        continue
-                    engine_id = entry["engine_id"]
-                    ranges = entry["ranges"]
-                    total_size = sum(sz for _, _, sz in ranges)
-                    declared_size = int(it.get("size", total_size))
-                    if declared_size != total_size:
-                        resolve_errors.append(
-                            f"size mismatch for hash "
-                            f"{content_hash.hex()[:16]}: "
-                            f"declared={declared_size} actual={total_size}"
-                        )
-                        continue
-                    parts: list[bytes] = []
-                    any_missing = False
-                    for layer, offset, size in ranges:
-                        lease = self.host_tier.pin(engine_id, layer, offset)
-                        if lease is None:
-                            resolve_errors.append(
-                                f"host_tier missing slot "
-                                f"({engine_id}, {layer}, {offset})"
-                            )
-                            any_missing = True
-                            break
-                        with lease as slot:
-                            view = (_ct.c_ubyte * size).from_address(slot.host_ptr)
-                            parts.append(bytes(view))
-                    if any_missing:
-                        continue
-                    payload = b"".join(parts)
-                    send_offset = self.staging_send_buffer.alloc(total_size)
-                    if send_offset is None:
-                        resolve_errors.append(
-                            "send buffer out of capacity",
-                        )
-                        continue
-                    src_ptr = self.staging_send_buffer.ptr_at(send_offset)
-                    _ct.memmove(src_ptr, payload, total_size)
-                    xfer_items.append(
-                        (src_ptr, total_size, target_ptr, target_rid, content_hash),
-                    )
-                    send_offsets.append((send_offset, total_size))
-                if not xfer_items:
-                    return {
-                        "ok": False,
-                        "error": "transfer_blocks_batch: no submittable items",
-                        "resolve_errors": resolve_errors[:5],
-                    }
-                # Build PeerHandle.
-                from gms_kv_ring.daemon.transport import PeerHandle, TransportClosed
-
-                peer = PeerHandle(
-                    nixl_name=target_nixl_name,
-                    ip_addr=target_ip,
-                    port=target_port,
-                )
-                send_buffer = self.staging_send_buffer
-
-                # Capture send_offsets by value (Python closures are
-                # late-binding by name).
-                def _on_done(
-                    success: bool,
-                    err: str,
-                    _offsets: list = list(send_offsets),
-                    _peer_name: str = peer.nixl_name,
-                    _n: int = len(xfer_items),
-                ) -> None:
-                    for off, sz in _offsets:
-                        try:
-                            send_buffer.free(off, sz)
-                        except Exception:  # noqa: BLE001
-                            logger.exception(
-                                "[Daemon] batch send: free failed (n=%d)",
-                                _n,
-                            )
-                    if not success:
-                        logger.warning(
-                            "[Daemon] batch send to %s (n=%d) failed: %s",
-                            _peer_name,
-                            _n,
-                            err,
-                        )
-
-                try:
-                    self.transport.send_async_batch(
-                        peer=peer,
-                        items=xfer_items,
-                        timeout_s=timeout_s,
-                        on_complete=_on_done,
-                    )
-                except (TransportClosed, RuntimeError) as exc:
-                    for off, sz in send_offsets:
-                        self.staging_send_buffer.free(off, sz)
-                    return {"ok": False, "error": str(exc)}
-                resp: dict = {
-                    "ok": True,
-                    "accepted": True,
-                    "submitted": len(xfer_items),
-                    "bytes_sent": sum(sz for _, sz, _, _, _ in xfer_items),
-                }
-                if resolve_errors:
-                    resp["resolve_errors"] = resolve_errors[:5]
-                    resp["resolve_error_count"] = len(resolve_errors)
-                return resp
-            if op == "read_bootstrap_into_staging":
-                return self._read_bootstrap_into_staging(msg)
-
-            if op == "fetch_remote":
-                # Pattern C orchestration with multi-stage batched NIXL
-                # xfers (matches Dynamo's per-layer pipelining shape).
-                #
-                # Splits N hashes into ⌈N/batch_size⌉ batches. Each
-                # batch is ONE NIXL xfer carrying ≤batch_size WRITEs
-                # plus one multi-record notif. Decode-side engine sees
-                # per-block PlacementEvent::Stored as each batch lands
-                # (because the dest decodes the multi-record notif
-                # into N separate events). This gives decode-side
-                # incremental visibility without per-WRITE NIXL
-                # concurrency issues.
-                #
-                # Tuning:
-                #   batch_size = N           → one big xfer; latency =
-                #     slowest block; highest wire efficiency
-                #   batch_size = layer_size  → Dynamo-style per-layer
-                #     pipelining; decode starts attention on layer N
-                #     while layer N+1 is still in flight
-                #   batch_size = 1           → per-block xfer; max
-                #     pipelining (subject to NIXL per-peer cap)
-                if (
-                    self.staging_tier is None
-                    or self.staging_receive_buffer is None
-                    or self.transport is None
-                ):
-                    return {
-                        "ok": False,
-                        "error": "fetch_remote: staging/transport not enabled",
-                    }
-                src_uds = str(msg["source_uds_path"])
-                src_nixl_name = str(msg["source_nixl_name"])
-                src_ip = str(msg.get("source_ip", "127.0.0.1"))
-                src_port = int(msg.get("source_port", 0))
-                hashes_hex = msg["hashes"]
-                bytes_per_hash = int(msg["bytes_per_hash"])
-                timeout_s = float(msg.get("timeout_s", 30.0))
-                # Default batch_size = full request (one xfer). Caller
-                # can set lower for per-stage pipelining.
-                batch_size = int(msg.get("batch_size", len(hashes_hex) or 1))
-                if batch_size <= 0:
-                    batch_size = len(hashes_hex) or 1
-                local_nixl_name = self.transport.agent_name()
-                from gms_kv_ring.daemon.staging_tier import (
-                    AlreadyReady,
-                    Rejected,
-                    Reservation,
-                    Waiter,
-                )
-
-                # Local reservation pass — vectorized: one batched
-                # reserve_or_wait_many + alloc_many call instead of N
-                # per-block Python loops. This is the optimization that
-                # closes most of the GMS-vs-Dynamo benchmark gap.
-                accepted = 0
-                already_ready = 0
-                coalesced = 0
-                failed = 0
-                batch_items: list = []
-                local_state: list = []
-                hash_bytes_list = [bytes.fromhex(h) for h in hashes_hex]
-                rresults = self.staging_tier.reserve_or_wait_many(
-                    hash_bytes_list,
-                    src_nixl_name,
-                )
-                # Collect indexes of items that got Reservation (need
-                # receive-buffer allocation) and tally non-Reservation
-                # outcomes in a single pass.
-                reservation_idxs: list = []
-                for idx, rresult in enumerate(rresults):
-                    if isinstance(rresult, AlreadyReady):
-                        already_ready += 1
-                    elif isinstance(rresult, Waiter):
-                        coalesced += 1
-                    elif isinstance(rresult, Rejected):
-                        failed += 1
-                    else:
-                        assert isinstance(rresult, Reservation)
-                        reservation_idxs.append(idx)
-                # Vectorized receive buffer allocation.
-                offsets = self.staging_receive_buffer.alloc_many(
-                    [bytes_per_hash] * len(reservation_idxs),
-                )
-                # Build batch_items and active_xfers map under one lock.
-                new_xfers: dict = {}
-                for k, idx in enumerate(reservation_idxs):
-                    offset = offsets[k]
-                    rresult = rresults[idx]
-                    if offset is None:
-                        self.staging_tier.fail_reservation(
-                            rresult.reservation_id,
-                            "recv buf full",
-                        )
-                        failed += 1
-                        continue
-                    content_hash = hash_bytes_list[idx]
-                    h_hex = hashes_hex[idx]
-                    new_xfers[rresult.reservation_id] = (
-                        offset,
-                        bytes_per_hash,
-                        content_hash,
-                    )
-                    remote_ptr = self.staging_receive_buffer.ptr_at(offset)
-                    batch_items.append(
-                        {
-                            "content_hash": h_hex,
-                            "target_reservation_id": rresult.reservation_id,
-                            "target_remote_ptr": remote_ptr,
-                            "size": bytes_per_hash,
-                        }
-                    )
-                    local_state.append(
-                        (rresult.reservation_id, offset, content_hash),
-                    )
-                if new_xfers:
-                    with self._xfers_lock:
-                        self._active_xfers.update(new_xfers)
-                # Split into batches of `batch_size` and dispatch them
-                # CONCURRENTLY to the source via a connection pool.
-                # Each batch = one transfer_blocks_batch RPC = one
-                # multi-region NIXL xfer = one batched notif on dest.
-                # Pipelining means multiple xfers in flight at once
-                # to the same source — same model as Dynamo's engine
-                # connector firing N NIXL READs in parallel for
-                # per-layer pipelining.
-                if batch_items:
-                    pool = self._get_source_pool(src_uds)
-                    chunks: list = []
-                    for start in range(0, len(batch_items), batch_size):
-                        chunks.append((start, batch_items[start : start + batch_size]))
-
-                    from concurrent.futures import ThreadPoolExecutor
-
-                    def _submit_chunk(start_chunk):
-                        start_idx, chunk = start_chunk
-                        client = pool.get()
-                        return (
-                            start_idx,
-                            chunk,
-                            client._ok(
-                                {
-                                    "op": "transfer_blocks_batch",
-                                    "target_nixl_name": local_nixl_name,
-                                    "target_ip": src_ip,
-                                    "target_port": src_port,
-                                    "timeout_s": timeout_s,
-                                    "items": chunk,
-                                }
-                            ),
-                        )
-
-                    try:
-                        # Workers = pool size (each socket can carry
-                        # one in-flight RPC at a time). More workers
-                        # than sockets gives no extra parallelism;
-                        # fewer queues batches at the pool entry.
-                        with ThreadPoolExecutor(
-                            max_workers=len(pool._clients),
-                        ) as ex:
-                            results = list(ex.map(_submit_chunk, chunks))
-                        for start_idx, chunk, resp in results:
-                            submitted = int(resp.get("submitted", 0))
-                            accepted += submitted
-                            unsubmitted = len(chunk) - submitted
-                            if unsubmitted > 0:
-                                base = start_idx + submitted
-                                for rid, off, _h in local_state[
-                                    base : start_idx + len(chunk)
-                                ]:
-                                    with self._xfers_lock:
-                                        self._active_xfers.pop(rid, None)
-                                    self.staging_receive_buffer.free(
-                                        off, bytes_per_hash
-                                    )
-                                    self.staging_tier.fail_reservation(
-                                        rid,
-                                        "source resolve failed",
-                                    )
-                                failed += unsubmitted
-                    except Exception as exc:  # noqa: BLE001
-                        logger.warning(
-                            "[Daemon] fetch_remote: batch RPC to %s failed: %s",
-                            src_uds,
-                            exc,
-                        )
-                        # Source might be dead; drop the cached pool
-                        # so the next call retries with fresh sockets.
-                        self._drop_source_pool(src_uds)
-                        for rid, off, _h in local_state:
-                            with self._xfers_lock:
-                                if self._active_xfers.pop(rid, None) is None:
-                                    continue  # already drained
-                            self.staging_receive_buffer.free(off, bytes_per_hash)
-                            self.staging_tier.fail_reservation(
-                                rid,
-                                "source batch RPC failed",
-                            )
-                        failed += len(batch_items) - accepted
-                        accepted = 0
-                return {
-                    "ok": True,
-                    "accepted": accepted,
-                    "already_ready": already_ready,
-                    "coalesced": coalesced,
-                    "failed": failed,
-                }
-            if op == "register_bootstrap_handle":
-                # Engine-direct path: engine connector tells us
-                # "these hashes live at these (ptr, size) regions in
-                # memory I want exposed over NIXL". The daemon
-                # NIXL-registers the regions (idempotent) and stores
-                # the mapping. A peer daemon's get_bootstrap_info call
-                # for any of these hashes returns this daemon's NIXL
-                # agent name + the descriptors, letting the peer
-                # engine NIXL-read directly. No daemon involvement
-                # in the wire path.
-                if self.transport is None:
-                    return {
-                        "ok": False,
-                        "error": "transport not enabled",
-                    }
-                items = msg.get("items") or []
-                if not items:
-                    return {"ok": False, "error": "items must be non-empty"}
-                registered = 0
-                placement_events: list[tuple[bytes, int, Optional[dict]]] = []
-                with self._bootstrap_lock:
-                    for it in items:
-                        try:
-                            content_hash = bytes.fromhex(str(it["content_hash"]))
-                            ptr = int(it["ptr"])
-                            size = int(it["size"])
-                            sealed_raw = it.get("sealed", True)
-                            if isinstance(sealed_raw, str):
-                                sealed = sealed_raw.lower() not in (
-                                    "0",
-                                    "false",
-                                    "no",
-                                    "off",
-                                    "",
-                                )
-                            else:
-                                sealed = bool(sealed_raw)
-                            generation_raw = it.get("generation")
-                            generation = (
-                                None if generation_raw is None else int(generation_raw)
-                            )
-                        except (KeyError, ValueError, TypeError):
-                            continue
-                        if not sealed:
-                            self._bootstrap_handles.pop(content_hash, None)
-                            continue
-                        # Idempotent NIXL register; transport caches.
-                        try:
-                            self.transport.register_buffer(
-                                ptr,
-                                size,
-                                label=f"bs:{content_hash.hex()[:8]}",
-                            )
-                        except Exception:  # noqa: BLE001
-                            logger.exception(
-                                "[Daemon] register_bootstrap_handle: NIXL register failed"
-                            )
-                            continue
-                        entry = {"ptr": ptr, "size": size, "sealed": True}
-                        if generation is not None:
-                            entry["generation"] = generation
-                        self._bootstrap_handles[content_hash] = entry
-                        descriptor = self._hbm_descriptor(ptr, size, generation)
-                        placement_events.append(
-                            (
-                                content_hash,
-                                size,
-                                self._gms_source_metadata(descriptor),
-                            )
-                        )
-                        registered += 1
-                if self.placement_publisher is not None:
-                    for content_hash, size, metadata in placement_events:
-                        try:
-                            self.placement_publisher.publish_stored(
-                                content_hash=content_hash,
-                                tier="hbm",
-                                bytes_size=size,
-                                metadata=metadata,
-                            )
-                        except TypeError:
-                            self.placement_publisher.publish_stored(
-                                content_hash=content_hash,
-                                tier="hbm",
-                                bytes_size=size,
-                            )
-                        except Exception:  # noqa: BLE001
-                            logger.exception(
-                                "[Daemon] publish_stored failed for bootstrap handle",
-                            )
-                return {"ok": True, "registered": registered}
-
-            if op == "get_bootstrap_info":
-                # Engine on the decode side asks "where can I NIXL-read
-                # these hashes?". We return our NIXL agent name +
-                # listen port + descriptors per hash. A descriptor keeps
-                # legacy top-level ptr/size/tier fields and, for
-                # multi-layer host blocks, also carries a ranges[] vector.
-                if self.transport is None:
-                    return {"ok": False, "error": "transport not enabled"}
-                hashes_hex = msg.get("hashes") or []
-                with self._bootstrap_lock:
-                    snapshot = dict(self._bootstrap_handles)
-                descriptors = []
-                for h_hex in hashes_hex:
-                    try:
-                        content_hash = bytes.fromhex(str(h_hex))
-                    except ValueError:
-                        descriptors.append(None)
-                        continue
-                    entry = snapshot.get(content_hash)
-                    if entry is not None:
-                        if isinstance(entry, dict):
-                            ptr = int(entry["ptr"])
-                            size = int(entry["size"])
-                            generation = entry.get("generation")
-                        else:
-                            ptr, size = entry
-                            generation = None
-                        descriptor = {
-                            "ptr": ptr,
-                            "size": int(size),
-                            "tier": "hbm",
-                            "ranges": [
-                                {
-                                    "ptr": ptr,
-                                    "size": int(size),
-                                    "tier": "hbm",
-                                }
-                            ],
-                            "sealed": True,
-                        }
-                        if generation is not None:
-                            descriptor["generation"] = int(generation)
-                        descriptors.append(descriptor)
-                        continue
-                    # Fallback: host_tier (was advertised via
-                    # register_content_address — daemon has the ranges).
-                    with self._content_hash_lock:
-                        ca = self._content_hash_index.get(content_hash)
-                    if ca is not None and ca.get("sealed", True):
-                        engine_id = ca["engine_id"]
-                        ranges = ca["ranges"]
-                        regions = []
-                        missing = False
-                        total_size = 0
-                        for layer, offset, size in ranges:
-                            lease = self.host_tier.pin(
-                                engine_id,
-                                layer,
-                                offset,
-                            )
-                            if lease is None:
-                                missing = True
-                                break
-                            try:
-                                with lease as slot:
-                                    self.transport.register_buffer(
-                                        slot.host_ptr,
-                                        int(size),
-                                        label=(
-                                            f"host:{content_hash.hex()[:8]}:"
-                                            f"{int(layer)}"
-                                        ),
-                                    )
-                                    regions.append(
-                                        {
-                                            "ptr": slot.host_ptr,
-                                            "size": int(size),
-                                            "tier": "host",
-                                            "layer": int(layer),
-                                            "offset": int(offset),
-                                        }
-                                    )
-                                    total_size += int(size)
-                            except Exception:  # noqa: BLE001
-                                logger.exception(
-                                    "[Daemon] get_bootstrap_info: host "
-                                    "range NIXL registration failed",
-                                )
-                                missing = True
-                                break
-                        if not missing and regions:
-                            descriptor = {
-                                "ptr": int(regions[0]["ptr"]),
-                                "size": int(total_size),
-                                "tier": "host",
-                                "ranges": regions,
-                                "sealed": True,
-                            }
-                            if ca.get("generation") is not None:
-                                descriptor["generation"] = int(ca["generation"])
-                            descriptors.append(descriptor)
-                            continue
-                    descriptors.append(None)
-                return {
-                    "ok": True,
-                    "nixl_agent_name": self.transport.agent_name(),
-                    "listen_port": self.transport.listen_port(),
-                    "agent_metadata_b64": self.transport._agent.get_agent_metadata().hex(),
-                    "descriptors": descriptors,
-                }
-
-            return {"ok": False, "error": f"unknown op {op!r}"}
-        except Exception as exc:
-            return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+        return dispatch(self, msg)
 
 
 # ---- minimal length-prefixed JSON framing ----

@@ -29,11 +29,19 @@ import os
 import tempfile
 import threading
 import time
+import zlib
 
 import pytest
 from gms_kv_ring.daemon.client import DaemonClient
 from gms_kv_ring.daemon.server import Daemon
 from gms_kv_ring.daemon.staging_tier import _BytearrayAllocator
+
+pytestmark = [
+    pytest.mark.pre_merge,
+    pytest.mark.unit,
+    pytest.mark.none,
+    pytest.mark.gpu_0,
+]
 
 
 def _hash(data: bytes) -> bytes:
@@ -233,6 +241,7 @@ def test_get_bootstrap_info_returns_all_host_ranges(monkeypatch):
 
         def __init__(self):
             self.registered = []
+            self.deregistered = []
 
         def agent_name(self):
             return "fake-agent"
@@ -242,6 +251,9 @@ def test_get_bootstrap_info_returns_all_host_ranges(monkeypatch):
 
         def register_buffer(self, ptr, size, label=""):
             self.registered.append((int(ptr), int(size), str(label)))
+
+        def deregister_buffer(self, ptr, size, label=""):
+            self.deregistered.append((int(ptr), int(size), str(label)))
 
         def close(self):
             return None
@@ -272,14 +284,24 @@ def test_get_bootstrap_info_returns_all_host_ranges(monkeypatch):
         assert desc["generation"] == 11
         assert desc["sealed"] is True
         assert desc["ptr"] == p0
-        assert desc["ranges"] == [
-            {"ptr": p0, "size": 16, "tier": "host", "layer": 0, "offset": 0},
-            {"ptr": p1, "size": 24, "tier": "host", "layer": 1, "offset": 32},
+        assert [
+            (r["ptr"], r["size"], r["layer"], r["offset"]) for r in desc["ranges"]
+        ] == [
+            (p0, 16, 0, 0),
+            (p1, 24, 1, 32),
         ]
-        assert d.transport.registered == [
-            (p0, 16, f"host:{h.hex()[:8]}:0"),
-            (p1, 24, f"host:{h.hex()[:8]}:1"),
-        ]
+        assert all(r["region_id"] > 0 for r in desc["ranges"])
+        assert all(r["remote_ptr"] == r["ptr"] for r in desc["ranges"])
+        assert d.transport.registered == [(p0, 16, ""), (p1, 24, "")]
+        assert d.host_tier._slots[("eng", 0, 0)].pins == 1
+        assert d.host_tier._slots[("eng", 1, 32)].pins == 1
+
+        # The descriptor lease is the ownership boundary: teardown deregisters
+        # before making either host slot evictable/freeable.
+        assert d._leased_region_registry.close() == 2
+        assert d.host_tier._slots[("eng", 0, 0)].pins == 0
+        assert d.host_tier._slots[("eng", 1, 32)].pins == 0
+        assert d.transport.deregistered == [(p0, 16, ""), (p1, 24, "")]
     finally:
         _stop(d, th, lh)
 
@@ -463,7 +485,8 @@ def test_read_bootstrap_into_staging_client_payload_shape():
     }
 
 
-def test_read_bootstrap_into_staging_commits_vectored_read():
+@pytest.mark.parametrize("corrupt_crc", [False, True])
+def test_read_bootstrap_into_staging_commits_vectored_read(corrupt_crc):
     """Destination daemon READs router descriptors into staging so all
     inference engines can consume them through the existing staging path."""
     from gms_kv_ring.daemon.staging_receive_buffer import StagingReceiveBuffer
@@ -516,8 +539,19 @@ def test_read_bootstrap_into_staging_commits_vectored_read():
                     "size": len(payload),
                     "tier": "host",
                     "ranges": [
-                        {"remote_ptr": src0_ptr, "size": len(part0), "tier": "host"},
-                        {"ptr": src1_ptr, "size": len(part1), "tier": "host"},
+                        {
+                            "remote_ptr": src0_ptr,
+                            "size": len(part0),
+                            "tier": "host",
+                            "crc32": (zlib.crc32(part0) + int(corrupt_crc))
+                            & 0xFFFFFFFF,
+                        },
+                        {
+                            "ptr": src1_ptr,
+                            "size": len(part1),
+                            "tier": "host",
+                            "crc32": zlib.crc32(part1) & 0xFFFFFFFF,
+                        },
                     ],
                 }
             ],
@@ -526,15 +560,19 @@ def test_read_bootstrap_into_staging_commits_vectored_read():
     )
 
     assert resp["ok"] is True
-    assert resp["accepted"] == 1
-    assert resp["failed"] == 0
-    assert resp["bytes_read"] == len(payload)
+    assert resp["accepted"] == (0 if corrupt_crc else 1)
+    assert resp["failed"] == (1 if corrupt_crc else 0)
+    assert resp["bytes_read"] == (0 if corrupt_crc else len(payload))
     assert d.transport.peers == [("source-agent", b"\x01\x02\x03")]
     assert len(d.transport.reads) == 1
 
-    hit = d.staging_tier.scan([content_hash])[content_hash]
-    assert hit.bytes_size == len(payload)
-    assert d.staging_tier._alloc.read(hit.bytes_ptr, hit.bytes_size) == payload
+    hits = d.staging_tier.scan([content_hash])
+    if corrupt_crc:
+        assert hits == {}
+    else:
+        hit = hits[content_hash]
+        assert hit.bytes_size == len(payload)
+        assert d.staging_tier._alloc.read(hit.bytes_ptr, hit.bytes_size) == payload
 
 
 def test_restore_staging_ranges_client_payload_shape():
@@ -625,6 +663,7 @@ def test_staging_restore_handle_register_and_release():
 # ----------------------------------------------------------------------
 
 
+@pytest.mark.usefixtures("vllm_module")
 def test_v6_round_trip_with_hashes():
     """When evict tuples carry hashes, _encode_meta writes the
     `hashes_per_evict` field; _decode_meta restores them."""
@@ -642,6 +681,7 @@ def test_v6_round_trip_with_hashes():
     assert evict == [("req-A", [10, 11], [3, 4], [h1, h2])]
 
 
+@pytest.mark.usefixtures("vllm_module")
 def test_v6_round_trip_without_hashes_omits_field():
     """If no entry has hashes, the encoder omits the optional field
     entirely (keeps default-case payload identical to v4)."""
@@ -664,6 +704,7 @@ def test_v6_round_trip_without_hashes_omits_field():
     assert evict == [("req-B", [1, 2], [0, 0], [])]
 
 
+@pytest.mark.usefixtures("vllm_module")
 def test_v6_decoder_accepts_v4_payload():
     """A v4 payload (no hashes_per_evict field) decodes into v6
     shape with empty hashes lists — rolling-upgrade scenario."""
@@ -683,6 +724,7 @@ def test_v6_decoder_accepts_v4_payload():
     assert evict == [("req-Z", [5, 6], [1, 2], [])]
 
 
+@pytest.mark.usefixtures("vllm_module")
 def test_v6_round_trip_with_staging_restore():
     """Staging restore records carry content hashes and generations
     separately from local src_block restore triples."""
@@ -706,6 +748,7 @@ def test_v6_round_trip_with_staging_restore():
     assert staging == [("req-S", [(h1, 30, 1), (h2, 31, 2)])]
 
 
+@pytest.mark.usefixtures("vllm_module")
 def test_v6_decoder_tolerates_malformed_hash_hex():
     """A malformed hex string in hashes_per_evict yields empty bytes
     rather than crashing the bind path."""
@@ -730,12 +773,20 @@ def test_v6_decoder_tolerates_malformed_hash_hex():
 # Connector scheduler-side: env-var-controlled hash stashing
 # ----------------------------------------------------------------------
 
+
 # These need vLLM + torch + CUDA because the connector imports vLLM
-# at module load. Skipped on dev machines without the full stack.
-vllm = pytest.importorskip("vllm")
-torch = pytest.importorskip("torch")
-if not torch.cuda.is_available():
-    pytest.skip("CUDA required", allow_module_level=True)
+# at module load. Gate only the two connector tests below; a module-level skip
+# would silently skip every engine-independent RPC test above as well.
+@pytest.fixture
+def vllm_module():
+    return pytest.importorskip("vllm")
+
+
+@pytest.fixture
+def vllm_cuda(vllm_module):
+    torch = pytest.importorskip("torch")
+    if not torch.cuda.is_available():
+        pytest.skip("CUDA required")
 
 
 def _make_cfg(sock: str, block_size_tokens: int = 4):
@@ -753,6 +804,7 @@ def _make_cfg(sock: str, block_size_tokens: int = 4):
 def test_scheduler_skips_hashes_when_cross_node_disabled(
     monkeypatch,
     tmp_path,
+    vllm_cuda,
 ):
     """Default behavior: GMS_KVR_CROSS_NODE unset → evict tuples have
     empty hashes, and the encoded payload omits `hashes_per_evict`."""
@@ -781,6 +833,7 @@ def test_scheduler_skips_hashes_when_cross_node_disabled(
 def test_scheduler_stashes_hashes_when_cross_node_enabled(
     monkeypatch,
     tmp_path,
+    vllm_cuda,
 ):
     """With GMS_KVR_CROSS_NODE=1, per-block hashes flow through into
     the evict tuple AND into the encoded metadata payload."""
