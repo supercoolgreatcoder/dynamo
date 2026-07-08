@@ -57,12 +57,15 @@ class LeasedRegionRegistry:
     def __init__(
         self,
         *,
+        register: Optional[Callable[[int, int], None]] = None,
         deregister: Optional[Callable[[int, int], None]] = None,
         ttl_s: float = 60.0,
         clock: Callable[[], float] | None = None,
     ) -> None:
-        # deregister(ptr, size) tears down the NIXL registration; may be None in
-        # tests or when the transport does not support deregistration.
+        # Registration is owned by the registry when callbacks are supplied. This
+        # makes its refcount transition atomic with register/deregister and avoids
+        # a duplicate publish racing the final teardown of the same pointer.
+        self._register = register
         self._deregister = deregister
         self._ttl_s = float(ttl_s)
         self._clock = clock or __import__("time").monotonic
@@ -92,17 +95,22 @@ class LeasedRegionRegistry:
         """
         region_id = next(self._ids)
         expiry = self._clock() + (self._ttl_s if ttl_s is None else float(ttl_s))
+        key = (int(ptr), int(size))
         with self._lock:
+            if self._regcount.get(key, 0) == 0 and self._register is not None:
+                # Keep this callback under the registry lock. Final deregistration
+                # uses the same lock, so a new region cannot observe a registration
+                # just before the previous incarnation tears it down.
+                self._register(*key)
             self._regions[region_id] = _LeasedRegion(
                 region_id=region_id,
                 lease=lease,
-                ptr=int(ptr),
-                size=int(size),
+                ptr=key[0],
+                size=key[1],
                 generation=int(generation),
                 daemon_epoch=int(daemon_epoch),
                 expiry_monotonic=expiry,
             )
-            key = (int(ptr), int(size))
             self._regcount[key] = self._regcount.get(key, 0) + 1
         return region_id
 
@@ -112,8 +120,7 @@ class LeasedRegionRegistry:
             region = self._regions.pop(int(region_id), None)
         if region is None:
             return False
-        self._teardown(region)
-        return True
+        return self._teardown(region)
 
     def sweep(self) -> int:
         """Release every region past its TTL. Returns the count released."""
@@ -121,58 +128,61 @@ class LeasedRegionRegistry:
         expired: list[_LeasedRegion] = []
         with self._lock:
             for region_id in [
-                rid
-                for rid, r in self._regions.items()
-                if r.expiry_monotonic <= now
+                rid for rid, r in self._regions.items() if r.expiry_monotonic <= now
             ]:
                 expired.append(self._regions.pop(region_id))
-        for region in expired:
-            self._teardown(region)
-        if expired:
+        released = sum(self._teardown(region) for region in expired)
+        if released:
             logger.debug(
-                "[LeasedRegionRegistry] swept %d expired host regions", len(expired)
+                "[LeasedRegionRegistry] swept %d expired host regions", released
             )
-        return len(expired)
+        return released
 
     def close(self) -> int:
         """Release all regions (daemon shutdown)."""
         with self._lock:
             regions = list(self._regions.values())
             self._regions.clear()
-        for region in regions:
-            self._teardown(region)
-        return len(regions)
+        return sum(self._teardown(region) for region in regions)
 
     def __len__(self) -> int:
         with self._lock:
             return len(self._regions)
 
-    def _teardown(self, region: _LeasedRegion) -> None:
+    def _teardown(self, region: _LeasedRegion) -> bool:
         # Deregister first (stop remote access), then drop the pin (allow free).
-        # Only deregister when the LAST region sharing this (ptr, size) goes away,
-        # so a duplicate publish can't deregister a buffer another region still
-        # advertises.
-        should_deregister = False
-        if self._deregister is not None:
-            key = (region.ptr, region.size)
-            with self._lock:
-                remaining = self._regcount.get(key, 1) - 1
-                if remaining <= 0:
-                    self._regcount.pop(key, None)
-                    should_deregister = True
-                else:
-                    self._regcount[key] = remaining
-        if should_deregister:
-            try:
-                self._deregister(region.ptr, region.size)
-            except Exception:  # noqa: BLE001
-                logger.debug(
-                    "[LeasedRegionRegistry] deregister failed for ptr=%#x size=%d",
-                    region.ptr,
-                    region.size,
-                    exc_info=True,
-                )
-        release = getattr(region.lease, "release", None)
+        # The register and deregister callbacks run under the same lock as the
+        # refcount transition, closing the last-release/new-publish race.
+        key = (region.ptr, region.size)
+        with self._lock:
+            remaining = self._regcount.get(key, 1) - 1
+            if remaining <= 0:
+                if self._deregister is not None:
+                    try:
+                        self._deregister(*key)
+                    except Exception:  # noqa: BLE001
+                        # Fail safe: keep both the region and its pin alive. A
+                        # later sweep/release can retry deregistration; freeing a
+                        # still-registered pointer would permit remote UAF.
+                        self._regions[region.region_id] = region
+                        self._regcount[key] = 1
+                        logger.warning(
+                            "[LeasedRegionRegistry] deregister failed for "
+                            "ptr=%#x size=%d; retaining pin",
+                            region.ptr,
+                            region.size,
+                            exc_info=True,
+                        )
+                        return False
+                self._regcount.pop(key, None)
+            else:
+                self._regcount[key] = remaining
+
+        release = (
+            region.lease
+            if callable(region.lease)
+            else getattr(region.lease, "release", None)
+        )
         if callable(release):
             try:
                 release()
@@ -182,3 +192,4 @@ class LeasedRegionRegistry:
                     region.region_id,
                     exc_info=True,
                 )
+        return True

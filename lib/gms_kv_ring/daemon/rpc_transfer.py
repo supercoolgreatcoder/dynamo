@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from gms_kv_ring.daemon.rpc_types import Handler, Message, Response
 
@@ -129,8 +129,7 @@ def handle_transfer_blocks_batch(daemon: "Daemon", msg: Message) -> Response:
             lease = daemon.host_tier.pin(engine_id, layer, offset)
             if lease is None:
                 resolve_errors.append(
-                    f"host_tier missing slot "
-                    f"({engine_id}, {layer}, {offset})"
+                    f"host_tier missing slot " f"({engine_id}, {layer}, {offset})"
                 )
                 any_missing = True
                 break
@@ -386,14 +385,10 @@ def handle_fetch_remote(daemon: "Daemon", msg: Message) -> Response:
                 unsubmitted = len(chunk) - submitted
                 if unsubmitted > 0:
                     base = start_idx + submitted
-                    for rid, off, _h in local_state[
-                        base : start_idx + len(chunk)
-                    ]:
+                    for rid, off, _h in local_state[base : start_idx + len(chunk)]:
                         with daemon._xfers_lock:
                             daemon._active_xfers.pop(rid, None)
-                        daemon.staging_receive_buffer.free(
-                            off, bytes_per_hash
-                        )
+                        daemon.staging_receive_buffer.free(off, bytes_per_hash)
                         daemon.staging_tier.fail_reservation(
                             rid,
                             "source resolve failed",
@@ -466,9 +461,7 @@ def handle_register_bootstrap_handle(daemon: "Daemon", msg: Message) -> Response
                 else:
                     sealed = bool(sealed_raw)
                 generation_raw = it.get("generation")
-                generation = (
-                    None if generation_raw is None else int(generation_raw)
-                )
+                generation = None if generation_raw is None else int(generation_raw)
             except (KeyError, ValueError, TypeError):
                 continue
             if not sealed:
@@ -565,62 +558,14 @@ def handle_get_bootstrap_info(daemon: "Daemon", msg: Message) -> Response:
                 descriptor["generation"] = int(generation)
             descriptors.append(descriptor)
             continue
-        # Fallback: host_tier (was advertised via
-        # register_content_address — daemon has the ranges).
+        # Fallback to the same leased host descriptor used by placement
+        # publication. This keeps every exported pointer pinned and registered
+        # until TTL/release instead of dropping the pin at this function's exit.
         with daemon._content_hash_lock:
             ca = daemon._content_hash_index.get(content_hash)
         if ca is not None and ca.get("sealed", True):
-            engine_id = ca["engine_id"]
-            ranges = ca["ranges"]
-            regions = []
-            missing = False
-            total_size = 0
-            for layer, offset, size in ranges:
-                lease = daemon.host_tier.pin(
-                    engine_id,
-                    layer,
-                    offset,
-                )
-                if lease is None:
-                    missing = True
-                    break
-                try:
-                    with lease as slot:
-                        daemon.transport.register_buffer(
-                            slot.host_ptr,
-                            int(size),
-                            label=(
-                                f"host:{content_hash.hex()[:8]}:"
-                                f"{int(layer)}"
-                            ),
-                        )
-                        regions.append(
-                            {
-                                "ptr": slot.host_ptr,
-                                "size": int(size),
-                                "tier": "host",
-                                "layer": int(layer),
-                                "offset": int(offset),
-                            }
-                        )
-                        total_size += int(size)
-                except Exception:  # noqa: BLE001
-                    logger.exception(
-                        "[Daemon] get_bootstrap_info: host "
-                        "range NIXL registration failed",
-                    )
-                    missing = True
-                    break
-            if not missing and regions:
-                descriptor = {
-                    "ptr": int(regions[0]["ptr"]),
-                    "size": int(total_size),
-                    "tier": "host",
-                    "ranges": regions,
-                    "sealed": True,
-                }
-                if ca.get("generation") is not None:
-                    descriptor["generation"] = int(ca["generation"])
+            descriptor = daemon._host_content_descriptor(content_hash, ca)
+            if descriptor is not None:
                 descriptors.append(descriptor)
                 continue
         descriptors.append(None)

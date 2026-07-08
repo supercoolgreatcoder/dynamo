@@ -3,7 +3,11 @@
 
 """Leased remote-descriptor registry (X6/X7, redesign 4)."""
 
+from types import SimpleNamespace
+
+import pytest
 from gms_kv_ring.daemon.leased_region_registry import LeasedRegionRegistry
+from gms_kv_ring.daemon.server import Daemon
 
 
 class _FakeLease:
@@ -139,5 +143,113 @@ def test_close_releases_all():
     for i, lease in enumerate(leases):
         reg.register(lease, i, 8, generation=0, daemon_epoch=0)
     assert reg.close() == 3
-    assert all(l.released == 1 for l in leases)
+    assert all(lease.released == 1 for lease in leases)
     assert len(reg) == 0
+
+
+def test_registration_is_refcounted_and_serialized_with_teardown():
+    events = []
+    reg = LeasedRegionRegistry(
+        register=lambda ptr, size: events.append(("register", ptr, size)),
+        deregister=lambda ptr, size: events.append(("deregister", ptr, size)),
+    )
+    first, second = _FakeLease(), _FakeLease()
+    r1 = reg.register(first, 0xD00, 128, generation=1, daemon_epoch=1)
+    r2 = reg.register(second, 0xD00, 128, generation=1, daemon_epoch=1)
+    assert events == [("register", 0xD00, 128)]
+    assert reg.release(r1) is True
+    assert events == [("register", 0xD00, 128)]
+    assert reg.release(r2) is True
+    assert events[-1] == ("deregister", 0xD00, 128)
+    assert reg._regcount == {}
+
+
+def test_registration_failure_does_not_take_lease_ownership():
+    lease = _FakeLease()
+
+    def fail_register(_ptr, _size):
+        raise RuntimeError("registration failed")
+
+    reg = LeasedRegionRegistry(register=fail_register)
+    with pytest.raises(RuntimeError, match="registration failed"):
+        reg.register(lease, 0xBAD, 16, generation=1, daemon_epoch=1)
+    assert lease.released == 0
+    assert len(reg) == 0
+    assert reg._regcount == {}
+
+
+def test_deregister_failure_retains_pin_and_retries_safely():
+    fail = [True]
+    attempts = []
+
+    def deregister(ptr, size):
+        attempts.append((ptr, size))
+        if fail[0]:
+            raise RuntimeError("busy")
+
+    reg = LeasedRegionRegistry(deregister=deregister)
+    lease = _FakeLease()
+    rid = reg.register(lease, 0xFEED, 32, generation=1, daemon_epoch=1)
+    assert reg.release(rid) is False
+    assert lease.released == 0
+    assert len(reg) == 1
+
+    fail[0] = False
+    assert reg.release(rid) is True
+    assert lease.released == 1
+    assert attempts == [(0xFEED, 32), (0xFEED, 32)]
+
+
+def test_staging_placement_holds_consume_pin_until_region_release():
+    events = []
+
+    class FakeAgent:
+        def get_agent_metadata(self):
+            return b"metadata"
+
+    class FakeTransport:
+        _agent = FakeAgent()
+
+        def agent_name(self):
+            return "agent"
+
+        def listen_port(self):
+            return 1234
+
+        def register_buffer(self, ptr, size):
+            events.append(("register", ptr, size))
+
+        def deregister_buffer(self, ptr, size):
+            events.append(("deregister", ptr, size))
+
+    class FakeStaging:
+        def __init__(self):
+            self.pins = 0
+
+        def begin_consume(self, content_hash, generation):
+            assert content_hash == b"h"
+            assert generation == 7
+            self.pins += 1
+            return object()
+
+        def consume_pointer(self, _handle):
+            return (0xCAFE, 64, 0)
+
+        def end_consume(self, _handle):
+            self.pins -= 1
+
+    daemon = object.__new__(Daemon)
+    daemon.transport = FakeTransport()
+    daemon.staging_tier = FakeStaging()
+    daemon.epoch = 9
+    hit = SimpleNamespace(content_hash=b"h", generation=7)
+
+    metadata = daemon._staging_hit_placement_metadata(hit)
+    region = metadata["gms_descriptor"]["ranges"][0]
+    assert daemon.staging_tier.pins == 1
+    assert events == [("register", 0xCAFE, 64)]
+    assert region["daemon_epoch"] == 9
+
+    assert daemon._leased_region_registry.release(region["region_id"]) is True
+    assert daemon.staging_tier.pins == 0
+    assert events[-1] == ("deregister", 0xCAFE, 64)

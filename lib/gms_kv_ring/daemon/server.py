@@ -41,20 +41,20 @@ import os
 import struct
 import threading
 import time
-from dataclasses import dataclass
+import zlib
 from typing import Optional
-
-logger = logging.getLogger(__name__)
-
 
 from gms_kv_ring.daemon.consumers import (
     EnginePool,
     LayerDesc,
+    _ensure_cuda_context,
     _EvictConsumer,
     _RestoreConsumer,
     _SourceClientPool,
-    _ensure_cuda_context,
 )
+
+logger = logging.getLogger(__name__)
+
 
 class Daemon:
     """One-GPU daemon serving at most one ACTIVE engine at a time.
@@ -148,10 +148,7 @@ class Daemon:
             #   blake2b_256      - cryptographic; sync verify
             import os as _os
 
-            from gms_kv_ring.daemon.staging_tier import (
-                StagingTier,
-                hash_fn_for_mode,
-            )
+            from gms_kv_ring.daemon.staging_tier import StagingTier, hash_fn_for_mode
 
             hash_mode = _os.environ.get("GMS_HASH_MODE", "sha256")
             # Fail closed rather than silently selecting an algorithm which
@@ -1717,6 +1714,13 @@ class Daemon:
                 self.transport.close()
             except Exception:
                 logger.exception("[Daemon] transport.close failed")
+        # If a live-agent deregistration failed, close() revoked remote access.
+        # Retry now so retained fail-safe pins can be released before shutdown.
+        if registry is not None and len(registry):
+            try:
+                registry.close()
+            except Exception:
+                logger.exception("[Daemon] post-transport registry close failed")
         if self.placement_publisher is not None:
             try:
                 self.placement_publisher.close()
@@ -1875,32 +1879,61 @@ class Daemon:
     def _staging_hit_placement_metadata(
         self, hit, extra: Optional[dict] = None
     ) -> Optional[dict]:
-        if self.transport is None:
+        if self.transport is None or self.staging_tier is None:
             return extra
+        handle = self.staging_tier.begin_consume(
+            hit.content_hash,
+            int(hit.generation),
+        )
+        if handle is None:
+            return extra
+        pinned = self.staging_tier.consume_pointer(handle)
+        if pinned is None:
+            self.staging_tier.end_consume(handle)
+            return extra
+        ptr, size, _crc32 = pinned
+        registry = self._host_region_registry()
+        region_id = None
         try:
-            self.transport.register_buffer(
-                int(hit.bytes_ptr),
-                int(hit.bytes_size),
-                label=f"staging:{hit.content_hash.hex()[:8]}",
+            # A callable is a valid registry lease. Its lifetime pins the READY
+            # staging slot, preventing LRU eviction while a peer can READ it.
+            region_id = registry.register(
+                lambda: self.staging_tier.end_consume(handle),
+                ptr,
+                size,
+                generation=int(hit.generation),
+                daemon_epoch=int(getattr(self, "epoch", 0)),
             )
             descriptor = {
-                "remote_ptr": int(hit.bytes_ptr),
-                "ptr": int(hit.bytes_ptr),
-                "size": int(hit.bytes_size),
+                "remote_ptr": ptr,
+                "ptr": ptr,
+                "size": size,
                 "tier": "external",
                 "ranges": [
                     {
-                        "remote_ptr": int(hit.bytes_ptr),
-                        "ptr": int(hit.bytes_ptr),
-                        "size": int(hit.bytes_size),
+                        "remote_ptr": ptr,
+                        "ptr": ptr,
+                        "size": size,
                         "tier": "external",
+                        "region_id": int(region_id),
+                        "daemon_epoch": int(getattr(self, "epoch", 0)),
+                        "crc32": int(_crc32),
                     }
                 ],
                 "generation": int(hit.generation),
+                "daemon_epoch": int(getattr(self, "epoch", 0)),
                 "sealed": True,
             }
-            return self._gms_source_metadata(descriptor, extra)
+            metadata = self._gms_source_metadata(descriptor, extra)
+            if metadata is extra:
+                registry.release(region_id)
+            return metadata
         except Exception:  # noqa: BLE001
+            # register() takes ownership only after its callback succeeds.
+            if region_id is None:
+                self.staging_tier.end_consume(handle)
+            else:
+                registry.release(region_id)
             logger.exception(
                 "[Daemon] failed to build staging GMS placement descriptor"
             )
@@ -1933,15 +1966,14 @@ class Daemon:
         # raw pointer in a descriptor can never outlive its pin (X6/X7).
         reg = getattr(self, "_leased_region_registry", None)
         if reg is None:
-            from gms_kv_ring.daemon.leased_region_registry import (
-                LeasedRegionRegistry,
-            )
+            from gms_kv_ring.daemon.leased_region_registry import LeasedRegionRegistry
 
             try:
                 ttl_s = float(os.environ.get("GMS_KVR_HOST_REGION_TTL_S", "60"))
             except ValueError:
                 ttl_s = 60.0
             reg = self._leased_region_registry = LeasedRegionRegistry(
+                register=getattr(self.transport, "register_buffer", None),
                 deregister=getattr(self.transport, "deregister_buffer", None),
                 ttl_s=max(1.0, ttl_s),
             )
@@ -1951,11 +1983,10 @@ class Daemon:
         if self.transport is None or self.host_tier is None:
             return None
         registry = self._host_region_registry()
-        # Opportunistically reclaim regions whose TTL elapsed (bounded work, off
-        # the remote read path). This is the janitor X7 asked for.
         registry.sweep()
         generation = int(ca["generation"]) if ca.get("generation") is not None else 0
         daemon_epoch = int(getattr(self, "epoch", 0))
+        region_ids: list[int] = []
         try:
             engine_id = ca["engine_id"]
             regions = []
@@ -1963,34 +1994,32 @@ class Daemon:
             for layer, offset, size in ca.get("ranges") or []:
                 lease = self.host_tier.pin(engine_id, layer, offset)
                 if lease is None:
+                    for region_id in region_ids:
+                        registry.release(region_id)
                     return None
-                # Do NOT use `with lease:` — that would drop the pin at block exit
-                # and leave the exported pointer dangling. Hand the lease to the
-                # registry, which holds the pin (and the NIXL registration) until
-                # the region's TTL expires or it is explicitly released.
-                slot = lease.slot
-                self.transport.register_buffer(
-                    slot.host_ptr,
-                    int(size),
-                    label=f"host:{content_hash.hex()[:8]}:{int(layer)}",
-                )
-                region_id = registry.register(
-                    lease,
-                    int(slot.host_ptr),
-                    int(size),
-                    generation=generation,
-                    daemon_epoch=daemon_epoch,
-                )
+                try:
+                    region_id = registry.register(
+                        lease,
+                        int(lease.slot.host_ptr),
+                        int(size),
+                        generation=generation,
+                        daemon_epoch=daemon_epoch,
+                    )
+                except Exception:
+                    lease.release()
+                    raise
+                region_ids.append(region_id)
                 regions.append(
                     {
-                        "remote_ptr": int(slot.host_ptr),
-                        "ptr": int(slot.host_ptr),
+                        "remote_ptr": int(lease.slot.host_ptr),
+                        "ptr": int(lease.slot.host_ptr),
                         "size": int(size),
                         "tier": "host",
                         "layer": int(layer),
                         "offset": int(offset),
                         "region_id": int(region_id),
                         "daemon_epoch": daemon_epoch,
+                        "crc32": int(lease.slot.crc),
                     }
                 )
                 total_size += int(size)
@@ -2009,6 +2038,8 @@ class Daemon:
                 descriptor["generation"] = int(ca["generation"])
             return descriptor
         except Exception:  # noqa: BLE001
+            for region_id in region_ids:
+                registry.release(region_id)
             logger.exception("[Daemon] failed to build host GMS placement descriptor")
             return None
 
@@ -2021,13 +2052,18 @@ class Daemon:
         descriptor = self._host_content_descriptor(content_hash, entry)
         if descriptor is None:
             return extra
-        return self._gms_source_metadata(descriptor, extra)
+        metadata = self._gms_source_metadata(descriptor, extra)
+        if metadata is extra:
+            registry = self._host_region_registry()
+            for region in descriptor.get("ranges", []):
+                registry.release(int(region["region_id"]))
+        return metadata
 
     @staticmethod
     def _read_descriptor_regions(
         descriptor: dict,
-    ) -> tuple[list[tuple[int, int]], int] | None:
-        """Return remote READ regions in copy order for one descriptor."""
+    ) -> tuple[list[tuple[int, int, Optional[int]]], int] | None:
+        """Return ``(ptr, size, crc32?)`` regions in remote READ order."""
         if not isinstance(descriptor, dict):
             return None
         sealed_raw = descriptor.get("sealed", True)
@@ -2048,7 +2084,7 @@ class Daemon:
         if not raw_ranges:
             raw_ranges = [descriptor]
 
-        regions: list[tuple[int, int]] = []
+        regions: list[tuple[int, int, Optional[int]]] = []
         for region in raw_ranges:
             if not isinstance(region, dict):
                 return None
@@ -2056,14 +2092,16 @@ class Daemon:
             try:
                 ptr = int(ptr_raw)
                 size = int(region.get("size", 0))
+                crc_raw = region.get("crc32")
+                expected_crc = None if crc_raw is None else int(crc_raw) & 0xFFFFFFFF
             except (TypeError, ValueError):
                 return None
             if ptr <= 0 or size <= 0:
                 return None
-            regions.append((ptr, size))
+            regions.append((ptr, size, expected_crc))
         if not regions:
             return None
-        return regions, sum(size for _ptr, size in regions)
+        return regions, sum(size for _ptr, size, _crc in regions)
 
     def _read_bootstrap_into_staging(self, msg: dict) -> dict:
         """NIXL-READ router placement descriptors into local staging.
@@ -2223,7 +2261,7 @@ class Daemon:
             for block in chunk:
                 local_ptr = self.staging_receive_buffer.ptr_at(block["offset"])
                 cursor = 0
-                for remote_ptr, size in block["regions"]:
+                for remote_ptr, size, _expected_crc in block["regions"]:
                     xfer_items.append((local_ptr + cursor, size, remote_ptr))
                     cursor += size
                 if cursor != block["total_size"]:
@@ -2278,18 +2316,33 @@ class Daemon:
                     )
                 if payload is None:
                     continue
-                # C1: one-sided NIXL READs of router-supplied pointers are
-                # untrusted input. Honor the daemon's verify-on-receive setting
-                # (hash the bytes against the advertised content hash) instead of
-                # unconditionally trusting the wire — a mismatched block drops to
-                # CORRUPT here rather than being committed and re-advertised to
-                # the placement plane. No-ops when the daemon runs verify mode
-                # "none" (self._verify_on_receive False), so trusted deployments
-                # keep the zero-hash fast path.
+                # Router block keys hash token prefixes, not the KV payload,
+                # so comparing payload bytes to content_hash rejects valid data.
+                # Validate the per-region payload CRC carried by leased host and
+                # staging descriptors instead; descriptors without CRC retain the
+                # NIXL transport-integrity behavior used by HBM sources.
+                cursor = 0
+                crc_mismatch = False
+                for _ptr, size, expected_crc in block["regions"]:
+                    if expected_crc is not None:
+                        actual_crc = (
+                            zlib.crc32(payload[cursor : cursor + size]) & 0xFFFFFFFF
+                        )
+                        if actual_crc != expected_crc:
+                            crc_mismatch = True
+                            break
+                    cursor += size
+                if crc_mismatch:
+                    self.staging_tier.fail_reservation(
+                        block["reservation_id"],
+                        "source payload CRC mismatch",
+                    )
+                    failed += 1
+                    continue
                 result = self.staging_tier.commit_or_reject(
                     block["reservation_id"],
                     payload,
-                    verify_content_hash=True,
+                    verify_content_hash=False,
                 )
                 if isinstance(result, CommitOk):
                     accepted += 1
