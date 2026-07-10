@@ -258,7 +258,11 @@ def _normalize_lease_engine_name(backend_name: str) -> str:
     return normalized
 
 
-def _reclaim_foreign_kv_leases_after_fence(backend_name: str, role: str) -> None:
+def _reclaim_foreign_kv_leases_after_fence(
+    backend_name: str,
+    role: str,
+    protected_blocks: set[int] | None = None,
+) -> None:
     """Best-effort orphan lease reclaim after this process owns failover.
 
     The failover lock/epoch is the safety boundary. Before that point the
@@ -286,6 +290,7 @@ def _reclaim_foreign_kv_leases_after_fence(backend_name: str, role: str) -> None
             engine,
             device,
             max_blocks_per_file=_failover_reclaim_max_blocks_per_file(),
+            protected_blocks=protected_blocks,
         )
         elapsed_ms = (time.monotonic() - started) * 1000.0
         if result.files or result.reclaimed_blocks or result.errors:
@@ -308,6 +313,75 @@ def _reclaim_foreign_kv_leases_after_fence(backend_name: str, role: str) -> None
         )
 
 
+def _directory_socket(backend_name: str) -> str:
+    explicit = os.environ.get("GMS_KV_DIRECTORY_SOCKET", "").strip()
+    if explicit:
+        return explicit
+    engine = _normalize_lease_engine_name(backend_name).upper()
+    return os.environ.get(f"GMS_{engine}_DAEMON_SOCKET", "").strip()
+
+
+def _promote_content_directory_after_fence(backend_name: str, role: str) -> set[int]:
+    """Fence directory publications while the external lock is held.
+
+    This intentionally runs before foreign lease reclaim. Once it returns, a
+    dying primary may continue reading durable KV but its later publications
+    cannot overwrite the promoted shadow's directory state.
+    """
+    from gms_kv_ring.common.content_directory import (
+        ContentDirectory,
+        resolve_directory_mode,
+    )
+
+    mode = resolve_directory_mode()
+    if mode == "off":
+        return set()
+    socket_path = _directory_socket(backend_name)
+    if not socket_path:
+        message = "GMS KV directory enabled without GMS_KV_DIRECTORY_SOCKET"
+        if mode == "authoritative":
+            raise RuntimeError(message)
+        logger.warning("[GMS failover] %s %s", backend_name, message)
+        return set()
+    directory = ContentDirectory(
+        socket_path,
+        engine=_normalize_lease_engine_name(backend_name),
+        block_size=0,
+        engine_id=os.environ.get("ENGINE_ID", "0"),
+        mode=mode,
+    )
+    started = time.monotonic()
+    protected_blocks: set[int] = set()
+    try:
+        epoch = directory.promote()
+        protected_blocks.update(
+            block_id
+            for slot_ids in directory.hbm_inventory().values()
+            for block_id in slot_ids
+        )
+        logger.info(
+            "[GMS failover] %s %s directory writer promoted epoch=%d "
+            "protected_hbm_blocks=%d elapsed_ms=%.2f",
+            backend_name,
+            role,
+            epoch,
+            len(protected_blocks),
+            (time.monotonic() - started) * 1000.0,
+        )
+    except Exception:
+        if mode == "authoritative":
+            raise
+        logger.warning(
+            "[GMS failover] %s %s directory promotion failed in shadow mode",
+            backend_name,
+            role,
+            exc_info=True,
+        )
+    finally:
+        directory.close()
+    return protected_blocks
+
+
 async def run_gms_failover_post_lock_fence(
     *,
     backend_name: str,
@@ -324,7 +398,14 @@ async def run_gms_failover_post_lock_fence(
             fence_ms,
         )
         await asyncio.sleep(fence_ms / 1000.0)
-    _reclaim_foreign_kv_leases_after_fence(backend_name, role)
+    protected_blocks: set[int] = set()
+    if os.environ.get("GMS_KV_DIRECTORY_MODE", "off").strip().lower() != "off":
+        protected_blocks = await asyncio.to_thread(
+            _promote_content_directory_after_fence, backend_name, role
+        )
+    _reclaim_foreign_kv_leases_after_fence(
+        backend_name, role, protected_blocks=protected_blocks
+    )
 
 
 def _controller_from(owner: Any) -> Any:
@@ -337,7 +418,7 @@ def _controller_from(owner: Any) -> Any:
 
 
 def _lock_factory_or_default(
-    lock_factory: Callable[[str], Any] | None
+    lock_factory: Callable[[str], Any] | None,
 ) -> Callable[[str], Any]:
     if lock_factory is not None:
         return lock_factory
