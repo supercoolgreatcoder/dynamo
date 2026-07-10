@@ -109,6 +109,35 @@ def test_shared_memory_lease_client_coordinates_two_clients(tmp_path):
         second.close()
 
 
+def test_shared_memory_lease_adopt_transfers_without_free_window(tmp_path):
+    path = tmp_path / "leases-adopt.shm"
+    primary = SharedMemoryKVLeaseClient(
+        str(path), namespace="adopt", owner_id="primary", total_blocks=8
+    )
+    shadow = SharedMemoryKVLeaseClient(
+        str(path), namespace="adopt", owner_id="shadow", total_blocks=8
+    )
+    try:
+        old = primary.acquire(2, preferred_blocks=[1, 2], strict_preferred=True)
+        primary.seal(old)
+        before = shadow.raw_free_count()
+
+        adopted = shadow.adopt(old)
+
+        assert [lease.block_id for lease in adopted] == [1, 2]
+        assert [lease.generation for lease in adopted] == [
+            lease.generation + 1 for lease in old
+        ]
+        assert shadow.raw_free_count() == before
+        primary.release(old)
+        assert shadow.raw_free_count() == before
+        shadow.release(adopted)
+        assert shadow.raw_free_count() == 8
+    finally:
+        primary.close()
+        shadow.close()
+
+
 def test_shared_memory_lease_reclaim_foreign_preserves_current_owner(tmp_path):
     path = tmp_path / "leases-reclaim.shm"
     first = SharedMemoryKVLeaseClient(
@@ -133,6 +162,36 @@ def test_shared_memory_lease_reclaim_foreign_preserves_current_owner(tmp_path):
     finally:
         first.close()
         second.close()
+
+
+def test_shared_memory_lease_reclaim_preserves_directory_hbm(tmp_path):
+    path = tmp_path / "leases-protected-reclaim.shm"
+    primary = SharedMemoryKVLeaseClient(
+        str(path), namespace="protected", owner_id="primary", total_blocks=8
+    )
+    shadow = SharedMemoryKVLeaseClient(
+        str(path), namespace="protected", owner_id="shadow", total_blocks=8
+    )
+    try:
+        if not hasattr(primary._rust, "kv_lease_reclaim_foreign_except"):
+            pytest.skip("selective reclaim extension not rebuilt")
+        old_leases = primary.acquire(
+            4, preferred_blocks=[1, 2, 3, 4], strict_preferred=True
+        )
+        primary.seal(old_leases[:3])
+
+        reclaimed = shadow.reclaim_foreign(protected_blocks={1, 3})
+
+        assert reclaimed == 2
+        assert shadow.raw_free_count() == 6
+        available = shadow.acquire(2, preferred_blocks=[2, 4], strict_preferred=True)
+        assert [lease.block_id for lease in available] == [2, 4]
+        with pytest.raises(RuntimeError):
+            shadow.acquire(1, preferred_blocks=[1], strict_preferred=True)
+        shadow.release(available)
+    finally:
+        primary.close()
+        shadow.close()
 
 
 @pytest.mark.parametrize(
