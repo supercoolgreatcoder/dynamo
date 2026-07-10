@@ -10,6 +10,7 @@ import logging
 import os
 import sys
 from abc import ABC, abstractmethod
+import tempfile
 from contextlib import ExitStack
 
 import requests
@@ -59,11 +60,16 @@ class GMSProcessManager:
         *,
         read_only_weights: bool = False,
         tags: tuple[str, ...] = ("weights", "kv_cache"),
+        kv_directory: bool = False,
     ):
         self._request = request
         self._engine_cls = engine_cls
         self._read_only_weights = read_only_weights
         self._tags = tags
+        self._kv_directory = bool(kv_directory)
+        self._directory_env: dict[str, str] = {}
+        self.kv_directory_socket: str | None = None
+        self.kv_directory_manifest: str | None = None
         self._stack: ExitStack | None = None
         self.frontend_port: int | None = None
         self.weights_gms = None
@@ -75,6 +81,38 @@ class GMSProcessManager:
         stack = ExitStack()
         try:
             tp = _tp_size()
+            if self._kv_directory:
+                shared_dir = stack.enter_context(
+                    tempfile.TemporaryDirectory(prefix="gms-local-failover-")
+                )
+                self.kv_directory_socket = os.path.join(shared_dir, "directory.sock")
+                self.kv_directory_manifest = f"local-{self._request.node.name}-v1"
+                lease_dir = os.path.join(shared_dir, "leases")
+                os.makedirs(lease_dir)
+                self._directory_env = {
+                    "GMS_KV_DIRECTORY_MODE": os.environ.get(
+                        "GMS_KV_DIRECTORY_MODE", "authoritative"
+                    ),
+                    "GMS_KV_DIRECTORY_SOCKET": self.kv_directory_socket,
+                    "GMS_KV_DIRECTORY_MANIFEST": self.kv_directory_manifest,
+                    "GMS_KV_DIRECTORY_DIAGNOSTICS": os.environ.get(
+                        "GMS_KV_DIRECTORY_DIAGNOSTICS", "1"
+                    ),
+                    "GMS_KV_DIRECTORY_ASYNC_READ": os.environ.get(
+                        "GMS_KV_DIRECTORY_ASYNC_READ", "0"
+                    ),
+                    "GMS_KV_DIRECTORY_ASYNC_PUBLISH": os.environ.get(
+                        "GMS_KV_DIRECTORY_ASYNC_PUBLISH", "0"
+                    ),
+                    "GMS_KV_DIRECTORY_POLL_MS": os.environ.get(
+                        "GMS_KV_DIRECTORY_POLL_MS", "250"
+                    ),
+                    "GMS_KV_LEASES": "1",
+                    "GMS_SGLANG_KV_LEASES": "1",
+                    "GMS_KV_LEASE_SHM_DIR": lease_dir,
+                    "GMS_VLLM_SHARED_KV": "1",
+                    "GMS_SGLANG_SHARED_KV": "1",
+                }
             if "weights" in self._tags:
                 self.weights_gms = stack.enter_context(
                     GMSServer(device=0, tag="weights")
@@ -83,7 +121,11 @@ class GMSProcessManager:
                     stack.enter_context(GMSServer(device=d, tag="weights"))
             if "kv_cache" in self._tags:
                 self.kv_cache_gms = stack.enter_context(
-                    GMSServer(device=0, tag="kv_cache")
+                    GMSServer(
+                        device=0,
+                        tag="kv_cache",
+                        directory_socket_path=self.kv_directory_socket,
+                    )
                 )
                 for d in range(1, tp):
                     stack.enter_context(GMSServer(device=d, tag="kv_cache"))
@@ -109,6 +151,9 @@ class GMSProcessManager:
         self.weights_gms = None
         self.kv_cache_gms = None
         self._engine_ids.clear()
+        self.kv_directory_socket = None
+        self.kv_directory_manifest = None
+        self._directory_env = {}
         self.engines.clear()
         if stack is None:
             return False
@@ -119,6 +164,7 @@ class GMSProcessManager:
         engine_id: str,
         *,
         read_only_weights: bool | None = None,
+        directory_standby: bool = False,
     ):
         if self._stack is None or self.frontend_port is None:
             raise RuntimeError(
@@ -136,6 +182,14 @@ class GMSProcessManager:
             engine_id=engine_id,
             read_only_weights=read_only_weights,
         )
+        assert engine.env is not None
+        engine.env.update(self._directory_env)
+        engine.env["ENGINE_ID"] = engine_id
+        if directory_standby:
+            engine.env["GMS_KV_DIRECTORY_STANDBY"] = "1"
+            # Hydration is a replacement-owner role, not an inference-engine
+            # default. Make it explicit across nested engine subprocesses.
+            engine.env["GMS_VLLM_HYDRATE_HBM"] = "1"
         self._engine_ids.add(engine_id)
         return engine
 
@@ -144,14 +198,24 @@ class GMSProcessManager:
         engine_id: str,
         *,
         read_only_weights: bool | None = None,
+        directory_standby: bool = False,
     ):
         if self._stack is None:
             raise RuntimeError(
                 "GMSProcessManager must be entered before starting engines"
             )
-        engine = self._stack.enter_context(
-            self.create_engine(engine_id, read_only_weights=read_only_weights)
+        engine = self.create_engine(
+            engine_id,
+            read_only_weights=read_only_weights,
+            directory_standby=directory_standby,
         )
+        try:
+            engine = self._stack.enter_context(engine)
+        except Exception as exc:
+            logs = engine.read_logs()
+            raise RuntimeError(
+                f"engine {engine_id!r} failed to start: {exc}\n{logs[-30000:]}"
+            ) from exc
         self.engines[engine_id] = engine
         return engine
 
@@ -355,8 +419,11 @@ class TRTLLMWithGMSProcess(GMSEngineProcess):
     TRTLLM_GMS_MODEL_NAME = os.environ.get(
         "TRTLLM_GMS_MODEL_NAME", FAULT_TOLERANCE_MODEL_NAME
     )
+    # The local failover harness co-locates two paused shadows and one
+    # primary on one GPU. Keep enough headroom for all three TRT executors;
+    # production and dedicated-GPU tests can override this environment knob.
     TRTLLM_GMS_FREE_GPU_MEMORY_FRACTION = os.environ.get(
-        "TRTLLM_GMS_FREE_GPU_MEMORY_FRACTION", "0.9"
+        "TRTLLM_GMS_FREE_GPU_MEMORY_FRACTION", "0.25"
     )
     TRTLLM_GMS_MAX_SEQ_LEN = os.environ.get("TRTLLM_GMS_MAX_SEQ_LEN", "256")
     TRTLLM_GMS_MAX_NUM_TOKENS = os.environ.get("TRTLLM_GMS_MAX_NUM_TOKENS", "256")
