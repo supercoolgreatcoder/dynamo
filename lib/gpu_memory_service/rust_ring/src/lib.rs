@@ -852,6 +852,111 @@ fn kv_lease_seal(
     Ok(sealed)
 }
 
+/// Atomically transfer sealed or leased blocks to a new owner.
+///
+/// Every requested record is first locked in TRANSITION with its old generation
+/// intact. If any lock or generation check fails, all records are restored. The
+/// successful path changes owner and generation without ever making bytes FREE.
+#[pyfunction]
+#[pyo3(signature = (buf, block_ids, generations, owner_hash = 0))]
+fn kv_lease_adopt(
+    py: Python<'_>,
+    buf: PyBuffer<u8>,
+    block_ids: Vec<u32>,
+    generations: Vec<u32>,
+    owner_hash: u64,
+) -> PyResult<Option<Vec<(u32, u32)>>> {
+    let _ = py;
+    if block_ids.len() != generations.len() {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "block_ids and generations length mismatch",
+        ));
+    }
+    if block_ids
+        .iter()
+        .enumerate()
+        .any(|(index, block_id)| block_ids[..index].contains(block_id))
+    {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "duplicate block_ids are not allowed",
+        ));
+    }
+    let ptr = buf.buf_ptr() as *mut u8;
+    let buf_len = buf.len_bytes();
+    unsafe {
+        let total_blocks = validate_lease_buffer(ptr, buf_len)?;
+        let _mutation = enter_lease_mutation(ptr);
+        let mut locked: Vec<(u32, u32, u64, u32)> = Vec::with_capacity(block_ids.len());
+        for (block_id, generation) in block_ids.iter().copied().zip(generations.iter().copied()) {
+            if block_id >= total_blocks {
+                for (id, _generation, _owner, state) in locked.iter().copied() {
+                    let state_ptr = ptr.add(lease_record_off(id) + LR_STATE) as *const AtomicU32;
+                    (*state_ptr).store(state, Ordering::Release);
+                }
+                return Ok(None);
+            }
+            let base = lease_record_off(block_id);
+            let generation_ptr = ptr.add(base + LR_GENERATION) as *const AtomicU32;
+            if (*generation_ptr).load(Ordering::Acquire) != generation {
+                for (id, _generation, _owner, state) in locked.iter().copied() {
+                    let state_ptr = ptr.add(lease_record_off(id) + LR_STATE) as *const AtomicU32;
+                    (*state_ptr).store(state, Ordering::Release);
+                }
+                return Ok(None);
+            }
+            let state_ptr = ptr.add(base + LR_STATE) as *const AtomicU32;
+            let mut state = (*state_ptr).load(Ordering::Acquire);
+            let mut acquired = false;
+            while state == LEASE_STATE_LEASED || state == LEASE_STATE_SEALED {
+                match (*state_ptr).compare_exchange(
+                    state,
+                    LEASE_STATE_TRANSITION,
+                    Ordering::AcqRel,
+                    Ordering::Acquire,
+                ) {
+                    Ok(_) => {
+                        acquired = true;
+                        break;
+                    }
+                    Err(observed) => state = observed,
+                }
+            }
+            if !acquired || (*generation_ptr).load(Ordering::Acquire) != generation {
+                if acquired {
+                    (*state_ptr).store(state, Ordering::Release);
+                }
+                for (id, _generation, _owner, old_state) in locked.iter().copied() {
+                    let old_state_ptr =
+                        ptr.add(lease_record_off(id) + LR_STATE) as *const AtomicU32;
+                    (*old_state_ptr).store(old_state, Ordering::Release);
+                }
+                return Ok(None);
+            }
+            let owner_ptr = ptr.add(base + LR_OWNER_HASH) as *const AtomicU64;
+            locked.push((
+                block_id,
+                generation,
+                (*owner_ptr).load(Ordering::Acquire),
+                state,
+            ));
+        }
+
+        let mut adopted = Vec::with_capacity(locked.len());
+        for (block_id, generation, _old_owner, _old_state) in locked {
+            let base = lease_record_off(block_id);
+            let generation_ptr = ptr.add(base + LR_GENERATION) as *const AtomicU32;
+            let new_generation = generation.wrapping_add(1);
+            (*generation_ptr).store(new_generation, Ordering::Release);
+            let owner_ptr = ptr.add(base + LR_OWNER_HASH) as *const AtomicU64;
+            (*owner_ptr).store(owner_hash, Ordering::Release);
+            let state_ptr = ptr.add(base + LR_STATE) as *const AtomicU32;
+            (*state_ptr).store(LEASE_STATE_LEASED, Ordering::Release);
+            adopted.push((block_id, new_generation));
+        }
+        Ok(Some(adopted))
+    }
+}
+
 /// Release KV block leases back to the shared-memory free pool.
 #[pyfunction]
 #[pyo3(signature = (buf, block_ids, generations))]
@@ -912,12 +1017,76 @@ fn kv_lease_release(
     Ok(released)
 }
 
+unsafe fn reclaim_foreign_lease_blocks(
+    ptr: *mut u8,
+    buf_len: usize,
+    owner_hash: u64,
+    max_blocks: u32,
+    protected_blocks: &[u32],
+) -> PyResult<u32> {
+    let mut released = 0u32;
+    let total_blocks = validate_lease_buffer(ptr, buf_len)?;
+    let _recovery = enter_lease_recovery(ptr)?;
+    let free_count_ptr = ptr.add(L_FREE_COUNT) as *const AtomicU64;
+    for block_id in 0..total_blocks {
+        let base = lease_record_off(block_id);
+        let owner_ptr = ptr.add(base + LR_OWNER_HASH) as *const AtomicU64;
+        let observed_owner = (*owner_ptr).load(Ordering::Acquire);
+        let state_ptr = ptr.add(base + LR_STATE) as *const AtomicU32;
+        let mut state = (*state_ptr).load(Ordering::Acquire);
+        // A transition belongs to a writer stopped at an arbitrary point
+        // around the free-count update. Once that writer is fenced,
+        // rolling the record forward to FREE is safe; the final full scan
+        // reconstructs the exact count without guessing whether the
+        // interrupted update happened.
+        if state == LEASE_STATE_TRANSITION {
+            (*owner_ptr).store(0, Ordering::Release);
+            (*state_ptr).store(LEASE_STATE_FREE, Ordering::Release);
+            released = released.wrapping_add(1);
+            continue;
+        }
+        if max_blocks > 0 && released >= max_blocks {
+            continue;
+        }
+        if observed_owner == 0
+            || observed_owner == owner_hash
+            || protected_blocks.binary_search(&block_id).is_ok()
+        {
+            continue;
+        }
+        while state == LEASE_STATE_LEASED || state == LEASE_STATE_SEALED {
+            match (*state_ptr).compare_exchange(
+                state,
+                LEASE_STATE_TRANSITION,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => {
+                    if (*owner_ptr).load(Ordering::Acquire) != observed_owner {
+                        (*state_ptr).store(state, Ordering::Release);
+                        break;
+                    }
+                    (*owner_ptr).store(0, Ordering::Release);
+                    (*state_ptr).store(LEASE_STATE_FREE, Ordering::Release);
+                    released = released.wrapping_add(1);
+                    break;
+                }
+                Err(observed) => state = observed,
+            }
+        }
+    }
+    let mut exact_free = 0u64;
+    for block_id in 0..total_blocks {
+        let state_ptr = ptr.add(lease_record_off(block_id) + LR_STATE) as *const AtomicU32;
+        if (*state_ptr).load(Ordering::Acquire) == LEASE_STATE_FREE {
+            exact_free += 1;
+        }
+    }
+    (*free_count_ptr).store(exact_free, Ordering::Release);
+    Ok(released)
+}
+
 /// Reclaim all leased/sealed KV blocks not owned by `owner_hash`.
-///
-/// This is a post-fence failover primitive. Callers must only invoke it after
-/// the old writer has been fenced, for example after a shadow acquires the
-/// failover lock. It deliberately ignores generation checks because the old
-/// owner is dead and any remaining leased/sealed records are orphaned.
 #[pyfunction]
 #[pyo3(signature = (buf, owner_hash = 0, max_blocks = 0))]
 fn kv_lease_reclaim_foreign(
@@ -927,67 +1096,39 @@ fn kv_lease_reclaim_foreign(
     max_blocks: u32,
 ) -> PyResult<u32> {
     let _ = py;
-    let ptr = buf.buf_ptr() as *mut u8;
-    let buf_len = buf.len_bytes();
-    let mut released = 0u32;
     unsafe {
-        let total_blocks = validate_lease_buffer(ptr, buf_len)?;
-        let _recovery = enter_lease_recovery(ptr)?;
-        let free_count_ptr = ptr.add(L_FREE_COUNT) as *const AtomicU64;
-        for block_id in 0..total_blocks {
-            let base = lease_record_off(block_id);
-            let owner_ptr = ptr.add(base + LR_OWNER_HASH) as *const AtomicU64;
-            let observed_owner = (*owner_ptr).load(Ordering::Acquire);
-            let state_ptr = ptr.add(base + LR_STATE) as *const AtomicU32;
-            let mut state = (*state_ptr).load(Ordering::Acquire);
-            // A transition belongs to a writer stopped at an arbitrary point
-            // around the free-count update. Once that writer is fenced,
-            // rolling the record forward to FREE is safe; the final full scan
-            // reconstructs the exact count without guessing whether the
-            // interrupted update happened.
-            if state == LEASE_STATE_TRANSITION {
-                (*owner_ptr).store(0, Ordering::Release);
-                (*state_ptr).store(LEASE_STATE_FREE, Ordering::Release);
-                released = released.wrapping_add(1);
-                continue;
-            }
-            if max_blocks > 0 && released >= max_blocks {
-                continue;
-            }
-            if observed_owner == 0 || observed_owner == owner_hash {
-                continue;
-            }
-            while state == LEASE_STATE_LEASED || state == LEASE_STATE_SEALED {
-                match (*state_ptr).compare_exchange(
-                    state,
-                    LEASE_STATE_TRANSITION,
-                    Ordering::AcqRel,
-                    Ordering::Acquire,
-                ) {
-                    Ok(_) => {
-                        if (*owner_ptr).load(Ordering::Acquire) != observed_owner {
-                            (*state_ptr).store(state, Ordering::Release);
-                            break;
-                        }
-                        (*owner_ptr).store(0, Ordering::Release);
-                        (*state_ptr).store(LEASE_STATE_FREE, Ordering::Release);
-                        released = released.wrapping_add(1);
-                        break;
-                    }
-                    Err(observed) => state = observed,
-                }
-            }
-        }
-        let mut exact_free = 0u64;
-        for block_id in 0..total_blocks {
-            let state_ptr = ptr.add(lease_record_off(block_id) + LR_STATE) as *const AtomicU32;
-            if (*state_ptr).load(Ordering::Acquire) == LEASE_STATE_FREE {
-                exact_free += 1;
-            }
-        }
-        (*free_count_ptr).store(exact_free, Ordering::Release);
+        reclaim_foreign_lease_blocks(
+            buf.buf_ptr() as *mut u8,
+            buf.len_bytes(),
+            owner_hash,
+            max_blocks,
+            &[],
+        )
     }
-    Ok(released)
+}
+
+/// Reclaim foreign blocks except READY HBM slots protected by the directory.
+#[pyfunction]
+#[pyo3(signature = (buf, protected_blocks, owner_hash = 0, max_blocks = 0))]
+fn kv_lease_reclaim_foreign_except(
+    py: Python<'_>,
+    buf: PyBuffer<u8>,
+    mut protected_blocks: Vec<u32>,
+    owner_hash: u64,
+    max_blocks: u32,
+) -> PyResult<u32> {
+    let _ = py;
+    protected_blocks.sort_unstable();
+    protected_blocks.dedup();
+    unsafe {
+        reclaim_foreign_lease_blocks(
+            buf.buf_ptr() as *mut u8,
+            buf.len_bytes(),
+            owner_hash,
+            max_blocks,
+            &protected_blocks,
+        )
+    }
 }
 
 // IEEE CRC32 polynomial in reversed representation, matching zlib.
@@ -1086,8 +1227,10 @@ fn gms_rust_ring(m: &Bound<'_, PyModule>) -> PyResult<()> {
         m
     )?)?;
     m.add_function(wrap_pyfunction!(kv_lease_seal, m)?)?;
+    m.add_function(wrap_pyfunction!(kv_lease_adopt, m)?)?;
     m.add_function(wrap_pyfunction!(kv_lease_release, m)?)?;
     m.add_function(wrap_pyfunction!(kv_lease_reclaim_foreign, m)?)?;
+    m.add_function(wrap_pyfunction!(kv_lease_reclaim_foreign_except, m)?)?;
     m.add("RECORD_SIZE", RECORD_SIZE)?;
     m.add("HEADER_SIZE", HEADER_SIZE)?;
     m.add("MAX_BLOCK_PAIRS", MAX_BLOCK_PAIRS_PER_RECORD)?;
