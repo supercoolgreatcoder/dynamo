@@ -180,17 +180,15 @@ class KVLeaseClient(Protocol):
         preferred_blocks: list[int] | None = None,
         allow_partial: bool = False,
         strict_preferred: bool = False,
-    ) -> list[KVLease]:
-        ...
+    ) -> list[KVLease]: ...
 
-    def seal(self, leases: list[KVLease]) -> None:
-        ...
+    def seal(self, leases: list[KVLease]) -> None: ...
 
-    def release(self, leases: list[KVLease]) -> None:
-        ...
+    def adopt(self, leases: list[KVLease]) -> list[KVLease]: ...
 
-    def free_count(self) -> int:
-        ...
+    def release(self, leases: list[KVLease]) -> None: ...
+
+    def free_count(self) -> int: ...
 
 
 class SharedMemoryKVLeaseClient:
@@ -551,6 +549,21 @@ class SharedMemoryKVLeaseClient:
             [int(lease.generation) for lease in leases],
         )
 
+    def adopt(self, leases: list[KVLease]) -> list[KVLease]:
+        if not leases:
+            return []
+        result = self._rust.kv_lease_adopt(
+            self._mmap,
+            [int(lease.block_id) for lease in leases],
+            [int(lease.generation) for lease in leases],
+            int(self._owner_hash),
+        )
+        if result is None:
+            return []
+        return [
+            KVLease(int(block_id), int(generation)) for block_id, generation in result
+        ]
+
     def release(self, leases: list[KVLease]) -> None:
         if not leases:
             return
@@ -573,7 +586,12 @@ class SharedMemoryKVLeaseClient:
             )
             raise
 
-    def reclaim_foreign(self, *, max_blocks: int = 0) -> int:
+    def reclaim_foreign(
+        self,
+        *,
+        max_blocks: int = 0,
+        protected_blocks: set[int] | None = None,
+    ) -> int:
         """Recover and release orphaned records after prior writers are fenced.
 
         The caller must ensure no prior writer can resume and must invoke this
@@ -581,6 +599,18 @@ class SharedMemoryKVLeaseClient:
         interrupted acquire/release transitions and reconstructs the free count
         from record state before returning.
         """
+        protected = sorted(int(block_id) for block_id in (protected_blocks or set()))
+        if protected:
+            if not hasattr(self._rust, "kv_lease_reclaim_foreign_except"):
+                raise RuntimeError("gms_rust_ring lacks selective KV reclaim")
+            return int(
+                self._rust.kv_lease_reclaim_foreign_except(
+                    self._mmap,
+                    protected,
+                    int(self._owner_hash),
+                    max(0, int(max_blocks)),
+                )
+            )
         return int(
             self._rust.kv_lease_reclaim_foreign(
                 self._mmap,
@@ -689,6 +719,7 @@ def reclaim_foreign_kv_leases_in_shm_dir(
     owner_id: str | None = None,
     shm_dir: str | None = None,
     max_blocks_per_file: int = 0,
+    protected_blocks: set[int] | None = None,
 ) -> KVLeaseReclaimResult:
     """Reclaim non-self KV leases from rank-local lease mmap files.
 
@@ -697,11 +728,23 @@ def reclaim_foreign_kv_leases_in_shm_dir(
     owners in these lease files are orphaned primary processes after the
     shadow has acquired the failover lock. Call it before the replacement
     owner starts lease mutations; it also recovers interrupted transitions.
+
+    ``protected_blocks`` are READY HBM slots from the authoritative content
+    directory. They remain sealed for lazy adoption by the replacement owner;
+    all other foreign records are reclaimed as before.
     """
 
     rust = _load_optional_rust_ring()
     if rust is None or not hasattr(rust, "kv_lease_reclaim_foreign"):
         return KVLeaseReclaimResult()
+
+    protected = sorted(int(block_id) for block_id in (protected_blocks or set()))
+    if protected and not hasattr(rust, "kv_lease_reclaim_foreign_except"):
+        logger.error(
+            "GMS KV selective reclaim unavailable; preserving all foreign "
+            "leases rather than discarding directory-owned HBM"
+        )
+        return KVLeaseReclaimResult(errors=1)
 
     owner = owner_id or _owner_id_from_env(engine, device)
     owner_hash = _owner_hash(owner)
@@ -724,13 +767,23 @@ def reclaim_foreign_kv_leases_in_shm_dir(
             )
             buf = mmap.mmap(fd, map_size)
             try:
-                n = int(
-                    rust.kv_lease_reclaim_foreign(
-                        buf,
-                        int(owner_hash),
-                        max(0, int(max_blocks_per_file)),
+                if protected:
+                    n = int(
+                        rust.kv_lease_reclaim_foreign_except(
+                            buf,
+                            protected,
+                            int(owner_hash),
+                            max(0, int(max_blocks_per_file)),
+                        )
                     )
-                )
+                else:
+                    n = int(
+                        rust.kv_lease_reclaim_foreign(
+                            buf,
+                            int(owner_hash),
+                            max(0, int(max_blocks_per_file)),
+                        )
+                    )
             finally:
                 buf.close()
             files += 1
