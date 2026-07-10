@@ -336,7 +336,7 @@ class VLLMWithGMSProcess(GMSEngineProcess):
             "--max-num-seqs",
             "1",
             "--gpu-memory-utilization",
-            "0.8",
+            os.environ.get("VLLM_GMS_GPU_MEM_UTIL", "0.8"),
             "--kv-events-config",
             kv_events_cfg,
         ]
