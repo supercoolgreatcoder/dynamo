@@ -617,6 +617,10 @@ class WorkerFactory:
                     "[GMS failover] Skipping promotion warmup for pre-init "
                     "active lock; warmup is shadow-only"
                 )
+            # Lock-before-init is the default GMS path. The rank-liveness
+            # monitor must be armed here too; otherwise a lost secondary rank
+            # is noticed only after vLLM/NCCL's collective timeout.
+            self._maybe_start_rank_liveness_monitor(handler, config)
             logger.info(
                 "[Shadow] Failover lock already acquired before engine init; "
                 "registering with discovery"

@@ -226,6 +226,16 @@ def test_default_shared_shadow_uses_stable_shared_id(monkeypatch):
     assert kv_identity.use_existing_shared_geometry()
 
 
+def test_generic_failover_shadow_mode_enables_shared_geometry(monkeypatch):
+    monkeypatch.delenv("DYN_VLLM_GMS_SHADOW_MODE", raising=False)
+    monkeypatch.delenv("GMS_VLLM_SHARED_KV", raising=False)
+    monkeypatch.setenv("DYN_GMS_FAILOVER_SHADOW_MODE", "true")
+
+    assert kv_identity.shared_kv_enabled()
+    assert kv_identity.allocation_shared()
+    assert kv_identity.use_existing_shared_geometry()
+
+
 def test_private_bootstrap_uses_member_scoped_init_id(monkeypatch):
     monkeypatch.setenv("DYN_VLLM_GMS_SHADOW_MODE", "true")
     monkeypatch.setenv("DYN_VLLM_GMS_PRIVATE_BOOTSTRAP_KV", "1")

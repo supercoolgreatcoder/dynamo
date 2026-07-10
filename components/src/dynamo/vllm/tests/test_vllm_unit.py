@@ -2434,6 +2434,40 @@ async def test_gms_primary_does_not_use_private_bootstrap_promotion(monkeypatch)
 
 
 @pytest.mark.asyncio
+async def test_gms_preinit_lock_owner_starts_rank_liveness_monitor(monkeypatch):
+    from dynamo.vllm.worker_factory import WorkerFactory
+
+    factory = WorkerFactory(
+        lambda *args, **kwargs: None,
+        lambda *args, **kwargs: None,
+        lambda *args, **kwargs: None,
+        lambda *args, **kwargs: None,
+        lambda *args, **kwargs: None,
+    )
+    handler = SimpleNamespace()
+    runtime = SimpleNamespace()
+    config = SimpleNamespace(gms_shadow_mode=True)
+    monitored = []
+    monkeypatch.setattr(
+        factory,
+        "_maybe_start_rank_liveness_monitor",
+        lambda candidate, candidate_config: monitored.append(
+            (candidate, candidate_config)
+        ),
+    )
+
+    await factory._maybe_wait_for_failover_lock(
+        handler,
+        runtime,
+        config,
+        lock_already_acquired=True,
+        post_lock_fence_already_run=True,
+    )
+
+    assert monitored == [(handler, config)]
+
+
+@pytest.mark.asyncio
 async def test_gms_shadow_startup_sleep_can_be_forced_for_legacy_path(monkeypatch):
     from dynamo.vllm.worker_factory import WorkerFactory
 
