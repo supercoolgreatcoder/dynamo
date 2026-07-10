@@ -4,10 +4,6 @@
 title: Router
 ---
 
-<p align="left">
-  <a href="./README.md" hreflang="en">English</a> | <strong>简体中文</strong>
-</p>
-
 Dynamo KV Router 通过评估不同 worker 上的计算成本来智能地路由请求。它同时考虑解码成本（来自活动 block）和预填充成本（来自新计算的 block），并利用 KV cache 重叠来尽量减少重复计算。优化 KV Router 对于在分布式推理部署中实现最大吞吐量和最低延迟至关重要。
 
 ## 快速开始
@@ -18,7 +14,7 @@ Dynamo KV Router 通过评估不同 worker 上的计算成本来智能地路由�
 python -m dynamo.frontend --router-mode kv --http-port 8000
 ```
 
-对于 Kubernetes，请在 Frontend service 上设置 `DYN_ROUTER_MODE=kv`。对于事件驱动的 KV 状态，请使用 [Router Operations](router-operations.md#additional-notes) 中描述的后端专用 flag，配置 backend worker 发布 KV cache 事件。仅当你希望使用近似的 cache 状态预测时，才使用 `--no-router-kv-events`。
+对于 Kubernetes，请在 Frontend service 上设置 `DYN_ROUTER_MODE=kv`。对于事件驱动的 KV 状态，请使用 [Router Operations](/dynamo/dev/components/router/router-operations#additional-notes) 中描述的后端专用 flag，配置 backend worker 发布 KV cache 事件。仅当你希望使用近似的 cache 状态预测时，才使用 `--no-router-kv-events`。
 
 | 参数 | 默认值 | 描述 |
 |----------|---------|-------------|
@@ -35,13 +31,13 @@ python -m dynamo.frontend --router-mode kv --http-port 8000
 
 你也可以将 KV router 作为独立服务运行（不使用 Dynamo frontend）。更多详细信息请参阅 [Standalone Router component](https://github.com/ai-dynamo/dynamo/tree/main/components/src/dynamo/router/)。
 
-有关部署模式和快速开始步骤，请参阅 [Router Guide](router-guide.md)。有关 CLI 参数和调优指南，请参阅 [Configuration and Tuning](router-configuration.md)。有关 A/B 基准测试，请参阅 [KV Router A/B Benchmarking Guide](../../benchmarks/kv-router-ab-testing.md)。
+有关部署模式和快速开始步骤，请参阅 [Router Guide](/dynamo/dev/user-guides/kv-cache-aware-routing)。有关 CLI 参数和调优指南，请参阅 [Configuration and Tuning](/dynamo/dev/components/router/configuration-and-tuning)。有关 A/B 基准测试，请参阅 [KV Router A/B Benchmarking Guide](/dynamo/dev/benchmarks/kv-router-ab-testing)。
 
 ## 前提条件和限制
 
 **要求：**
 - **仅支持动态 endpoint**：KV router 要求使用 `model_input=ModelInput.Tokens` 调用 `register_model()`。你的 backend handler 会接收带有 `token_ids` 的预分词请求，而不是原始文本。
-- Backend worker 必须使用 `model_input=ModelInput.Tokens` 调用 `register_model()`（请参阅 [Backend Guide](../../development/backend-guide.md)）
+- Backend worker 必须使用 `model_input=ModelInput.Tokens` 调用 `register_model()`（请参阅 [Backend Guide](/dynamo/dev/backends/custom-backend/python-workers-lower-level)）
 - 使用 KV routing 时请使用动态发现，以便 router 跟踪 worker 实例及其 KV cache 状态
 
 **多模态支持：**
@@ -55,12 +51,12 @@ python -m dynamo.frontend --router-mode kv --http-port 8000
 
 ## 后续步骤
 
-- **[Router Guide](router-guide.md)**：部署模式、快速开始和页面地图
-- **[Routing Concepts](router-concepts.md)**：成本模型和 worker 选择行为
-- **[Configuration and Tuning](router-configuration.md)**：Router flag、传输模式和指标
-- **[分离式服务](router-disaggregated-serving.md)**：Prefill 和 decode 路由设置
-- **[Router Operations](router-operations.md)**：副本、持久化和恢复
-- **[Router Examples](router-examples.md)**：Python API 用法、K8s 示例和自定义路由模式
-- **[Router Testing](router-testing.md)**：从 Rust 单元测试到基于 fixture 的 replay 和完整进程 E2E 的测试层级
-- **[Standalone Indexer](standalone-indexer.md)**：将 KV indexer 作为单独服务运行，以便独立扩缩容
-- **[Router Design](../../design-docs/router-design.md)**：架构细节、算法和事件传输模式
+- **[Router Guide](/dynamo/dev/user-guides/kv-cache-aware-routing)**：部署模式、快速开始和页面地图
+- **[Routing Concepts](/dynamo/dev/components/router/routing-concepts)**：成本模型和 worker 选择行为
+- **[Configuration and Tuning](/dynamo/dev/components/router/configuration-and-tuning)**：Router flag、传输模式和指标
+- **[分离式服务](/dynamo/dev/components/router/disaggregated-serving)**：Prefill 和 decode 路由设置
+- **[Router Operations](/dynamo/dev/components/router/router-operations)**：副本、持久化和恢复
+- **[Router Examples](/dynamo/dev/components/router/router-examples)**：Python API 用法、K8s 示例和自定义路由模式
+- **[Router Testing](https://github.com/ai-dynamo/dynamo/blob/7fc328a288e194b73ecacaa60bdcedf4c987a913/docs/components/router/router-testing.md)**：从 Rust 单元测试到基于 fixture 的 replay 和完整进程 E2E 的测试层级
+- **[Standalone Indexer](/dynamo/dev/components/router/standalone-indexer)**：将 KV indexer 作为单独服务运行，以便独立扩缩容
+- **[Router Design](/dynamo/dev/design-docs/component-design/router-design)**：架构细节、算法和事件传输模式

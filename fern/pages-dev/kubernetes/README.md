@@ -14,7 +14,11 @@ container guides remain useful for development, but Kubernetes is the canonical
 path for shared GPU clusters and multi-node serving.
 
 <Note>
-**Deployment modes.** Dynamo supports two deployment modes on Kubernetes. This quickstart uses **standalone mode**, where the Dynamo Frontend serves requests and the integrated Dynamo Router does KV-aware routing. Dynamo can also run in **gateway mode** behind a [Gateway API Inference Extension](https://gateway-api-inference-extension.sigs.k8s.io/) gateway, where KV-aware routing happens in the Dynamo Endpoint Picker Plugin (EPP) at the gateway layer and the Frontend runs as a sidecar in `--router-mode direct`. See the [Inference Gateway (GAIE) guide](inference-gateway.md) to set up gateway mode.
+**Request entry.** This quickstart uses Dynamo-native Frontend routing: the Dynamo Frontend
+receives requests and the integrated Dynamo Router selects workers. Dynamo can also integrate
+Kubernetes-natively with [Gateway API Inference Extension](https://github.com/kubernetes-sigs/gateway-api-inference-extension),
+where Gateway API receives requests and calls the Dynamo EPP for endpoint selection. See the
+[GAIE guide](gateway-api/README.mdx) for the Gateway API path.
 </Note>
 
 ## Prerequisites
@@ -77,7 +81,7 @@ Optionally, verify your cluster is ready:
 export NAMESPACE=dynamo-system
 helm install dynamo-platform \
   oci://helm.ngc.nvidia.com/nvidia/ai-dynamo/charts/dynamo-platform \
-  --version "1.0.2" \
+  --version "1.2.1" \
   --namespace "$NAMESPACE" \
   --create-namespace
 ```
