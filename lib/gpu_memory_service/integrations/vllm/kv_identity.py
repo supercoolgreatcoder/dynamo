@@ -20,7 +20,10 @@ def truthy_env(name: str, *, default: bool = False) -> bool:
 def shared_kv_enabled() -> bool:
     return truthy_env(
         "GMS_VLLM_SHARED_KV",
-        default=truthy_env("DYN_VLLM_GMS_SHADOW_MODE", default=False),
+        default=(
+            truthy_env("DYN_VLLM_GMS_SHADOW_MODE", default=False)
+            or truthy_env("DYN_GMS_FAILOVER_SHADOW_MODE", default=False)
+        ),
     )
 
 
