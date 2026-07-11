@@ -433,13 +433,21 @@ class GMSClientMemoryManager:
         )
         return fd
 
-    def list_persistent(self, engine_id: Optional[str] = None):
-        """Return persistent allocations, optionally filtered by engine id."""
+    def list_persistent(
+        self,
+        engine_id: Optional[str] = None,
+        *,
+        include_unclaimed: bool = False,
+    ):
+        """Return this session's claims, or all allocations when requested."""
         if self._client is None:
             raise RuntimeError(
                 "Memory manager must be connected before list_persistent",
             )
-        return self._client_rpc.list_persistent(engine_id=engine_id)
+        return self._client_rpc.list_persistent(
+            engine_id=engine_id,
+            include_unclaimed=include_unclaimed,
+        )
 
     def create_persistent_mapping(
         self,

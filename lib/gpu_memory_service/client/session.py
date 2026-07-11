@@ -243,9 +243,14 @@ class _GMSClientSession:
     def list_persistent(
         self,
         engine_id: Optional[str] = None,
+        *,
+        include_unclaimed: bool = False,
     ) -> List[PersistentAllocationInfo]:
         return self._transport.request(
-            ListPersistentAllocationsRequest(engine_id=engine_id),
+            ListPersistentAllocationsRequest(
+                engine_id=engine_id,
+                include_unclaimed=include_unclaimed,
+            ),
             ListPersistentAllocationsResponse,
         ).allocations
 
