@@ -44,7 +44,6 @@ from gpu_memory_service.integrations.common.utils import (
 from gpu_memory_service.integrations.vllm.kv_identity import (
     allocation_engine_id,
     allocation_shared,
-    private_bootstrap_kv_enabled,
     use_existing_shared_geometry,
 )
 
@@ -161,9 +160,6 @@ def _install_kv_leases() -> bool:
         logger.exception("[GMS-VMM-IPC] vLLM KV lease install failed")
         raise
 
-
-def _defer_physical_enabled() -> bool:
-    return private_bootstrap_kv_enabled()
 
 
 def _kv_layout_fingerprint(kv_cache_config) -> str:
@@ -352,8 +348,7 @@ def _available_memory_exhausted(available_memory) -> bool:
 
 
 def _geometry_wait_ms(available_memory) -> int:
-    private_bootstrap = private_bootstrap_kv_enabled()
-    if not private_bootstrap and not _available_memory_exhausted(available_memory):
+    if not _available_memory_exhausted(available_memory):
         return 0
     name = "GMS_VLLM_KV_GEOMETRY_WAIT_MS"
     value = os.environ.get(name)
@@ -363,14 +358,7 @@ def _geometry_wait_ms(available_memory) -> int:
     if value is None:
         name = "GMS_KV_LEASE_GEOMETRY_WAIT_MS"
         value = os.environ.get(name)
-    wait_ms = max(0, _int_env_value(name, value, 300_000))
-    if private_bootstrap:
-        # A private-bootstrap shadow must attach to the primary's published KV
-        # geometry. Falling back to vLLM sizing before the primary has published
-        # can observe negative available HBM and fail even though the shared KV
-        # pool is about to become attachable.
-        return max(wait_ms, 1_800_000)
-    return wait_ms
+    return max(0, _int_env_value(name, value, 300_000))
 
 
 def _wrap_get_kv_cache_configs(original):
@@ -525,40 +513,35 @@ def install() -> bool:
                 )
                 try:
                     shared_kv = _shared_kv_enabled()
-                    defer_physical = _defer_physical_enabled()
                     manager = get_or_create_persistent_allocator(
                         socket,
                         dev_idx,
                         engine_id,
                         tag="kv_pool",
                         shared=shared_kv,
-                        defer_physical=defer_physical,
                     )
                 except Exception as exc:  # noqa: BLE001
                     raise RuntimeError(
                         "GMS vLLM persistent KV allocator registration failed"
                     ) from exc
                 tag_plan = _semantic_kv_tensor_tag_plan(kv_cache_config)
-                reattaching = False
-                if not defer_physical:
-                    reattaching = _persistent_tag_plan_reattaches(
-                        manager, engine_id, tag_plan
-                    )
+                reattaching = _persistent_tag_plan_reattaches(
+                    manager, engine_id, tag_plan
+                )
                 if tag_plan:
                     set_persistent_allocator_tag_plan("kv_pool", tag_plan)
                 logger.debug(
                     "[GMS-VMM-IPC] V2 persistent pool engine_id=%s device=%d "
-                    "defer_physical=%s reattaching=%s semantic_tags=%d",
+                    "reattaching=%s semantic_tags=%d",
                     engine_id,
                     dev_idx,
-                    defer_physical,
                     reattaching,
                     len(tag_plan),
                 )
                 try:
                     with gms_use_persistent_pool("kv_pool", dev_idx):
                         with _persistent_kv_zeros_as_empty(
-                            defer_physical or reattaching
+                            reattaching
                         ):
                             return _orig_v2_alloc(*original_args, **kwargs)
                 finally:
@@ -632,14 +615,12 @@ def install() -> bool:
         engine_id = _engine_id(device)
         try:
             shared_kv = _shared_kv_enabled()
-            defer_physical = _defer_physical_enabled()
             manager = get_or_create_persistent_allocator(
                 socket,
                 device,
                 engine_id,
                 tag="kv_pool",
                 shared=shared_kv,
-                defer_physical=defer_physical,
             )
         except Exception as exc:  # noqa: BLE001
             raise RuntimeError(
@@ -653,26 +634,21 @@ def install() -> bool:
         )
         kv_cache_config = args[0] if args else kwargs.get("kv_cache_config")
         tag_plan = _semantic_kv_tensor_tag_plan(kv_cache_config)
-        reattaching = False
-        if not defer_physical:
-            reattaching = _persistent_tag_plan_reattaches(
-                manager, engine_id, tag_plan
-            )
+        reattaching = _persistent_tag_plan_reattaches(manager, engine_id, tag_plan)
         if tag_plan:
             set_persistent_allocator_tag_plan("kv_pool", tag_plan)
         logger.debug(
             "[GMS-VMM-IPC] V1 persistent pool engine_id=%s device=%d "
-            "defer_physical=%s reattaching=%s semantic_tags=%d",
+            "reattaching=%s semantic_tags=%d",
             engine_id,
             device,
-            defer_physical,
             reattaching,
             len(tag_plan),
         )
         try:
             with gms_use_persistent_pool("kv_pool", device):
                 with _persistent_kv_zeros_as_empty(
-                    defer_physical or reattaching
+                    reattaching
                 ):
                     return original(self, *args, **kwargs)
         finally:

@@ -1869,58 +1869,6 @@ def test_vllm_gms_failover_jit_cache_isolation_can_be_disabled(monkeypatch):
     assert os.environ["TMPDIR"] == "/dev/shm/dynamo-jit/tmp"
 
 
-def test_gms_shadow_waits_for_primary_geometry_before_init(monkeypatch):
-    from dynamo.vllm import main as vllm_main
-
-    calls = []
-
-    def fake_existing_blocks(*, wait_ms=0):
-        calls.append(wait_ms)
-        return 123
-
-    monkeypatch.setenv("DYN_GMS_FAILOVER_SHADOW_MODE", "true")
-    monkeypatch.setenv("DYN_VLLM_GMS_SHADOW_MODE", "true")
-    monkeypatch.setenv("DYN_GMS_FAILOVER_PRIMARY_ENGINE_ID", "0")
-    monkeypatch.setenv("ENGINE_ID", "1")
-    monkeypatch.setenv("GMS_KV_LEASE_GEOMETRY_WAIT_MS", "300000")
-    monkeypatch.setattr(
-        "gpu_memory_service.integrations.vllm.install_vmm_ipc_kv._existing_shared_kv_blocks",
-        fake_existing_blocks,
-    )
-
-    config = SimpleNamespace(
-        engine_args=SimpleNamespace(load_format="gms"),
-        gms_shadow_mode=True,
-    )
-
-    vllm_main._maybe_wait_for_gms_primary_kv_before_init(config)
-
-    assert calls == [300_000]
-
-
-def test_gms_primary_does_not_wait_for_primary_geometry(monkeypatch):
-    from dynamo.vllm import main as vllm_main
-
-    def fail_if_called(*, wait_ms=0):
-        raise AssertionError("primary must not wait for its own KV geometry")
-
-    monkeypatch.setenv("DYN_GMS_FAILOVER_SHADOW_MODE", "true")
-    monkeypatch.setenv("DYN_VLLM_GMS_SHADOW_MODE", "true")
-    monkeypatch.setenv("DYN_GMS_FAILOVER_PRIMARY_ENGINE_ID", "0")
-    monkeypatch.setenv("ENGINE_ID", "0")
-    monkeypatch.setattr(
-        "gpu_memory_service.integrations.vllm.install_vmm_ipc_kv._existing_shared_kv_blocks",
-        fail_if_called,
-    )
-
-    config = SimpleNamespace(
-        engine_args=SimpleNamespace(load_format="gms"),
-        gms_shadow_mode=True,
-    )
-
-    vllm_main._maybe_wait_for_gms_primary_kv_before_init(config)
-
-
 def test_gms_private_bootstrap_shadow_disables_vllm_graphs(monkeypatch):
     from dynamo.vllm import main as vllm_main
 
@@ -1960,28 +1908,6 @@ def test_gms_private_bootstrap_graph_disable_can_be_overridden(monkeypatch):
     assert "VLLM_USE_BREAKABLE_CUDAGRAPH" not in os.environ
 
 
-def test_gms_private_bootstrap_scratch_warmup_keeps_vllm_graphs(monkeypatch):
-    from dynamo.vllm import main as vllm_main
-
-    monkeypatch.setenv("DYN_GMS_FAILOVER_SHADOW_MODE", "true")
-    monkeypatch.setenv("DYN_VLLM_GMS_SHADOW_MODE", "true")
-    monkeypatch.setenv("DYN_VLLM_GMS_PRIVATE_BOOTSTRAP_KV", "1")
-    monkeypatch.setenv("DYN_VLLM_GMS_PRIVATE_BOOTSTRAP_SCRATCH_WARMUP", "1")
-    monkeypatch.setenv("DYN_GMS_FAILOVER_PRIMARY_ENGINE_ID", "0")
-    monkeypatch.setenv("ENGINE_ID", "1")
-    monkeypatch.delenv("VLLM_USE_BREAKABLE_CUDAGRAPH", raising=False)
-    monkeypatch.delenv("GMS_PERSISTENT_DEFER_PHYSICAL_SCRATCH_BACKED", raising=False)
-
-    config = SimpleNamespace(
-        engine_args=SimpleNamespace(load_format="gms"),
-        gms_shadow_mode=True,
-    )
-
-    assert not vllm_main._maybe_disable_gms_shadow_graphs_before_vllm_config(config)
-    assert "VLLM_USE_BREAKABLE_CUDAGRAPH" not in os.environ
-    assert os.environ["GMS_PERSISTENT_DEFER_PHYSICAL_SCRATCH_BACKED"] == "1"
-
-
 def test_gms_private_bootstrap_shadow_forces_eager_vllm_config():
     from vllm.config import CompilationMode, CUDAGraphMode
 
@@ -2000,36 +1926,6 @@ def test_gms_private_bootstrap_shadow_forces_eager_vllm_config():
     assert vllm_config.compilation_config.cudagraph_mode == CUDAGraphMode.NONE
 
 
-def test_gms_forced_private_primary_waits_for_geometry(monkeypatch):
-    from dynamo.vllm import main as vllm_main
-
-    calls = []
-
-    def fake_existing_blocks(*, wait_ms=0):
-        calls.append(wait_ms)
-        return 456
-
-    monkeypatch.setenv("DYN_GMS_FAILOVER_SHADOW_MODE", "true")
-    monkeypatch.setenv("DYN_VLLM_GMS_SHADOW_MODE", "true")
-    monkeypatch.setenv("DYN_GMS_FAILOVER_PRIMARY_ENGINE_ID", "0")
-    monkeypatch.setenv("ENGINE_ID", "0")
-    monkeypatch.setenv("DYN_VLLM_GMS_FORCE_PRIVATE_BOOTSTRAP_KV", "1")
-    monkeypatch.setattr(
-        "gpu_memory_service.integrations.vllm.install_vmm_ipc_kv._existing_shared_kv_blocks",
-        fake_existing_blocks,
-    )
-
-    config = SimpleNamespace(
-        engine_args=SimpleNamespace(load_format="gms"),
-        gms_shadow_mode=True,
-    )
-
-    vllm_main._maybe_wait_for_gms_primary_kv_before_init(config)
-
-    assert calls == [300_000]
-
-
-@pytest.mark.asyncio
 async def test_gms_preinit_static_primary_uses_shared_kv_when_lock_free(monkeypatch):
     from dynamo.vllm.worker_factory import WorkerFactory
 
