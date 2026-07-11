@@ -289,6 +289,14 @@ def test_gms_minimal_cold_hbm_failover_vllm(
             failure_message="Primary cold-failover warmup failed",
             success_message="Primary cold-failover warmup OK",
         )
+        repeated_primary_output = assert_completion_ok(
+            manager.frontend_port,
+            _HBM_RECOVERY_PROMPT,
+            failure_message="Primary deterministic repeat failed",
+            success_message="Primary deterministic repeat OK",
+            body_overrides={"temperature": 0},
+        )
+        assert repeated_primary_output == primary_output
 
         with DaemonClient(manager.kv_directory_socket) as directory:
             _entries, epoch, writer = directory.directory_lookup(
