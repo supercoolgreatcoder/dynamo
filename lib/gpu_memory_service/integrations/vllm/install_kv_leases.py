@@ -889,37 +889,18 @@ def install(factory: Callable[[int], KVLeaseClient] | None = None) -> bool:
             try:
                 return orig_allocate_slots(self, *args, **kwargs)
             except GMSKVLeaseUnavailable:
-                num_new_computed_tokens = (
-                    args[2]
-                    if len(args) > 2
-                    else kwargs.get("num_new_computed_tokens", 0)
-                )
-                new_computed_blocks = (
-                    args[3] if len(args) > 3 else kwargs.get("new_computed_blocks")
-                )
-                num_external_computed_tokens = (
-                    args[5]
-                    if len(args) > 5
-                    else kwargs.get("num_external_computed_tokens", 0)
-                )
-                if new_computed_blocks is None:
-                    has_new_computed_blocks = False
-                else:
-                    groups = getattr(new_computed_blocks, "blocks", ())
-                    has_new_computed_blocks = any(len(group) > 0 for group in groups)
-                safe_to_backpressure = (
-                    int(num_new_computed_tokens or 0) == 0
-                    and not has_new_computed_blocks
-                    and int(num_external_computed_tokens or 0) == 0
-                )
-                if not safe_to_backpressure:
-                    raise
+                # Lease contention must NEVER crash the engine. Returning None
+                # signals vLLM's scheduler to defer/preempt this request (normal
+                # backpressure), regardless of whether it had prefix/computed
+                # blocks. The previous code re-raised for prefix-cache-hit
+                # requests, which propagated out of EngineCore.step and killed
+                # the whole engine under routine shared-lease contention. Always
+                # backpressuring also removes the fragile positional-arg parsing
+                # that a vLLM signature change would have silently broken.
                 log_lease_pressure(
                     logger,
                     "vllm:allocate-slots-backpressure",
                     "[GMS-KVLease] vLLM scheduler backpressured by shared leases",
-                    requested_tokens=int(num_new_computed_tokens or 0),
-                    external_tokens=int(num_external_computed_tokens or 0),
                 )
                 logger.debug(
                     "[GMS-KVLease] vLLM allocation backpressured by shared leases",
