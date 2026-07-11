@@ -588,6 +588,26 @@ class GMSWorker(Worker):
         from vllm.distributed.kv_transfer import ensure_kv_transfer_initialized
 
         self.cache_config.num_gpu_blocks = kv_cache_config.num_blocks
+
+        private_bootstrap = private_bootstrap_kv_enabled()
+        kv_transfer_config = getattr(self.vllm_config, "kv_transfer_config", None)
+        if private_bootstrap and kv_transfer_config is not None:
+            # A KV-transfer connector (e.g. NixlConnector) registers NIC memory
+            # regions over the KV tensors inside ensure_kv_transfer_initialized.
+            # In private-bootstrap/scratch mode those tensors are aliased onto
+            # throwaway scratch (or unbacked VA) and are remapped onto the shared
+            # persistent pages at promotion WITHOUT re-registering the MRs -- so
+            # the NIC would keep pointing at freed scratch pages (silent KV
+            # transfer corruption) or registration would fail on unbacked VA.
+            # Refuse the combination rather than create corrupt MRs.
+            connector = getattr(kv_transfer_config, "kv_connector", None)
+            raise RuntimeError(
+                "GMS private-bootstrap KV is incompatible with a KV-transfer "
+                f"connector ({connector!r}): its memory regions would be "
+                "registered over scratch/unbacked KV and never re-registered "
+                "after the promotion remap. Disable private-bootstrap KV or the "
+                "KV connector for this worker."
+            )
         ensure_kv_transfer_initialized(self.vllm_config, kv_cache_config)
 
         device = self.local_rank
@@ -595,7 +615,7 @@ class GMSWorker(Worker):
         engine_id = allocation_engine_id(device)
         self._gms_kv_engine_id = engine_id
         self._gms_kv_promote_engine_id = promotion_engine_id(device)
-        self._gms_kv_private_bootstrap = private_bootstrap_kv_enabled()
+        self._gms_kv_private_bootstrap = private_bootstrap
         get_or_create_persistent_allocator(
             socket,
             device,
