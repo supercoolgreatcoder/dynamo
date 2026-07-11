@@ -248,38 +248,47 @@ def test_post_fence_reclaim_recovers_process_death_at_every_transition_step(
         shadow.close()
 
 
-def test_reclaim_foreign_kv_leases_in_shm_dir_scans_rank_local_files(tmp_path):
+def test_reclaim_foreign_kv_leases_scoped_to_own_namespace(tmp_path, monkeypatch):
+    """Reclaim must only touch the caller's own namespace file, never every
+    ``gms-kv-lease-*.shm`` in the shared dir -- otherwise a failover on one rank
+    frees LIVE leases belonging to a healthy rank sharing the directory."""
     from gpu_memory_service.integrations.common.kv_lease_client import (
+        _kv_lease_shm_path,
         reclaim_foreign_kv_leases_in_shm_dir,
     )
 
     shm_dir = tmp_path / "rank"
     shm_dir.mkdir()
+    monkeypatch.setenv("GMS_KV_LEASE_SHM_DIR", str(shm_dir))
+    monkeypatch.setenv("GMS_KV_LEASE_NAMESPACE", "scan-reclaim")
+
+    target = _kv_lease_shm_path("vllm", "scan-reclaim")
     client = SharedMemoryKVLeaseClient(
-        str(shm_dir / "gms-kv-lease-test.shm"),
-        namespace="scan-reclaim",
-        owner_id="old-primary",
-        total_blocks=5,
+        target, namespace="scan-reclaim", owner_id="old-primary", total_blocks=5
     )
     shadow = SharedMemoryKVLeaseClient(
-        str(shm_dir / "gms-kv-lease-test.shm"),
-        namespace="scan-reclaim",
-        owner_id="shadow",
-        total_blocks=5,
+        target, namespace="scan-reclaim", owner_id="shadow", total_blocks=5
+    )
+    # A different rank's lease file in the SAME directory, with live leases.
+    decoy_path = str(shm_dir / "gms-kv-lease-otherrank.shm")
+    decoy = SharedMemoryKVLeaseClient(
+        decoy_path, namespace="other-rank", owner_id="other-primary", total_blocks=5
     )
     try:
         client.acquire(3)
-        result = reclaim_foreign_kv_leases_in_shm_dir(
-            "vllm", 0, owner_id="shadow", shm_dir=str(shm_dir)
-        )
+        decoy.acquire(2)
+        result = reclaim_foreign_kv_leases_in_shm_dir("vllm", 0, owner_id="shadow")
 
         assert result.files == 1
         assert result.reclaimed_blocks == 3
         assert result.errors == 0
         assert shadow.raw_free_count() == 5
+        # The healthy rank's live leases must be untouched.
+        assert decoy.raw_free_count() == 3
     finally:
         client.close()
         shadow.close()
+        decoy.close()
 
 
 def test_read_kv_lease_namespace_total_blocks_is_read_only(tmp_path, monkeypatch):
