@@ -242,9 +242,20 @@ fn reservation_applies_to_owner(
 
 unsafe fn load_lease_reservation(ptr: *const u8) -> (u32, u64, u64) {
     let epoch_ptr = ptr.add(L_RESERVATION_EPOCH) as *const AtomicU64;
+    // Bounded seqlock read. A writer killed between its two epoch bumps strands
+    // an odd epoch forever; rather than hang the hot acquire path under the GIL,
+    // after a spin budget we conservatively report "no reservation". A stranded
+    // half-write is treated as absent, which only releases reserved headroom
+    // (never over-reserves), so failing this direction is safe.
+    const RESERVATION_READ_BUDGET: u32 = 1 << 20;
+    let mut budget = RESERVATION_READ_BUDGET;
     loop {
         let before = (*epoch_ptr).load(Ordering::Acquire);
         if before & 1 != 0 {
+            if budget == 0 {
+                return (0, 0, before);
+            }
+            budget -= 1;
             std::hint::spin_loop();
             continue;
         }
@@ -256,6 +267,10 @@ unsafe fn load_lease_reservation(ptr: *const u8) -> (u32, u64, u64) {
         if before == after {
             return (reserved_blocks, reserved_owner_hash, after);
         }
+        if budget == 0 {
+            return (0, 0, after);
+        }
+        budget -= 1;
     }
 }
 
