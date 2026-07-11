@@ -166,7 +166,39 @@ def _defer_physical_enabled() -> bool:
     return private_bootstrap_kv_enabled()
 
 
-def _semantic_kv_tensor_tag(index: int, kv_cache_tensor) -> str:
+def _kv_layout_fingerprint(kv_cache_config) -> str:
+    """Stable digest of KV-layout-relevant parameters.
+
+    The persistent identity is otherwise gated only by aligned-size equality on
+    reattach, so a config change that preserves size but changes meaning -- most
+    dangerously a KV dtype change (bf16 -> fp8 halves element size but a shared
+    attacher may still map the larger old allocation) -- would silently reuse
+    incompatible bytes as a different layout. Folding this fingerprint into the
+    tag forces a distinct identity so reattach fails cleanly instead. The KV
+    spec's per-rank head counts / page sizes already encode the TP degree.
+    """
+    parts: list[str] = []
+    for group in getattr(kv_cache_config, "kv_cache_groups", ()) or ():
+        spec = getattr(group, "kv_cache_spec", None)
+        if spec is None:
+            continue
+        for attr in (
+            "block_size",
+            "num_kv_heads",
+            "head_size",
+            "dtype",
+            "use_mla",
+            "page_size_bytes",
+        ):
+            val = getattr(spec, attr, None)
+            if val is not None:
+                parts.append(f"{attr}={val}")
+    if not parts:
+        return "unknown"
+    return hashlib.sha1("\0".join(parts).encode("utf-8")).hexdigest()[:12]
+
+
+def _semantic_kv_tensor_tag(index: int, kv_cache_tensor, layout_fp: str) -> str:
     shared_by = tuple(
         sorted(str(layer) for layer in getattr(kv_cache_tensor, "shared_by", ()) or ())
     )
@@ -174,13 +206,16 @@ def _semantic_kv_tensor_tag(index: int, kv_cache_tensor) -> str:
         key = "\0".join(shared_by)
     else:
         key = f"anonymous:{index}:{getattr(kv_cache_tensor, 'size', '')}"
-    digest = hashlib.sha1(key.encode("utf-8")).hexdigest()[:16]
+    digest = hashlib.sha1(
+        (layout_fp + "\0" + key).encode("utf-8")
+    ).hexdigest()[:16]
     return f"kv_pool:v2:{digest}"
 
 
 def _semantic_kv_tensor_tag_plan(kv_cache_config) -> list[str]:
+    layout_fp = _kv_layout_fingerprint(kv_cache_config)
     base_tags = [
-        _semantic_kv_tensor_tag(index, kv_cache_tensor)
+        _semantic_kv_tensor_tag(index, kv_cache_tensor, layout_fp)
         for index, kv_cache_tensor in enumerate(
             getattr(kv_cache_config, "kv_cache_tensors", ()) or ()
         )
