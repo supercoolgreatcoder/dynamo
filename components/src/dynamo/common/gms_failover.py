@@ -76,10 +76,17 @@ def _backend_env_name(backend_name: str, suffix: str) -> str:
 
 
 def _post_lock_fence_ms(backend_name: str) -> int:
+    # Non-zero default: on a SIGKILL failover the kernel releases the flock
+    # instantly, but the dead leader's engine subprocesses and already-enqueued
+    # CUDA work can keep writing the shared VMM KV pages for a short window. This
+    # quiescence gap between acquiring the lock and the new owner writing shared
+    # KV mitigates (does not eliminate) that dual-writer overlap; hard
+    # elimination needs daemon-side mapping revocation (out of scope here).
+    default_ms = 250
     backend_env = _backend_env_name(backend_name, "GMS_FAILOVER_POST_LOCK_FENCE_MS")
     if backend_env in os.environ:
-        return max(0, _int_env(backend_env, 0))
-    return max(0, _int_env("DYN_GMS_FAILOVER_POST_LOCK_FENCE_MS", 0))
+        return max(0, _int_env(backend_env, default_ms))
+    return max(0, _int_env("DYN_GMS_FAILOVER_POST_LOCK_FENCE_MS", default_ms))
 
 
 class _PromotionWarmupContext:
@@ -258,13 +265,58 @@ def _normalize_lease_engine_name(backend_name: str) -> str:
     return normalized
 
 
-def _reclaim_foreign_kv_leases_after_fence(backend_name: str, role: str) -> None:
+def _promote_directory_and_collect_protected(
+    directory: object, backend_name: str, role: str
+) -> "set[int]":
+    """Promote this process to directory writer and collect protected slots.
+
+    The directory (engine-provided, duck-typed with ``promote()`` and
+    ``hbm_inventory()``) is promoted so the standby fences the crashed writer,
+    and the union of HBM-resident slot ids is returned so the post-fence reclaim
+    preserves those blocks (they hold recoverable KV) instead of freeing them
+    and degrading failover to a full recompute.
+    """
+    protected: set[int] = set()
+    if directory is None:
+        return protected
+    try:
+        promote = getattr(directory, "promote", None)
+        if promote is not None:
+            promote()
+        inventory = getattr(directory, "hbm_inventory", None)
+        if inventory is not None:
+            for slot_ids in inventory().values():
+                protected.update(int(s) for s in slot_ids)
+        logger.info(
+            "[GMS failover] %s %s promoted directory writer; protecting %d "
+            "HBM slots from reclaim",
+            backend_name,
+            role,
+            len(protected),
+        )
+    except Exception:
+        logger.warning(
+            "[GMS failover] %s %s directory promote/inventory failed; "
+            "reclaim will not protect directory HBM",
+            backend_name,
+            role,
+            exc_info=True,
+        )
+    return protected
+
+
+def _reclaim_foreign_kv_leases_after_fence(
+    backend_name: str, role: str, protected_blocks: "set[int] | None" = None
+) -> None:
     """Best-effort orphan lease reclaim after this process owns failover.
 
     The failover lock/epoch is the safety boundary. Before that point the
     previous primary may still write KV. After this process acquired the lock,
     foreign owners in the rank-local lease namespace are fenced leftovers from
     the previous primary and can be reclaimed to provide immediate HBM headroom.
+
+    ``protected_blocks`` (directory-advertised READY HBM slots) are preserved for
+    lazy adoption rather than freed.
     """
 
     if not _failover_reclaim_foreign_leases_enabled():
@@ -286,6 +338,7 @@ def _reclaim_foreign_kv_leases_after_fence(backend_name: str, role: str) -> None
             engine,
             device,
             max_blocks_per_file=_failover_reclaim_max_blocks_per_file(),
+            protected_blocks=protected_blocks,
         )
         elapsed_ms = (time.monotonic() - started) * 1000.0
         if result.files or result.reclaimed_blocks or result.errors:
@@ -300,8 +353,10 @@ def _reclaim_foreign_kv_leases_after_fence(backend_name: str, role: str) -> None
                 elapsed_ms,
             )
     except Exception:
-        logger.debug(
-            "[GMS failover] %s %s post-fence KV lease reclaim skipped",
+        # A reclaim failure strands the ex-primary's leases and permanently
+        # leaks HBM; surface it at WARNING so an operator can see it.
+        logger.warning(
+            "[GMS failover] %s %s post-fence KV lease reclaim failed",
             backend_name,
             role,
             exc_info=True,
@@ -312,8 +367,14 @@ async def run_gms_failover_post_lock_fence(
     *,
     backend_name: str,
     role: str,
+    directory: object = None,
 ) -> None:
-    """Fence and reclaim shared-KV lease state after active ownership changes."""
+    """Fence and reclaim shared-KV lease state after active ownership changes.
+
+    If a content ``directory`` is provided, this promotes the directory writer
+    (fencing the crashed one) and preserves its HBM-resident slots from reclaim,
+    so persistent-KV failover reuses those blocks instead of recomputing them.
+    """
 
     fence_ms = _post_lock_fence_ms(backend_name)
     if fence_ms > 0:
@@ -324,7 +385,8 @@ async def run_gms_failover_post_lock_fence(
             fence_ms,
         )
         await asyncio.sleep(fence_ms / 1000.0)
-    _reclaim_foreign_kv_leases_after_fence(backend_name, role)
+    protected = _promote_directory_and_collect_protected(directory, backend_name, role)
+    _reclaim_foreign_kv_leases_after_fence(backend_name, role, protected_blocks=protected)
 
 
 def _controller_from(owner: Any) -> Any:
