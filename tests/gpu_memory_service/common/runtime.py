@@ -68,8 +68,12 @@ class GMSProcessManager:
                     "GMS_KV_DIRECTORY_SOCKET": self.kv_directory_socket,
                     "GMS_KV_DIRECTORY_MANIFEST": self.kv_directory_manifest,
                     "GMS_KV_DIRECTORY_DIAGNOSTICS": "1",
-                    "GMS_KV_DIRECTORY_ASYNC_READ": "0",
-                    "GMS_KV_DIRECTORY_ASYNC_PUBLISH": "0",
+                    "GMS_KV_DIRECTORY_ASYNC_READ": os.environ.get(
+                        "GMS_KV_DIRECTORY_ASYNC_READ", "1"
+                    ),
+                    "GMS_KV_DIRECTORY_ASYNC_PUBLISH": os.environ.get(
+                        "GMS_KV_DIRECTORY_ASYNC_PUBLISH", "1"
+                    ),
                     "GMS_KV_LEASES": "1",
                     "GMS_KV_LEASE_SHM_DIR": lease_dir,
                     "GMS_VLLM_SHARED_KV": "1",
@@ -144,7 +148,9 @@ class GMSProcessManager:
         engine.env["ENGINE_ID"] = engine_id
         if directory_standby:
             engine.env["GMS_KV_DIRECTORY_STANDBY"] = "1"
-            engine.env["GMS_VLLM_HYDRATE_HBM"] = "1"
+            engine.env["GMS_VLLM_HYDRATE_HBM"] = os.environ.get(
+                "GMS_VLLM_HYDRATE_HBM", "1"
+            )
         self._engine_ids.add(engine_id)
         return engine
 
