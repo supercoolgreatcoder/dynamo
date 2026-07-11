@@ -192,8 +192,6 @@ def _gms_failover_shadow_member() -> bool:
         return False
     if _truthy_env("DYN_VLLM_GMS_ACTIVE_LOCK_HELD"):
         return False
-    if _truthy_env("DYN_VLLM_GMS_FORCE_PRIVATE_BOOTSTRAP_KV"):
-        return True
     engine_id = os.environ.get("ENGINE_ID", "0")
     primary_id = os.environ.get("DYN_GMS_FAILOVER_PRIMARY_ENGINE_ID", "0")
     return engine_id != primary_id

@@ -75,19 +75,9 @@ def _load_vllm_main() -> ModuleType:
 
 @pytest.fixture(autouse=True)
 def _clear_gms_failover_env_leaks(monkeypatch):
-    for name in (
-        "DYN_VLLM_GMS_ACTIVE_LOCK_HELD",
-        "DYN_VLLM_GMS_FORCE_PRIVATE_BOOTSTRAP_KV",
-        "GMS_PERSISTENT_DEFER_PHYSICAL_SCRATCH_BACKED",
-    ):
-        monkeypatch.delenv(name, raising=False)
+    monkeypatch.delenv("DYN_VLLM_GMS_ACTIVE_LOCK_HELD", raising=False)
     yield
-    for name in (
-        "DYN_VLLM_GMS_ACTIVE_LOCK_HELD",
-        "DYN_VLLM_GMS_FORCE_PRIVATE_BOOTSTRAP_KV",
-        "GMS_PERSISTENT_DEFER_PHYSICAL_SCRATCH_BACKED",
-    ):
-        monkeypatch.delenv(name, raising=False)
+    monkeypatch.delenv("DYN_VLLM_GMS_ACTIVE_LOCK_HELD", raising=False)
 
 
 def test_custom_jinja_template_invalid_path(mock_vllm_cli):
