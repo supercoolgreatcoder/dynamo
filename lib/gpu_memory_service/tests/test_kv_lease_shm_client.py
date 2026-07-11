@@ -10,6 +10,7 @@ import struct
 import time
 
 import pytest
+from gpu_memory_service.integrations.common import kv_lease_client as _klc
 from gpu_memory_service.integrations.common.kv_lease_client import (
     SharedMemoryKVLeaseClient,
     read_any_kv_lease_namespace_total_blocks,
@@ -30,7 +31,9 @@ pytest.importorskip("gms_rust_ring")
 
 _LEASE_FREE_COUNT_OFFSET = 16
 _LEASE_ACTIVE_MUTATIONS_OFFSET = 24
-_LEASE_RECORD_OFFSET = 64
+# Derive the first record offset from the client's layout constant so this test
+# cannot drift from the Rust ring's header size independently.
+_LEASE_RECORD_OFFSET = _klc._KV_LEASE_SHM_HEADER_SIZE
 _LEASE_STATE_TRANSITION = 4
 
 

@@ -257,6 +257,21 @@ class SharedMemoryKVLeaseClient:
             raise RuntimeError(
                 f"gms_rust_ring missing KV lease functions: {', '.join(missing)}"
             )
+        # The Rust ring owns the shm layout; the Python constants above only
+        # mirror it for the no-ring parse paths. Fail loudly at load if they ever
+        # drift, rather than silently misparsing every header/record.
+        for py_value, rust_attr in (
+            (_KV_LEASE_SHM_MAGIC, "KV_LEASE_MAGIC"),
+            (_KV_LEASE_SHM_VERSION, "KV_LEASE_VERSION"),
+            (_KV_LEASE_SHM_HEADER_SIZE, "KV_LEASE_HEADER_SIZE"),
+            (_KV_LEASE_SHM_RECORD_SIZE, "KV_LEASE_RECORD_SIZE"),
+        ):
+            rust_value = getattr(gms_rust_ring, rust_attr, None)
+            if rust_value is not None and int(rust_value) != int(py_value):
+                raise RuntimeError(
+                    "gms_rust_ring KV lease layout drift: "
+                    f"{rust_attr}={rust_value} but Python expects {py_value}"
+                )
         return gms_rust_ring
 
     @staticmethod
