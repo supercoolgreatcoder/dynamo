@@ -32,15 +32,15 @@ from uuid import uuid4
 from gpu_memory_service.common.cuda_utils import (
     align_to_granularity,
     cuda_ensure_initialized,
-    cumem_address_free,
-    cumem_address_reserve,
+    cumem_address_free_checked,
+    cumem_address_reserve_checked,
     cumem_create_tolerate_oom,
     cumem_export_to_shareable_handle,
     cumem_get_allocation_granularity,
-    cumem_map,
+    cumem_map_checked,
     cumem_release,
-    cumem_set_access,
-    cumem_unmap,
+    cumem_set_access_checked,
+    cumem_unmap_checked,
 )
 from gpu_memory_service.common.locks import GrantedLockType
 
@@ -175,9 +175,20 @@ class PersistentAllocationManager:
 
         key = (engine_id, tag)
         self._check_claim_allowed(key, shared=shared)
+        aligned_size = align_to_granularity(size, self._granularity)
 
         existing = self._allocations.get(key)
         if existing is not None:
+            # Validate size on exclusive reattach BEFORE recording the claim: a
+            # geometry change (e.g. different KV layout) must be rejected without
+            # leaving a claim the client never mapped, which would otherwise wedge
+            # the connection ("already claimed") on a corrected retry.
+            if not shared and aligned_size != existing.aligned_size:
+                raise PersistentClaimConflictError(
+                    f"persistent allocation {key!r} exclusive reattach size "
+                    f"mismatch: requested aligned {aligned_size} != existing "
+                    f"{existing.aligned_size}"
+                )
             self._mark_claimed(key, shared=shared)
             logger.info(
                 "Reattached persistent allocation %s engine_id=%s tag=%s shared=%s",
@@ -188,7 +199,6 @@ class PersistentAllocationManager:
             )
             return existing, True
 
-        aligned_size = align_to_granularity(size, self._granularity)
         allocated, handle = cumem_create_tolerate_oom(aligned_size, self._device)
         if not allocated:
             raise MemoryError(
@@ -201,16 +211,22 @@ class PersistentAllocationManager:
         # non-fatal — we still hand out the FD; va_daemon stays 0 and
         # direct-access ops will raise.
         va_daemon = 0
+        mapped = False
         try:
-            va_daemon = int(cumem_address_reserve(aligned_size, self._granularity))
-            cumem_map(va_daemon, aligned_size, int(handle))
-            cumem_set_access(
+            va_daemon = int(cumem_address_reserve_checked(aligned_size, self._granularity))
+            cumem_map_checked(va_daemon, aligned_size, int(handle))
+            mapped = True
+            cumem_set_access_checked(
                 va_daemon,
                 aligned_size,
                 self._device,
                 GrantedLockType.RW,
             )
         except Exception:  # noqa: BLE001
+            # Recoverable: the CUDA wrappers here RAISE (CudaApiError) rather than
+            # os._exit, so a daemon-side mapping failure no longer takes the whole
+            # service -- and every other engine's KV -- down. We still hand out the
+            # export FD; va_daemon stays 0 and direct-access ops raise.
             logger.warning(
                 "Failed to map daemon-side VA for persistent (%r, %r); "
                 "direct-access ops will be unavailable",
@@ -219,8 +235,15 @@ class PersistentAllocationManager:
                 exc_info=True,
             )
             if va_daemon:
+                # Unmap before freeing the reservation: cuMemAddressFree fails on a
+                # still-mapped range, which would leak the VA and a physical ref.
+                if mapped:
+                    try:
+                        cumem_unmap_checked(va_daemon, aligned_size)
+                    except Exception:  # noqa: BLE001
+                        pass
                 try:
-                    cumem_address_free(va_daemon, aligned_size)
+                    cumem_address_free_checked(va_daemon, aligned_size)
                 except Exception:  # noqa: BLE001
                     pass
                 va_daemon = 0
@@ -291,13 +314,13 @@ class PersistentAllocationManager:
         # Tear down daemon-side mapping (if it succeeded at claim time).
         if alloc.va_daemon:
             try:
-                cumem_unmap(alloc.va_daemon, alloc.aligned_size)
+                cumem_unmap_checked(alloc.va_daemon, alloc.aligned_size)
             except Exception:  # noqa: BLE001
                 logger.warning(
                     "cuMemUnmap failed for %s", alloc.allocation_id, exc_info=True
                 )
             try:
-                cumem_address_free(alloc.va_daemon, alloc.aligned_size)
+                cumem_address_free_checked(alloc.va_daemon, alloc.aligned_size)
             except Exception:  # noqa: BLE001
                 logger.warning(
                     "cuMemAddressFree failed for %s", alloc.allocation_id, exc_info=True
@@ -356,11 +379,11 @@ class PersistentAllocationManager:
         for alloc in list(self._allocations.values()):
             if alloc.va_daemon:
                 try:
-                    cumem_unmap(alloc.va_daemon, alloc.aligned_size)
+                    cumem_unmap_checked(alloc.va_daemon, alloc.aligned_size)
                 except Exception:  # noqa: BLE001
                     pass
                 try:
-                    cumem_address_free(alloc.va_daemon, alloc.aligned_size)
+                    cumem_address_free_checked(alloc.va_daemon, alloc.aligned_size)
                 except Exception:  # noqa: BLE001
                     pass
             try:

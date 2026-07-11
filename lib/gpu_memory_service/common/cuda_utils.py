@@ -93,6 +93,63 @@ def cuda_check_result(result: cuda.CUresult, name: str) -> None:
         fail("fatal CUDA VMM error in %s: %s", name, err_msg)
 
 
+class CudaApiError(RuntimeError):
+    """A recoverable CUDA driver error.
+
+    Unlike ``cuda_check_result`` (which os._exit()s the process via ``fail``),
+    the ``*_checked`` wrappers below raise this so a caller that owns other
+    tenants' state -- notably the persistent-allocation daemon serving every
+    engine's KV -- can roll back and stay alive instead of taking the whole
+    service down on one per-request driver failure.
+    """
+
+
+def cuda_check_result_raising(result: cuda.CUresult, name: str) -> None:
+    if result != cuda.CUresult.CUDA_SUCCESS:
+        err_result, err_str = cuda.cuGetErrorString(result)
+        if err_result == cuda.CUresult.CUDA_SUCCESS and err_str:
+            err_msg = err_str.decode() if isinstance(err_str, bytes) else str(err_str)
+        else:
+            err_msg = str(result)
+        raise CudaApiError(f"CUDA VMM error in {name}: {err_msg}")
+
+
+def cumem_address_reserve_checked(size: int, granularity: int) -> int:
+    result, va = cuda.cuMemAddressReserve(size, granularity, 0, 0)
+    cuda_check_result_raising(result, "cuMemAddressReserve")
+    return int(va)
+
+
+def cumem_address_free_checked(va: int, size: int) -> None:
+    (result,) = cuda.cuMemAddressFree(va, size)
+    cuda_check_result_raising(result, "cuMemAddressFree")
+
+
+def cumem_map_checked(va: int, size: int, handle: int) -> None:
+    (result,) = cuda.cuMemMap(va, size, 0, handle, 0)
+    cuda_check_result_raising(result, "cuMemMap")
+
+
+def cumem_set_access_checked(
+    va: int, size: int, device: int, access: GrantedLockType
+) -> None:
+    access_desc = cuda.CUmemAccessDesc()
+    access_desc.location.type = cuda.CUmemLocationType.CU_MEM_LOCATION_TYPE_DEVICE
+    access_desc.location.id = device
+    access_desc.flags = (
+        cuda.CUmemAccess_flags.CU_MEM_ACCESS_FLAGS_PROT_READ
+        if access == GrantedLockType.RO
+        else cuda.CUmemAccess_flags.CU_MEM_ACCESS_FLAGS_PROT_READWRITE
+    )
+    (result,) = cuda.cuMemSetAccess(va, size, [access_desc], 1)
+    cuda_check_result_raising(result, "cuMemSetAccess")
+
+
+def cumem_unmap_checked(va: int, size: int) -> None:
+    (result,) = cuda.cuMemUnmap(va, size)
+    cuda_check_result_raising(result, "cuMemUnmap")
+
+
 def cuda_ensure_initialized() -> None:
     (result,) = cuda.cuInit(0)
     cuda_check_result(result, "cuInit")

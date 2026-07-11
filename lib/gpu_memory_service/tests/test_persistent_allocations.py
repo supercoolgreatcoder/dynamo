@@ -88,29 +88,31 @@ def fake_cuda(monkeypatch):
             export_fd,
         )
     # Daemon-side VA mapping helpers — only used by persistent_allocations.
+    # These are the raising (*_checked) variants so a driver failure rolls back
+    # instead of os._exit()-ing the daemon.
     monkeypatch.setattr(
         server_persistent,
-        "cumem_address_reserve",
+        "cumem_address_reserve_checked",
         lambda size, gran: next(vas),
     )
     monkeypatch.setattr(
         server_persistent,
-        "cumem_address_free",
+        "cumem_address_free_checked",
         lambda va, size: None,
     )
     monkeypatch.setattr(
         server_persistent,
-        "cumem_map",
+        "cumem_map_checked",
         lambda va, size, handle: None,
     )
     monkeypatch.setattr(
         server_persistent,
-        "cumem_set_access",
+        "cumem_set_access_checked",
         lambda va, size, device, access: None,
     )
     monkeypatch.setattr(
         server_persistent,
-        "cumem_unmap",
+        "cumem_unmap_checked",
         lambda va, size: None,
     )
 
@@ -803,7 +805,7 @@ def test_read_block_unmapped_raises(monkeypatch, fake_cuda):
     def fail_map(va, size, handle):
         raise RuntimeError("simulated cuMemMap failure")
 
-    monkeypatch.setattr(server_persistent, "cumem_map", fail_map)
+    monkeypatch.setattr(server_persistent, "cumem_map_checked", fail_map)
 
     m = PersistentAllocationManager(device=0)
     alloc, _ = m.claim("eng-X", "kv_pool", 4096)
@@ -824,12 +826,12 @@ def test_release_tears_down_daemon_va(fake_cuda, monkeypatch):
     free_calls = []
     monkeypatch.setattr(
         server_persistent,
-        "cumem_unmap",
+        "cumem_unmap_checked",
         lambda va, size: unmap_calls.append((va, size)),
     )
     monkeypatch.setattr(
         server_persistent,
-        "cumem_address_free",
+        "cumem_address_free_checked",
         lambda va, size: free_calls.append((va, size)),
     )
     m = PersistentAllocationManager(device=0)
