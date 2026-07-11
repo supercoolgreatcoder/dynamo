@@ -94,11 +94,14 @@ def _directory_release_claim_locked(
     claim = daemon._content_directory_claims.pop(claim_token, None)
     if claim is None:
         return False
-    for key, generations in claim["entries"]:
+    # Decrement based on CLAIM IDENTITY, not generation equality: adopt_claim
+    # overwrites an entry's generations, so a generation-gated decrement would
+    # skip and leak _claim_count, pinning the entry (unevictable/unreplaceable)
+    # for the daemon's lifetime. Each claim token incremented the count once, so
+    # release it once regardless of any subsequent generation change.
+    for key, _generations in claim["entries"]:
         entry = daemon._content_directory.get(key)
         if entry is None:
-            continue
-        if tuple(entry.get("generations") or ()) != generations:
             continue
         entry["_claim_count"] = max(0, int(entry.get("_claim_count", 0)) - 1)
     return True
@@ -136,7 +139,16 @@ def _directory_entry_ready(daemon: "GmsKvCacheManager", entry: dict) -> bool:
         or len(ranges) % len(slot_ids) != 0
     ):
         return False
-    getter = daemon.host_tier.get if tier == "host" else daemon.storage_tier.get
+    tier_store = getattr(
+        daemon, "host_tier" if tier == "host" else "storage_tier", None
+    )
+    if tier_store is None:
+        # A minimal directory server configured without this storage tier must
+        # not raise here: an AttributeError would propagate out of every later
+        # snapshot/lookup and permanently brick the directory (the entry could
+        # never be pruned). Treat the entry as not-ready (and thus prunable).
+        return False
+    getter = tier_store.get
     ranges_per_slot = len(ranges) // len(slot_ids)
     for index, (slot_id, generation) in enumerate(zip(slot_ids, generations)):
         begin = index * ranges_per_slot
@@ -180,6 +192,11 @@ def handle_directory_promote(daemon: "GmsKvCacheManager", msg: Message) -> Respo
         current = int(daemon._content_directory_epoch)
         active = daemon._content_directory_writer_id
         if active == writer_id:
+            # Idempotent self-promote (e.g. TP ranks repeating the post-lock
+            # hook, or the same writer restarting with a stable writer_id).
+            # Release any claims this writer left pinned before a crash-restart
+            # so they cannot pin HBM forever.
+            _directory_release_writer_claims_locked(daemon, writer_id)
             return {
                 "ok": True,
                 "promoted": True,
@@ -193,19 +210,25 @@ def handle_directory_promote(daemon: "GmsKvCacheManager", msg: Message) -> Respo
                 "directory_epoch": current,
                 "writer_id": active,
             }
-        # The external failover lock already fenced the former writer. Its
-        # active HBM entries are now dormant recovery candidates: the bytes
-        # and leases remain in GMS, but no live engine may mutate them.
-        for key, entry in daemon._content_directory.items():
+        # The external failover lock already fenced the former writer. Its HBM
+        # entries still in "active" state were published at SCHEDULING time
+        # (before the forward pass wrote the KV bytes), so their write
+        # completion was never confirmed. Making them adoptable would let the
+        # replacement serve tokens computed from unwritten/garbage KV. Fail
+        # closed: DROP them (the replacement recomputes those blocks). Entries
+        # the former writer advanced past "active" are durable and survive for
+        # adoption.
+        stale_active = [
+            key
+            for key, entry in daemon._content_directory.items()
             if (
                 entry.get("tier") == "hbm"
                 and entry.get("state") == "active"
                 and entry.get("_owner_writer") == active
-            ):
-                entry["state"] = "ready"
-                entry.pop("_owner_writer", None)
-                _directory_touch_locked(daemon, entry)
-                _directory_record_change_locked(daemon, key, entry)
+            )
+        ]
+        for key in stale_active:
+            _directory_remove_locked(daemon, key)
 
         # Drop abandoned lookup claims so a crashed engine cannot pin HBM
         # forever.
@@ -794,6 +817,24 @@ def handle_directory_publish_batch(
                 entry["_owner_writer"] = writer_id
             if tier:
                 entry["tier"] = tier
+            # If we are overwriting an existing entry for the SAME (manifest,
+            # hash) key with a different slot set, drop the old entry's stale
+            # reverse slot-mappings for slots the new entry does not reuse.
+            # Otherwise a later reuse of an orphaned old slot resolves back to
+            # this hash and deletes the current, valid entry (C2).
+            prior = daemon._content_directory.get(key)
+            if prior is not None:
+                prior_engine = prior.get("engine_id", engine_id)
+                new_slot_set = {int(s) for s in slot_ids}
+                for old_slot in prior.get("slot_ids") or []:
+                    if prior_engine == engine_id and int(old_slot) in new_slot_set:
+                        continue
+                    slot_key = (manifest_id, prior_engine, int(old_slot))
+                    if (
+                        daemon._content_directory_by_slot.get(slot_key)
+                        == content_hash
+                    ):
+                        daemon._content_directory_by_slot.pop(slot_key, None)
             daemon._content_directory[key] = entry
             _directory_touch_locked(daemon, entry)
             for slot_id in slot_ids:
