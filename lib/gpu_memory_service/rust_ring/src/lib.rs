@@ -23,6 +23,11 @@ const L_ACTIVE_MUTATIONS: usize = 24;
 const L_RESERVATION_EPOCH: usize = 32;
 const L_RESERVED_BLOCKS: usize = 40;
 const L_RESERVED_OWNER_HASH: usize = 48;
+// PID of the process that currently holds the recovery barrier. Lets a fenced
+// successor reclaim a barrier stranded by a crashed recovery owner, and lets
+// this process detect genuine same-process re-entry. Occupies the last 8 bytes
+// of the 64-byte header; the Python side never reads it, so this is ABI-safe.
+const L_RECOVERY_OWNER_PID: usize = 56;
 
 // Per-block lease record: state (CAS-owned), generation (stale-op guard),
 // owner_hash (holder identity for foreign reclaim/fencing).
@@ -44,8 +49,25 @@ struct LeaseMutationGuard {
 impl Drop for LeaseMutationGuard {
     fn drop(&mut self) {
         // SAFETY: the mmap outlives every Python call that owns this guard.
+        // Never arithmetic-modify the recovery barrier: if a post-fence recovery
+        // owner replaced the activity count with the all-ones sentinel while this
+        // mutation was in flight, a blind fetch_sub would turn u64::MAX into
+        // MAX-1 and silently reopen the namespace mid-recovery. In that case the
+        // recovery owner has already accounted for drained mutators, so this
+        // guard simply does nothing.
         unsafe {
-            (*self.active).fetch_sub(1, Ordering::AcqRel);
+            loop {
+                let cur = (*self.active).load(Ordering::Acquire);
+                if cur == LEASE_RECOVERY_BARRIER || cur == 0 {
+                    break;
+                }
+                if (*self.active)
+                    .compare_exchange_weak(cur, cur - 1, Ordering::AcqRel, Ordering::Acquire)
+                    .is_ok()
+                {
+                    break;
+                }
+            }
         }
     }
 }
@@ -53,13 +75,22 @@ impl Drop for LeaseMutationGuard {
 /// Register a record mutation unless post-fence recovery owns the namespace.
 ///
 /// Mutations remain fully concurrent: this is an activity count, not a mutex.
-/// A dead process may strand its count, which is harmless until the fenced
-/// successor atomically replaces it with the recovery barrier.
-unsafe fn enter_lease_mutation(ptr: *mut u8) -> LeaseMutationGuard {
+/// While a recovery barrier is held the namespace is briefly frozen; callers
+/// spin for a bounded budget and then surface an error rather than hang forever
+/// under the GIL if a recovery owner died with the barrier set.
+unsafe fn enter_lease_mutation(ptr: *mut u8) -> PyResult<LeaseMutationGuard> {
     let active = ptr.add(L_ACTIVE_MUTATIONS) as *const AtomicU64;
+    const MUTATION_BARRIER_BUDGET: u32 = 1 << 22;
+    let mut budget = MUTATION_BARRIER_BUDGET;
     loop {
         let observed = (*active).load(Ordering::Acquire);
         if observed == LEASE_RECOVERY_BARRIER {
+            if budget == 0 {
+                return Err(pyo3::exceptions::PyRuntimeError::new_err(
+                    "KV lease recovery barrier is held; namespace is being recovered",
+                ));
+            }
+            budget -= 1;
             std::hint::spin_loop();
             continue;
         }
@@ -72,7 +103,7 @@ unsafe fn enter_lease_mutation(ptr: *mut u8) -> LeaseMutationGuard {
             )
             .is_ok()
         {
-            return LeaseMutationGuard { active };
+            return Ok(LeaseMutationGuard { active });
         }
     }
 }
@@ -92,18 +123,56 @@ impl Drop for LeaseRecoveryGuard {
 
 /// Exclusively fence record mutations after every prior writer is dead.
 ///
-/// This deliberately replaces a possibly stranded activity count. Calling it
-/// before the old writer is externally fenced would allow an old mutation to
-/// resume and is therefore outside the API contract.
+/// The caller must hold the external failover lock, which serializes recovery
+/// across processes. Under that contract this (a) drains in-flight mutations to
+/// zero before claiming the barrier (bounded), so recovery is exclusive against
+/// live mutators instead of racing them, and (b) reclaims a barrier stranded by
+/// a crashed recovery owner (recorded via its PID) rather than failing forever.
+/// Only genuine same-process re-entry is rejected.
 unsafe fn enter_lease_recovery(ptr: *mut u8) -> PyResult<LeaseRecoveryGuard> {
     let active = ptr.add(L_ACTIVE_MUTATIONS) as *const AtomicU64;
-    let previous = (*active).swap(LEASE_RECOVERY_BARRIER, Ordering::AcqRel);
-    if previous == LEASE_RECOVERY_BARRIER {
-        return Err(pyo3::exceptions::PyRuntimeError::new_err(
-            "KV lease recovery is already in progress",
-        ));
+    let pid_ptr = ptr.add(L_RECOVERY_OWNER_PID) as *const AtomicU64;
+    let me = std::process::id() as u64;
+    const RECOVERY_DRAIN_BUDGET: u32 = 1 << 22;
+    let mut budget = RECOVERY_DRAIN_BUDGET;
+    loop {
+        match (*active).compare_exchange_weak(
+            0,
+            LEASE_RECOVERY_BARRIER,
+            Ordering::AcqRel,
+            Ordering::Acquire,
+        ) {
+            Ok(_) => {
+                (*pid_ptr).store(me, Ordering::Release);
+                return Ok(LeaseRecoveryGuard { active });
+            }
+            Err(cur) => {
+                if cur == LEASE_RECOVERY_BARRIER {
+                    // Barrier already held. Same-process re-entry is a real bug;
+                    // otherwise the external failover lock guarantees the prior
+                    // recovery owner is dead, so reclaim the stranded barrier.
+                    let owner = (*pid_ptr).load(Ordering::Acquire);
+                    if owner == me {
+                        return Err(pyo3::exceptions::PyRuntimeError::new_err(
+                            "KV lease recovery is already in progress",
+                        ));
+                    }
+                    (*pid_ptr).store(me, Ordering::Release);
+                    return Ok(LeaseRecoveryGuard { active });
+                }
+                if budget == 0 {
+                    // A non-zero count that never drains means prior writers
+                    // crashed mid-mutation and stranded their counts. Force the
+                    // barrier; guarded mutator drops will not corrupt it.
+                    (*active).store(LEASE_RECOVERY_BARRIER, Ordering::Release);
+                    (*pid_ptr).store(me, Ordering::Release);
+                    return Ok(LeaseRecoveryGuard { active });
+                }
+                budget -= 1;
+                std::hint::spin_loop();
+            }
+        }
     }
-    Ok(LeaseRecoveryGuard { active })
 }
 
 #[inline(always)]
@@ -491,7 +560,7 @@ fn kv_lease_acquire(
 
     unsafe {
         let total_blocks = validate_lease_buffer(ptr, buf_len)?;
-        let _mutation = enter_lease_mutation(ptr);
+        let _mutation = enter_lease_mutation(ptr)?;
         acquire_lease_blocks(
             ptr,
             total_blocks,
@@ -535,7 +604,7 @@ fn kv_lease_acquire_lockless_if_unreserved(
 
     unsafe {
         let total_blocks = validate_lease_buffer(ptr, buf_len)?;
-        let _mutation = enter_lease_mutation(ptr);
+        let _mutation = enter_lease_mutation(ptr)?;
         let (before_reserved_blocks, before_reserved_owner_hash, before_epoch) =
             load_lease_reservation(ptr);
         if reservation_applies_to_owner(
@@ -593,7 +662,7 @@ fn kv_lease_seal(
     let mut sealed = 0u32;
     unsafe {
         let total_blocks = validate_lease_buffer(ptr, buf_len)?;
-        let _mutation = enter_lease_mutation(ptr);
+        let _mutation = enter_lease_mutation(ptr)?;
         for (block_id, generation) in block_ids.into_iter().zip(generations.into_iter()) {
             if block_id >= total_blocks {
                 continue;
@@ -665,7 +734,7 @@ fn kv_lease_adopt(
     let buf_len = buf.len_bytes();
     unsafe {
         let total_blocks = validate_lease_buffer(ptr, buf_len)?;
-        let _mutation = enter_lease_mutation(ptr);
+        let _mutation = enter_lease_mutation(ptr)?;
         let mut locked: Vec<(u32, u32, u64, u32)> = Vec::with_capacity(block_ids.len());
         for (block_id, generation) in block_ids.iter().copied().zip(generations.iter().copied()) {
             if block_id >= total_blocks {
@@ -757,7 +826,7 @@ fn kv_lease_release(
     let mut released = 0u32;
     unsafe {
         let total_blocks = validate_lease_buffer(ptr, buf_len)?;
-        let _mutation = enter_lease_mutation(ptr);
+        let _mutation = enter_lease_mutation(ptr)?;
         let free_count_ptr = ptr.add(L_FREE_COUNT) as *const AtomicU64;
         for (block_id, generation) in block_ids.into_iter().zip(generations.into_iter()) {
             if block_id >= total_blocks {
