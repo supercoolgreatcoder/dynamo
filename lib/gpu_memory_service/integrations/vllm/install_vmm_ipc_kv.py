@@ -59,16 +59,16 @@ _KV_CACHE_PROFILING: ContextVar[bool] = ContextVar(
 
 
 @contextmanager
-def _private_bootstrap_kv_zeros_as_empty(enabled: bool):
-    """Avoid touching reserve-only private-bootstrap KV pages.
+def _persistent_kv_zeros_as_empty(enabled: bool):
+    """Avoid touching reserve-only or reattached persistent KV pages.
 
-    vLLM allocates KV buffers with ``torch.zeros``. In private-bootstrap mode
-    the GMS allocator only reserves the final VAs until the shadow is promoted,
-    so zero-filling those tensors launches a CUDA kernel against unbacked VAs
-    and poisons the context. During this narrow allocation window, replace
-    int8 zero allocations with ``torch.empty`` so vLLM can build tensor views
-    without writing to KV. Scheduler-driven block zeroing runs later after
-    promotion, when the shared persistent backing is attached.
+    vLLM allocates KV buffers with ``torch.zeros``. Private-bootstrap mode
+    has reserve-only VAs, while a cold replacement maps the primary's existing
+    physical pages. Zero-filling either would respectively poison the CUDA
+    context or silently destroy the KV being recovered. During those allocation
+    windows, replace only int8 zero allocations with ``torch.empty`` so vLLM
+    can build tensor views without writing to KV. A genuinely new shared pool
+    keeps vLLM's normal zero initialization.
     """
     if not enabled:
         yield
@@ -93,8 +93,8 @@ def _private_bootstrap_kv_zeros_as_empty(enabled: bool):
         torch.zeros = original_zeros
         if replacements:
             logger.info(
-                "[GMS-VMM-IPC] allocated %d private-bootstrap KV tensors "
-                "with torch.empty to avoid reserve-only zero-fill",
+                "[GMS-VMM-IPC] allocated %d persistent KV tensors with "
+                "torch.empty to preserve existing or reserve-only pages",
                 replacements,
             )
 
@@ -231,6 +231,47 @@ def _semantic_kv_tensor_tag_plan(kv_cache_config) -> list[str]:
         seen[base_tag] = duplicate_index + 1
         planned_tags.append(f"{base_tag}:dup{duplicate_index}")
     return planned_tags
+
+
+def _persistent_tag_plan_reattaches(
+    manager, engine_id: str, tag_plan: list[str]
+) -> bool:
+    """Return whether every semantic KV allocation already exists.
+
+    A complete plan means this process is reattaching and must not zero the
+    mapped pages. No matching tags means a new pool and retains normal vLLM
+    initialization. A partial plan is unsafe: mixing preserved and new tensors
+    would create a layout whose metadata cannot describe its contents.
+    """
+    if not tag_plan:
+        return False
+    existing = {
+        str(getattr(allocation, "tag", ""))
+        for allocation in manager.list_persistent(
+            engine_id=engine_id, include_unclaimed=True
+        )
+    }
+    planned = set(tag_plan)
+    present = planned & existing
+    if os.environ.get("GMS_KV_DIRECTORY_DIAGNOSTICS"):
+        logger.warning(
+            "[GMS-VMM-IPC] persistent plan engine_id=%s "
+            "planned=%d existing=%d matching=%d",
+            engine_id,
+            len(planned),
+            len(existing),
+            len(present),
+        )
+    if not present:
+        return False
+    missing = planned - existing
+    if missing:
+        raise RuntimeError(
+            "GMS persistent KV semantic tag plan is only partially present: "
+            f"found={len(present)} missing={len(missing)}. Refusing to mix "
+            "preserved and newly initialized KV tensors."
+        )
+    return True
 
 
 def _geometry_device() -> int:
@@ -485,7 +526,7 @@ def install() -> bool:
                 try:
                     shared_kv = _shared_kv_enabled()
                     defer_physical = _defer_physical_enabled()
-                    get_or_create_persistent_allocator(
+                    manager = get_or_create_persistent_allocator(
                         socket,
                         dev_idx,
                         engine_id,
@@ -498,19 +539,27 @@ def install() -> bool:
                         "GMS vLLM persistent KV allocator registration failed"
                     ) from exc
                 tag_plan = _semantic_kv_tensor_tag_plan(kv_cache_config)
+                reattaching = False
+                if not defer_physical:
+                    reattaching = _persistent_tag_plan_reattaches(
+                        manager, engine_id, tag_plan
+                    )
                 if tag_plan:
                     set_persistent_allocator_tag_plan("kv_pool", tag_plan)
                 logger.debug(
                     "[GMS-VMM-IPC] V2 persistent pool engine_id=%s device=%d "
-                    "defer_physical=%s semantic_tags=%d",
+                    "defer_physical=%s reattaching=%s semantic_tags=%d",
                     engine_id,
                     dev_idx,
                     defer_physical,
+                    reattaching,
                     len(tag_plan),
                 )
                 try:
                     with gms_use_persistent_pool("kv_pool", dev_idx):
-                        with _private_bootstrap_kv_zeros_as_empty(defer_physical):
+                        with _persistent_kv_zeros_as_empty(
+                            defer_physical or reattaching
+                        ):
                             return _orig_v2_alloc(*original_args, **kwargs)
                 finally:
                     if tag_plan:
@@ -584,7 +633,7 @@ def install() -> bool:
         try:
             shared_kv = _shared_kv_enabled()
             defer_physical = _defer_physical_enabled()
-            get_or_create_persistent_allocator(
+            manager = get_or_create_persistent_allocator(
                 socket,
                 device,
                 engine_id,
@@ -604,19 +653,27 @@ def install() -> bool:
         )
         kv_cache_config = args[0] if args else kwargs.get("kv_cache_config")
         tag_plan = _semantic_kv_tensor_tag_plan(kv_cache_config)
+        reattaching = False
+        if not defer_physical:
+            reattaching = _persistent_tag_plan_reattaches(
+                manager, engine_id, tag_plan
+            )
         if tag_plan:
             set_persistent_allocator_tag_plan("kv_pool", tag_plan)
         logger.debug(
             "[GMS-VMM-IPC] V1 persistent pool engine_id=%s device=%d "
-            "defer_physical=%s semantic_tags=%d",
+            "defer_physical=%s reattaching=%s semantic_tags=%d",
             engine_id,
             device,
             defer_physical,
+            reattaching,
             len(tag_plan),
         )
         try:
             with gms_use_persistent_pool("kv_pool", device):
-                with _private_bootstrap_kv_zeros_as_empty(defer_physical):
+                with _persistent_kv_zeros_as_empty(
+                    defer_physical or reattaching
+                ):
                     return original(self, *args, **kwargs)
         finally:
             if tag_plan:
