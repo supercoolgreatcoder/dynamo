@@ -669,9 +669,7 @@ class GMSClientMemoryManager:
         self.free_va(va)
 
     def unmap_all_vas(self) -> None:
-        """Synchronize + unmap all VAs (real mappings AND scratch mappings).
-        Preserves VA reservations for remap.
-        """
+        """Synchronize + unmap all VAs. Preserves VA reservations for remap."""
         cuda_synchronize()
 
         unmapped_count = 0
