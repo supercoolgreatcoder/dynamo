@@ -810,14 +810,27 @@ def install(factory: Callable[[int], KVLeaseClient] | None = None) -> bool:
         dormant_hashes = []
         invalidated = []
         directory = getattr(self, "_gms_kv_directory", None)
+        # Retaining a freed block's prefix hash (sealing its lease instead of
+        # releasing + evicting) preserves cross-request prefix caching, which the
+        # release-on-every-free path otherwise silently disables under
+        # GMS_KV_LEASES=1. It is safe whenever no peer may overwrite the block:
+        # (a) an authoritative content directory fences slot reuse, or (b) the
+        # lease namespace is not shared (single writer), which operators opt into
+        # with GMS_KV_LEASES_RETAIN_PREFIX_CACHE=1. Default keeps the previous
+        # conservative eviction so shared-namespace correctness is unchanged.
+        retain_without_directory = os.environ.get(
+            "GMS_KV_LEASES_RETAIN_PREFIX_CACHE", "0"
+        ).lower() not in {"0", "false", "no", "off", ""}
         for block in free_blocks:
             lease = self._gms_kv_leases_by_block.get(int(block.block_id))
             retain_dormant = bool(
-                directory is not None
-                and directory.authoritative
-                and self.enable_caching
+                self.enable_caching
                 and block.block_hash is not None
                 and lease is not None
+                and (
+                    (directory is not None and directory.authoritative)
+                    or retain_without_directory
+                )
             )
             if retain_dormant:
                 client.seal([lease])
