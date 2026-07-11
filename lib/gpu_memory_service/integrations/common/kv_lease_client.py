@@ -725,14 +725,21 @@ def reclaim_foreign_kv_leases_in_shm_dir(
     shm_dir: str | None = None,
     max_blocks_per_file: int = 0,
     protected_blocks: set[int] | None = None,
+    namespace_suffix: str = "kv",
 ) -> KVLeaseReclaimResult:
-    """Reclaim non-self KV leases from rank-local lease mmap files.
+    """Reclaim non-self KV leases from THIS engine+device's lease mmap file.
 
-    This is intended for post-fence hard failover only. In the inter-pod GMS
-    layout the shared directory is isolated per replica/rank, so foreign
-    owners in these lease files are orphaned primary processes after the
-    shadow has acquired the failover lock. Call it before the replacement
-    owner starts lease mutations; it also recovers interrupted transitions.
+    This is intended for post-fence hard failover only. Foreign owners in the
+    caller's own lease namespace are orphaned primary processes after the shadow
+    has acquired the failover lock. Call it before the replacement owner starts
+    lease mutations; it also recovers interrupted transitions.
+
+    Scope: only the lease file for this engine+device's namespace is touched. It
+    must NOT glob every ``gms-kv-lease-*.shm`` in the (node-shared) directory --
+    doing so reclaims LIVE leases belonging to healthy ranks/devices that share
+    the directory, corrupting their KV. Reclaim is derived from the same
+    namespace rule used by the client (``GMS_<ENGINE>_KV_LEASE_NAMESPACE`` ->
+    ``GMS_KV_LEASE_NAMESPACE`` -> ``{engine}:gpu{device}:{namespace_suffix}``).
 
     ``protected_blocks`` are READY HBM slots from the authoritative content
     directory. They remain sealed for lazy adoption by the replacement owner;
@@ -753,11 +760,28 @@ def reclaim_foreign_kv_leases_in_shm_dir(
 
     owner = owner_id or _owner_id_from_env(engine, device)
     owner_hash = _owner_hash(owner)
-    base_dir = Path(shm_dir or _kv_lease_shm_dir(engine))
+    # Resolve THIS engine+device's own lease file only (never a directory glob).
+    engine_upper = engine.upper().replace("-", "_")
+    namespace = os.environ.get(
+        f"GMS_{engine_upper}_KV_LEASE_NAMESPACE",
+        os.environ.get(
+            "GMS_KV_LEASE_NAMESPACE",
+            f"{engine}:gpu{device}:{namespace_suffix}",
+        ),
+    )
+    explicit_path = os.environ.get(
+        f"GMS_{engine_upper}_KV_LEASE_SHM_PATH"
+    ) or os.environ.get("GMS_KV_LEASE_SHM_PATH")
+    if explicit_path:
+        target_paths = [Path(explicit_path)]
+    else:
+        base_dir = Path(shm_dir or _kv_lease_shm_dir(engine))
+        digest = hashlib.sha256(namespace.encode("utf-8")).hexdigest()[:20]
+        target_paths = [base_dir / f"gms-kv-lease-{digest}.shm"]
     files = 0
     reclaimed = 0
     errors = 0
-    for path in sorted(base_dir.glob("gms-kv-lease-*.shm")):
+    for path in target_paths:
         try:
             fd = os.open(path, os.O_RDWR)
         except FileNotFoundError:
@@ -795,7 +819,10 @@ def reclaim_foreign_kv_leases_in_shm_dir(
             reclaimed += n
         except Exception:
             errors += 1
-            logger.debug(
+            # Reclaim failure during failover strands the ex-primary's leases,
+            # permanently leaking HBM; surface it at WARNING so an operator can
+            # see why capacity was lost rather than only in debug logs.
+            logger.warning(
                 "GMS KV failover foreign-lease reclaim failed for %s",
                 path,
                 exc_info=True,
