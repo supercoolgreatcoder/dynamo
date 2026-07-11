@@ -1783,6 +1783,8 @@ async def test_generate_text_mode_rejects_string_prompt_over_context():
         "Please reduce the length of the messages or completion."
     )
     assert engine_client.generate_called is False
+
+
 def test_vllm_failover_shape_warmup_payload_covers_serving_shape(monkeypatch):
     from dynamo.vllm.worker_factory import _vllm_failover_shape_warmup_payload
 

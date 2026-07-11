@@ -206,9 +206,7 @@ def _semantic_kv_tensor_tag(index: int, kv_cache_tensor, layout_fp: str) -> str:
         key = "\0".join(shared_by)
     else:
         key = f"anonymous:{index}:{getattr(kv_cache_tensor, 'size', '')}"
-    digest = hashlib.sha1(
-        (layout_fp + "\0" + key).encode("utf-8")
-    ).hexdigest()[:16]
+    digest = hashlib.sha1((layout_fp + "\0" + key).encode("utf-8")).hexdigest()[:16]
     return f"kv_pool:v2:{digest}"
 
 
@@ -655,9 +653,7 @@ def install() -> bool:
         tag_plan = _semantic_kv_tensor_tag_plan(kv_cache_config)
         reattaching = False
         if not defer_physical:
-            reattaching = _persistent_tag_plan_reattaches(
-                manager, engine_id, tag_plan
-            )
+            reattaching = _persistent_tag_plan_reattaches(manager, engine_id, tag_plan)
         if tag_plan:
             set_persistent_allocator_tag_plan("kv_pool", tag_plan)
         logger.debug(
@@ -671,9 +667,7 @@ def install() -> bool:
         )
         try:
             with gms_use_persistent_pool("kv_pool", device):
-                with _persistent_kv_zeros_as_empty(
-                    defer_physical or reattaching
-                ):
+                with _persistent_kv_zeros_as_empty(defer_physical or reattaching):
                     return original(self, *args, **kwargs)
         finally:
             if tag_plan:
