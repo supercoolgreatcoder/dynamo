@@ -45,6 +45,8 @@ class _TagState:
 
 
 _tag_states: dict[str, _TagState] = {}
+# Tags for which the unsafe ordinal-persistent-tag warning was already emitted.
+_ordinal_persistent_warned: set[str] = set()
 _active_tag: ContextVar[str | None] = ContextVar(
     "gpu_memory_service_active_tag",
     default=None,
@@ -114,11 +116,35 @@ def _gms_malloc(size: int, device: int, stream: int) -> int:
         # Private-bootstrap shadows allocate VA-only scratch first and later
         # remap those VAs onto the shared namespace. Their tags must therefore
         # match the shared pool tags exactly.
-        if state.persistent_tag_plan is not None and state.persistent_alloc_seq < len(
-            state.persistent_tag_plan
-        ):
+        if state.persistent_tag_plan is not None:
+            # A semantic plan is supposed to cover EVERY persistent allocation.
+            # If the malloc sequence overflows it, the callback fired more times
+            # than planned (the CUDA caching allocator can fire per-segment, not
+            # per-tensor), so an ordinal fallback here could bind this tensor to
+            # another layer's physical pages on reattach -> silent KV corruption.
+            # Fail closed instead.
+            if state.persistent_alloc_seq >= len(state.persistent_tag_plan):
+                raise RuntimeError(
+                    f"GMS persistent tag plan exhausted for tag {tag!r}: "
+                    f"allocation #{state.persistent_alloc_seq} has no planned "
+                    f"semantic tag (malloc sequence desynced from the plan). "
+                    f"Refusing an ordinal fallback that could bind KV to the "
+                    f"wrong physical pages on reattach."
+                )
             sub_tag = state.persistent_tag_plan[state.persistent_alloc_seq]
         else:
+            # No semantic plan: ordinal sub-tags are only stable within a single
+            # process. Reattach across restart depends on reproducing the exact
+            # malloc order, which the caching allocator does not guarantee, so
+            # warn that reattach may bind the wrong pages.
+            if tag not in _ordinal_persistent_warned:
+                _ordinal_persistent_warned.add(tag)
+                logger.warning(
+                    "[GMS] persistent tag %s uses ordinal sub-tags (no semantic "
+                    "tag plan); reattach across restart may bind tensors to the "
+                    "wrong physical pages. Install a semantic tag plan.",
+                    tag,
+                )
             sub_tag = f"{tag}#{state.persistent_alloc_seq}"
         state.persistent_alloc_seq += 1
         if state.persistent_defer_physical:
