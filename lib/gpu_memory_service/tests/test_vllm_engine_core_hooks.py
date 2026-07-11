@@ -222,6 +222,15 @@ def test_block_pool_hbm_directory_survives_engine_replacement(monkeypatch):
         assert state.held[blocks[1].block_id][1] == "shadow"
         assert stale_hash not in directory.entries
         assert shadow._gms_hydrate_hbm is False
+
+        lookup = directory.lookup_and_claim
+        directory.lookup_and_claim = lambda _keys: pytest.fail(
+            "current writer queried the recovery directory after hydration"
+        )
+        try:
+            assert shadow.get_cached_block(b"new-miss" * 4, [0]) is None
+        finally:
+            directory.lookup_and_claim = lookup
     finally:
         for name, original in originals.items():
             setattr(BlockPool, name, original)

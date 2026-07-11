@@ -564,7 +564,17 @@ def install(factory: Callable[[int], KVLeaseClient] | None = None) -> bool:
             bytes(make_block_hash_with_group_id(block_hash, group_id))
             for group_id in kv_cache_group_ids
         ]
+        hydration_was_complete = not getattr(self, "_gms_hydrate_hbm", False)
         _hydrate_hbm_directory(self, set(keys))
+        # Once recovery hydration is complete and this engine is the fenced
+        # writer, its native block-hash map is authoritative for HBM. A local
+        # miss cannot be a foreign directory hit: no other writer may publish,
+        # and this writer inserts the native entry before publishing it. Avoid
+        # one replicated-view lookup (and lock acquisition) per hash group.
+        if hydration_was_complete and getattr(
+            directory, "read_view_is_current_writer", False
+        ):
+            return None
         token = None
         entries = []
         acquired = []
