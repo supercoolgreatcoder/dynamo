@@ -25,11 +25,6 @@ def shared_kv_enabled() -> bool:
     )
 
 
-def private_bootstrap_scratch_warmup_enabled() -> bool:
-    """Deferred with private-bootstrap KV (deferred for the vLLM-first MVP)."""
-    return False
-
-
 def stable_engine_id(device: int) -> str:
     return get_gms_persistent_kv_engine_id("vllm", device, "GMS_VLLM_VMM_IPC_ENGINE_ID")
 

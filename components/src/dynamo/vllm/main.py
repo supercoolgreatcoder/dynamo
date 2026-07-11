@@ -74,9 +74,6 @@ def _maybe_isolate_jit_cache_dirs_by_container() -> dict[str, tuple[str | None, 
 _JIT_CACHE_DIR_ENV_CHANGES = _maybe_isolate_jit_cache_dirs_by_container()
 
 import uvloop
-from gpu_memory_service.integrations.vllm.kv_identity import (
-    private_bootstrap_scratch_warmup_enabled,
-)
 from huggingface_hub import try_to_load_from_cache
 from huggingface_hub.utils import HFValidationError
 from prometheus_client import REGISTRY, CollectorRegistry, multiprocess
@@ -200,64 +197,6 @@ def _gms_failover_shadow_member() -> bool:
     engine_id = os.environ.get("ENGINE_ID", "0")
     primary_id = os.environ.get("DYN_GMS_FAILOVER_PRIMARY_ENGINE_ID", "0")
     return engine_id != primary_id
-
-
-def _gms_private_bootstrap_shadow_member(config: Config) -> bool:
-    engine_args = getattr(config, "engine_args", None)
-    if getattr(engine_args, "load_format", None) != "gms":
-        return False
-    if not getattr(config, "gms_shadow_mode", False):
-        return False
-    if not _truthy_env(
-        "DYN_VLLM_GMS_PRIVATE_BOOTSTRAP_KV",
-        default=_truthy_env("GMS_VLLM_PRIVATE_BOOTSTRAP_KV"),
-    ):
-        return False
-    return _gms_failover_shadow_member()
-
-
-def _maybe_disable_gms_shadow_graphs_before_vllm_config(config: Config) -> bool:
-    if not _gms_private_bootstrap_shadow_member(config):
-        return False
-    if _truthy_env("DYN_VLLM_GMS_PRIVATE_BOOTSTRAP_CUDAGRAPH"):
-        return False
-    if private_bootstrap_scratch_warmup_enabled():
-        os.environ["GMS_PERSISTENT_DEFER_PHYSICAL_SCRATCH_BACKED"] = "1"
-        logger.info(
-            "[GMS] Allowing vLLM graph warmup for scratch-backed "
-            "private-bootstrap shadow KV"
-        )
-        return False
-
-    previous = os.environ.get("VLLM_USE_BREAKABLE_CUDAGRAPH")
-    os.environ["VLLM_USE_BREAKABLE_CUDAGRAPH"] = "0"
-    logger.info(
-        "[GMS] Disabled vLLM breakable cudagraph for private-bootstrap "
-        "shadow before vLLM config creation (previous=%r)",
-        previous,
-    )
-    return True
-
-
-def _apply_gms_shadow_graph_config(vllm_config: VllmConfig, *, disabled: bool) -> None:
-    if not disabled:
-        return
-
-    from vllm.config import CompilationMode, CUDAGraphMode
-
-    compilation_config = vllm_config.compilation_config
-    previous_mode = getattr(compilation_config, "cudagraph_mode", None)
-    previous_compile_mode = getattr(compilation_config, "mode", None)
-    compilation_config.mode = CompilationMode.NONE
-    compilation_config.cudagraph_mode = CUDAGraphMode.NONE
-    logger.info(
-        "[GMS] Forced private-bootstrap shadow vLLM graph mode to eager: "
-        "compile_mode %s -> %s, cudagraph_mode %s -> %s",
-        previous_compile_mode,
-        compilation_config.mode,
-        previous_mode,
-        compilation_config.cudagraph_mode,
-    )
 
 
 def _is_gms_load_format(engine_args: Any) -> bool:
@@ -817,10 +756,6 @@ def setup_vllm_engine(
                 "Install with: pip install modelexpress"
             ) from e
 
-    gms_shadow_graphs_disabled = _maybe_disable_gms_shadow_graphs_before_vllm_config(
-        config
-    )
-
     # Must happen before create_engine_config() so vLLM sees ec_transfer_config.
     configure_multimodal_embedding_cache(
         engine_args,
@@ -836,7 +771,6 @@ def setup_vllm_engine(
     default_sampling_params = vllm_config.model_config.get_diff_sampling_param()
     if _is_gms_load_format(engine_args):
         _verify_gms_vllm_worker_config(vllm_config)
-    _apply_gms_shadow_graph_config(vllm_config, disabled=gms_shadow_graphs_disabled)
 
     # Set up consolidator endpoints if KVBM (DynamoConnector) is enabled
     consolidator_endpoints = None

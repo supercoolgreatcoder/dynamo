@@ -1869,63 +1869,6 @@ def test_vllm_gms_failover_jit_cache_isolation_can_be_disabled(monkeypatch):
     assert os.environ["TMPDIR"] == "/dev/shm/dynamo-jit/tmp"
 
 
-def test_gms_private_bootstrap_shadow_disables_vllm_graphs(monkeypatch):
-    from dynamo.vllm import main as vllm_main
-
-    monkeypatch.setenv("DYN_GMS_FAILOVER_SHADOW_MODE", "true")
-    monkeypatch.setenv("DYN_VLLM_GMS_SHADOW_MODE", "true")
-    monkeypatch.setenv("DYN_VLLM_GMS_PRIVATE_BOOTSTRAP_KV", "1")
-    monkeypatch.setenv("DYN_GMS_FAILOVER_PRIMARY_ENGINE_ID", "0")
-    monkeypatch.setenv("ENGINE_ID", "1")
-    monkeypatch.delenv("VLLM_USE_BREAKABLE_CUDAGRAPH", raising=False)
-
-    config = SimpleNamespace(
-        engine_args=SimpleNamespace(load_format="gms"),
-        gms_shadow_mode=True,
-    )
-
-    assert vllm_main._maybe_disable_gms_shadow_graphs_before_vllm_config(config)
-    assert os.environ["VLLM_USE_BREAKABLE_CUDAGRAPH"] == "0"
-
-
-def test_gms_private_bootstrap_graph_disable_can_be_overridden(monkeypatch):
-    from dynamo.vllm import main as vllm_main
-
-    monkeypatch.setenv("DYN_GMS_FAILOVER_SHADOW_MODE", "true")
-    monkeypatch.setenv("DYN_VLLM_GMS_SHADOW_MODE", "true")
-    monkeypatch.setenv("DYN_VLLM_GMS_PRIVATE_BOOTSTRAP_KV", "1")
-    monkeypatch.setenv("DYN_VLLM_GMS_PRIVATE_BOOTSTRAP_CUDAGRAPH", "1")
-    monkeypatch.setenv("DYN_GMS_FAILOVER_PRIMARY_ENGINE_ID", "0")
-    monkeypatch.setenv("ENGINE_ID", "1")
-    monkeypatch.delenv("VLLM_USE_BREAKABLE_CUDAGRAPH", raising=False)
-
-    config = SimpleNamespace(
-        engine_args=SimpleNamespace(load_format="gms"),
-        gms_shadow_mode=True,
-    )
-
-    assert not vllm_main._maybe_disable_gms_shadow_graphs_before_vllm_config(config)
-    assert "VLLM_USE_BREAKABLE_CUDAGRAPH" not in os.environ
-
-
-def test_gms_private_bootstrap_shadow_forces_eager_vllm_config():
-    from vllm.config import CompilationMode, CUDAGraphMode
-
-    from dynamo.vllm import main as vllm_main
-
-    vllm_config = SimpleNamespace(
-        compilation_config=SimpleNamespace(
-            mode=CompilationMode.VLLM_COMPILE,
-            cudagraph_mode=CUDAGraphMode.FULL_AND_PIECEWISE,
-        )
-    )
-
-    vllm_main._apply_gms_shadow_graph_config(vllm_config, disabled=True)
-
-    assert vllm_config.compilation_config.mode == CompilationMode.NONE
-    assert vllm_config.compilation_config.cudagraph_mode == CUDAGraphMode.NONE
-
-
 async def test_gms_preinit_static_primary_uses_shared_kv_when_lock_free(monkeypatch):
     from dynamo.vllm.worker_factory import WorkerFactory
 
