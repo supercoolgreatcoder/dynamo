@@ -26,7 +26,6 @@ from gpu_memory_service.client.torch.allocator import (
     get_or_create_gms_client_memory_manager,
     get_or_create_persistent_allocator,
     gms_use_persistent_pool,
-    retarget_persistent_allocator,
 )
 from gpu_memory_service.common.locks import GrantedLockType, RequestedLockType
 from gpu_memory_service.common.utils import get_socket_path
@@ -49,10 +48,6 @@ from gpu_memory_service.integrations.vllm.install_vmm_ipc_kv import (
 from gpu_memory_service.integrations.vllm.kv_identity import (
     allocation_engine_id,
     allocation_shared,
-    private_bootstrap_kv_enabled,
-    private_bootstrap_scratch_warmup_enabled,
-    promotion_engine_id,
-    release_private_bootstrap_kv_pool,
     shared_kv_enabled,
     stable_engine_id,
 )
@@ -191,118 +186,6 @@ def _get_dp_adjusted_local_rank(local_rank: int, parallel_config) -> int:
     return adjusted_local_rank
 
 
-def _bootstrap_memory_utilization_cap() -> float:
-    for name in (
-        "DYN_VLLM_GMS_BOOTSTRAP_GPU_MEMORY_UTILIZATION",
-        "GMS_VLLM_BOOTSTRAP_GPU_MEMORY_UTILIZATION",
-    ):
-        value = os.environ.get(name)
-        if value is None:
-            continue
-        try:
-            cap = float(value)
-        except ValueError:
-            logger.warning("Ignoring invalid %s=%r", name, value)
-            continue
-        if cap > 0:
-            return min(cap, 1.0)
-    return 0.05
-
-
-def _existing_shared_kv_blocks(device: int) -> Optional[int]:
-    if os.environ.get("GMS_KV_LEASE_SHM_RESET", "").lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }:
-        return None
-    try:
-        from gpu_memory_service.integrations.common.kv_lease_client import (
-            kv_leases_enabled,
-            read_any_kv_lease_namespace_total_blocks,
-            read_kv_lease_namespace_total_blocks,
-        )
-
-        if not kv_leases_enabled("vllm"):
-            return None
-        namespace, total_blocks = read_kv_lease_namespace_total_blocks(
-            "vllm",
-            device,
-            namespace_suffix="block-pool",
-        )
-        if total_blocks is None:
-            namespace, total_blocks = read_any_kv_lease_namespace_total_blocks("vllm")
-        if total_blocks is not None:
-            logger.debug(
-                "[GMS] Found existing vLLM KV lease geometry for startup cap: "
-                "namespace_or_path=%s blocks=%d device=%d",
-                namespace,
-                int(total_blocks),
-                device,
-            )
-    except Exception:
-        logger.debug(
-            "[GMS] Failed to inspect existing vLLM KV lease geometry",
-            exc_info=True,
-        )
-        return None
-    if total_blocks is None:
-        return None
-    return int(total_blocks)
-
-
-def _maybe_cap_private_bootstrap_memory(vllm_config, device: int) -> None:
-    """Reduce vLLM's startup memory target for a standby attach.
-
-    Large-model Bulwark shadows start while the active engine already owns most
-    HBM. vLLM checks ``gpu_memory_utilization`` before it reaches the GMS
-    persistent KV allocation path, so a standby can fail even though it will
-    later attach to the existing shared KV geometry. Private bootstrap is only
-    enabled for non-primary shadows, so cap even if the primary has not yet
-    published lease geometry.
-    """
-    if not private_bootstrap_kv_enabled():
-        return
-    existing_blocks = _existing_shared_kv_blocks(device)
-
-    cache_config = getattr(vllm_config, "cache_config", None)
-    if cache_config is None:
-        return
-    current = getattr(cache_config, "gpu_memory_utilization", None)
-    if current is None:
-        return
-
-    cap = _bootstrap_memory_utilization_cap()
-    try:
-        current_value = float(current)
-    except (TypeError, ValueError):
-        return
-    if current_value <= cap:
-        return
-
-    cache_config.gpu_memory_utilization = cap
-    if existing_blocks is None:
-        logger.info(
-            "[GMS] Capping private-bootstrap gpu_memory_utilization for "
-            "cuda:%d from %.4f to %.4f for startup; shared KV geometry "
-            "is not published yet",
-            device,
-            current_value,
-            cap,
-        )
-    else:
-        logger.info(
-            "[GMS] Existing shared KV geometry detected for cuda:%d "
-            "(%d blocks); capping private-bootstrap gpu_memory_utilization "
-            "from %.4f to %.4f for startup",
-            device,
-            existing_blocks,
-            current_value,
-            cap,
-        )
-
-
 class GMSWorker(Worker):
     """vLLM Worker subclass with GMS integration."""
 
@@ -341,12 +224,6 @@ class GMSWorker(Worker):
         finally:
             model_runner.model_memory_usage = old_usage
 
-    def _private_bootstrap_kv_active(self) -> bool:
-        return bool(
-            getattr(self, "_gms_kv_private_bootstrap", False)
-            or private_bootstrap_kv_enabled()
-        )
-
     def init_device(self) -> None:
         """Initialize device with early GMS connection.
 
@@ -359,17 +236,6 @@ class GMSWorker(Worker):
         # Worker will apply the same DP adjustment during super().init_device().
         device = _get_dp_adjusted_local_rank(self.local_rank, self.parallel_config)
         current_platform.set_device(torch.device(f"cuda:{device}"))
-        self._gms_kv_private_bootstrap = private_bootstrap_kv_enabled()
-        self._gms_kv_scratch_warmup = private_bootstrap_scratch_warmup_enabled()
-        if self._gms_kv_scratch_warmup:
-            os.environ["GMS_PERSISTENT_DEFER_PHYSICAL_SCRATCH_BACKED"] = "1"
-            logger.info(
-                "[GMS] Enabling scratch-backed private-bootstrap KV warmup "
-                "for cuda:%d",
-                device,
-            )
-        self._gms_deferred_private_bootstrap_warmup = False
-        _maybe_cap_private_bootstrap_memory(self.vllm_config, device)
 
         # Establish weights GMS connection (so MemorySnapshot can query committed bytes).
         # Lock type is determined by model_loader_extra_config, set upstream by
@@ -395,7 +261,6 @@ class GMSWorker(Worker):
                 engine_id,
                 tag="kv_pool",
                 shared=allocation_shared(),
-                defer_physical=private_bootstrap_kv_enabled(),
             )
 
         # Parent will set device again (harmless) and do memory checks
@@ -409,7 +274,7 @@ class GMSWorker(Worker):
         consumers cannot attach mid-profile and perturb vLLM's accounting.
         """
         try:
-            available = self._determine_available_memory_before_gms_publish()
+            available = self._determine_available_memory_with_gms_weight_accounting()
         except BaseException:
             try:
                 abort_pending_gms_write()
@@ -418,34 +283,6 @@ class GMSWorker(Worker):
             raise
         publish_pending_gms_write()
         return available
-
-    def _determine_available_memory_before_gms_publish(self) -> int:
-        """Profile without touching reserve-only private-bootstrap KV."""
-        if not self._private_bootstrap_kv_active():
-            return self._determine_available_memory_with_gms_weight_accounting()
-        if private_bootstrap_scratch_warmup_enabled():
-            logger.info(
-                "[GMS] Allowing vLLM CUDA graph memory profiling for "
-                "scratch-backed private-bootstrap shadow KV"
-            )
-            return self._determine_available_memory_with_gms_weight_accounting()
-
-        from vllm.config import CUDAGraphMode
-
-        compilation_config = self.vllm_config.compilation_config
-        saved_mode = compilation_config.cudagraph_mode
-        if saved_mode == CUDAGraphMode.NONE:
-            return self._determine_available_memory_with_gms_weight_accounting()
-
-        logger.info(
-            "[GMS] Deferring vLLM CUDA graph memory profiling for "
-            "private-bootstrap shadow until KV promotion"
-        )
-        compilation_config.cudagraph_mode = CUDAGraphMode.NONE
-        try:
-            return self._determine_available_memory_with_gms_weight_accounting()
-        finally:
-            compilation_config.cudagraph_mode = saved_mode
 
     def _maybe_tighten_serving_collective_timeout(self) -> None:
         """Post-warmup hook: the engine is fully initialized in this rank's worker
@@ -463,61 +300,9 @@ class GMSWorker(Worker):
             logger.debug("[GMS serving-timeout] vLLM tighten failed", exc_info=True)
 
     def compile_or_warm_up_model(self):
-        """Defer warmup/cudagraph capture while private-bootstrap KV is VA-only."""
-        if not self._private_bootstrap_kv_active():
-            result = super().compile_or_warm_up_model()
-            self._maybe_tighten_serving_collective_timeout()
-            return result
-        if private_bootstrap_scratch_warmup_enabled():
-            logger.info(
-                "[GMS] Running vLLM warmup and CUDA graph capture on "
-                "scratch-backed private-bootstrap shadow KV"
-            )
-            result = super().compile_or_warm_up_model()
-            self._maybe_tighten_serving_collective_timeout()
-            return result
-
-        from vllm.v1.worker.worker_base import CompilationTimes
-
-        self._gms_deferred_private_bootstrap_warmup = True
-        logger.info(
-            "[GMS] Deferring vLLM warmup and CUDA graph capture for "
-            "private-bootstrap shadow until KV promotion"
-        )
-        return CompilationTimes(language_model=0.0, encoder=0.0)
-
-    def _run_deferred_private_bootstrap_warmup(self) -> None:
-        if not getattr(self, "_gms_deferred_private_bootstrap_warmup", False):
-            return
-
-        if not env_enabled_by_default(
-            "GMS_VLLM_RUN_DEFERRED_PRIVATE_BOOTSTRAP_WARMUP", default=False
-        ):
-            logger.info(
-                "[GMS] Skipping deferred vLLM warmup and CUDA graph capture "
-                "after private-bootstrap KV promotion"
-            )
-            self._gms_deferred_private_bootstrap_warmup = False
-            # Even when deferred warmup is skipped, this promoted shadow is about
-            # to serve, so still tighten the NCCL serving-collective timeout.
-            # Otherwise the failover-promoted replica -- the one whose peers just
-            # demonstrated they can die -- would serve with the generous startup
-            # timeout and a hung peer mid-collective would not be bounded.
-            self._maybe_tighten_serving_collective_timeout()
-            return
-
-        logger.info(
-            "[GMS] Running deferred vLLM warmup and CUDA graph capture after "
-            "private-bootstrap KV promotion"
-        )
-        self._gms_deferred_private_bootstrap_warmup = False
-        try:
-            super().compile_or_warm_up_model()
-        except Exception:
-            self._gms_deferred_private_bootstrap_warmup = True
-            raise
-        # Deferred warmup just completed (shadow promoted + about to serve): tighten.
+        result = super().compile_or_warm_up_model()
         self._maybe_tighten_serving_collective_timeout()
+        return result
 
     def initialize_from_config(self, kv_cache_config) -> None:
         """Allocate persistent KV backing after publishing pending weights."""
@@ -529,40 +314,18 @@ class GMSWorker(Worker):
 
         self.cache_config.num_gpu_blocks = kv_cache_config.num_blocks
 
-        private_bootstrap = private_bootstrap_kv_enabled()
-        kv_transfer_config = getattr(self.vllm_config, "kv_transfer_config", None)
-        if private_bootstrap and kv_transfer_config is not None:
-            # A KV-transfer connector (e.g. NixlConnector) registers NIC memory
-            # regions over the KV tensors inside ensure_kv_transfer_initialized.
-            # In private-bootstrap/scratch mode those tensors are aliased onto
-            # throwaway scratch (or unbacked VA) and are remapped onto the shared
-            # persistent pages at promotion WITHOUT re-registering the MRs -- so
-            # the NIC would keep pointing at freed scratch pages (silent KV
-            # transfer corruption) or registration would fail on unbacked VA.
-            # Refuse the combination rather than create corrupt MRs.
-            connector = getattr(kv_transfer_config, "kv_connector", None)
-            raise RuntimeError(
-                "GMS private-bootstrap KV is incompatible with a KV-transfer "
-                f"connector ({connector!r}): its memory regions would be "
-                "registered over scratch/unbacked KV and never re-registered "
-                "after the promotion remap. Disable private-bootstrap KV or the "
-                "KV connector for this worker."
-            )
         ensure_kv_transfer_initialized(self.vllm_config, kv_cache_config)
 
         device = self.local_rank
         socket = get_gms_persistent_kv_socket(device, "GMS_VLLM_VMM_IPC_SOCKET")
         engine_id = allocation_engine_id(device)
         self._gms_kv_engine_id = engine_id
-        self._gms_kv_promote_engine_id = promotion_engine_id(device)
-        self._gms_kv_private_bootstrap = private_bootstrap
         get_or_create_persistent_allocator(
             socket,
             device,
             engine_id,
             tag="kv_pool",
             shared=allocation_shared(),
-            defer_physical=self._gms_kv_private_bootstrap,
         )
         self.model_runner.initialize_kv_cache(kv_cache_config)
 
@@ -648,30 +411,6 @@ class GMSWorker(Worker):
             used_bytes / (1 << 30),
         )
 
-    def _reset_fp8_kv_scales_without_zeroing(self) -> None:
-        """Reset quantized-KV scale tensors without modifying KV contents."""
-        cache_config = getattr(self, "cache_config", None)
-        cache_dtype = getattr(cache_config, "cache_dtype", "")
-        if not str(cache_dtype).startswith("fp8"):
-            return
-
-        model_runner = getattr(self, "model_runner", None)
-        compilation_config = getattr(model_runner, "compilation_config", None)
-        attn_layers = getattr(compilation_config, "static_forward_context", {}) or {}
-        reset_count = 0
-        for module in attn_layers.values():
-            for attr in ("_k_scale", "k_scale", "_v_scale", "v_scale"):
-                if not hasattr(module, attr):
-                    continue
-                param = getattr(module, attr)
-                if isinstance(param, torch.Tensor):
-                    param.fill_(1.0)
-                    reset_count += 1
-        logger.info(
-            "[GMS] Reset vLLM FP8 KV scale tensors without zeroing KV: count=%d",
-            reset_count,
-        )
-
     def wake_up(self, tags: Optional[List[str]] = None) -> None:
         """vLLM wake implementation with GMS integration."""
         requested_tags = tags
@@ -714,121 +453,41 @@ class GMSWorker(Worker):
             if mx_ctx is not None:
                 resume_serving(mx_ctx, self.model_runner.model)
 
-        promoted_private_bootstrap = False
         if "kv_pool" in tags:
             kv_manager = get_gms_client_memory_manager("kv_pool")
             assert kv_manager is not None, "GMS persistent KV client is not initialized"
-            private_bootstrap = bool(getattr(self, "_gms_kv_private_bootstrap", False))
-            logger.info(
-                "[GMS] vLLM KV wake_up start: private_bootstrap=%s "
-                "is_unmapped=%s mappings=%d scratch_mappings=%d",
-                private_bootstrap,
-                kv_manager.is_unmapped,
-                len(kv_manager.mappings),
-                len(getattr(kv_manager, "_scratch_mappings", {})),
-            )
-            if private_bootstrap and not kv_manager.is_unmapped:
-                migrated = kv_manager.prepare_deferred_scratch_for_persistent_remap()
-                logger.info(
-                    "[GMS] vLLM KV wake_up prepared private-bootstrap VAs: "
-                    "migrated=%d is_unmapped=%s mappings=%d scratch_mappings=%d",
-                    migrated,
-                    kv_manager.is_unmapped,
-                    len(kv_manager.mappings),
-                    len(getattr(kv_manager, "_scratch_mappings", {})),
-                )
-            else:
-                assert kv_manager.is_unmapped, "GMS persistent KV is not unmapped"
+            assert kv_manager.is_unmapped, "GMS persistent KV is not unmapped"
             engine_id = getattr(
                 self,
                 "_gms_kv_engine_id",
                 stable_engine_id(self.local_rank),
             )
-            target_engine_id = engine_id
-            target_shared = shared_kv_enabled()
-            if private_bootstrap:
-                target_engine_id = getattr(
-                    self, "_gms_kv_promote_engine_id", stable_engine_id(self.local_rank)
-                )
-                target_shared = True
-
             logger.info(
-                "[GMS] vLLM KV wake_up connecting: engine_id=%s "
-                "target_engine_id=%s target_shared=%s",
+                "[GMS] vLLM KV wake_up connecting: engine_id=%s shared=%s",
                 engine_id,
-                target_engine_id,
-                target_shared,
+                shared_kv_enabled(),
             )
             kv_manager.connect(RequestedLockType.RW_PERSISTENT)
-            if (
-                private_bootstrap
-                and kv_manager.is_unmapped
-                and getattr(kv_manager, "_scratch_mappings", {})
-            ):
-                migrated = kv_manager.prepare_scratch_for_reallocation()
-                logger.info(
-                    "[GMS] vLLM KV wake_up prepared scratch VAs after connect: "
-                    "migrated=%d",
-                    migrated,
-                )
-            logger.info(
-                "[GMS] vLLM KV wake_up remap begin: target_engine_id=%s "
-                "sync_mode=%s",
-                target_engine_id,
-                "batched" if private_bootstrap else "per_mapping",
-            )
-            kv_manager.remap_persistent_vas(
-                target_engine_id,
-                shared=target_shared,
-                synchronize_per_mapping=not private_bootstrap,
-                validate_after_remap=not private_bootstrap,
-            )
+            kv_manager.remap_persistent_vas(engine_id, shared=shared_kv_enabled())
             logger.info("[GMS] vLLM KV wake_up remap done")
-            if target_engine_id != engine_id:
-                logger.info(
-                    "[GMS] vLLM KV wake_up retargeting allocator: %s -> %s",
-                    engine_id,
-                    target_engine_id,
-                )
-                retarget_persistent_allocator(
-                    "kv_pool", target_engine_id, shared=target_shared
-                )
-                release_private_bootstrap_kv_pool(kv_manager, engine_id, logger=logger)
-                self._gms_kv_engine_id = target_engine_id
-                promoted_private_bootstrap = private_bootstrap
-                self._gms_kv_private_bootstrap = False
-                logger.info(
-                    "[GMS] Promoted vLLM KV namespace %s -> %s",
-                    engine_id,
-                    target_engine_id,
-                )
 
         if (
             requested_tags is None
             or "kv_cache" in requested_tags
             or "kv_pool" in requested_tags
         ):
-            if promoted_private_bootstrap:
-                logger.info(
-                    "[GMS] Skipping vLLM post_kv_cache_wake_up after "
-                    "private-bootstrap promotion to preserve shared KV"
-                )
-                self._reset_fp8_kv_scales_without_zeroing()
-            else:
-                logger.info("[GMS] vLLM post_kv_cache_wake_up begin")
-                self.model_runner.post_kv_cache_wake_up()
-                logger.info("[GMS] vLLM post_kv_cache_wake_up done")
+            logger.info("[GMS] vLLM post_kv_cache_wake_up begin")
+            self.model_runner.post_kv_cache_wake_up()
+            logger.info("[GMS] vLLM post_kv_cache_wake_up done")
 
-                # Reinitialize FP8 KV scales if needed for vLLM versions whose
-                # post-wake hook does not already do it.
-                if self.cache_config.cache_dtype.startswith("fp8") and hasattr(
-                    self.model_runner, "init_fp8_kv_scales"
-                ):
-                    logger.info("[GMS] vLLM init_fp8_kv_scales begin")
-                    self.model_runner.init_fp8_kv_scales()
-                    logger.info("[GMS] vLLM init_fp8_kv_scales done")
-
-            self._run_deferred_private_bootstrap_warmup()
+            # Reinitialize FP8 KV scales if needed for vLLM versions whose
+            # post-wake hook does not already do it.
+            if self.cache_config.cache_dtype.startswith("fp8") and hasattr(
+                self.model_runner, "init_fp8_kv_scales"
+            ):
+                logger.info("[GMS] vLLM init_fp8_kv_scales begin")
+                self.model_runner.init_fp8_kv_scales()
+                logger.info("[GMS] vLLM init_fp8_kv_scales done")
 
     def _maybe_get_memory_pool_context(self, tag: str):
         """Route tag-scoped runtime allocations to the right allocator.
