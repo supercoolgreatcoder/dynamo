@@ -93,7 +93,7 @@ class ContentDirectory:
         self._client: Optional[DaemonClient] = None
         self._writer_epoch: Optional[int] = None
         self._lock = threading.Lock()
-        async_value = os.environ.get("GMS_KV_DIRECTORY_ASYNC_READ", "0")
+        async_value = os.environ.get("GMS_KV_DIRECTORY_ASYNC_READ", "1")
         self._async_read = async_value.lower() not in (
             "0",
             "false",
@@ -106,6 +106,7 @@ class ContentDirectory:
         except ValueError:
             poll_ms = 250.0
         self._poll_seconds = max(0.001, poll_ms / 1_000)
+        self._view_lock = threading.Lock()
         self._view: dict[bytes, dict] = {}
         self._view_revision = 0
         self._view_epoch: Optional[int] = None
@@ -114,7 +115,13 @@ class ContentDirectory:
         self._view_caught_up = False
         self._view_stop = threading.Event()
         self._view_thread: Optional[threading.Thread] = None
-        async_publish = os.environ.get("GMS_KV_DIRECTORY_ASYNC_PUBLISH", "0")
+        # Publishing a newly completed block synchronously delays the first
+        # token even though no request consumes the directory reply. Keep one
+        # ordered writer per engine and make request finalization/close the
+        # durability boundary. A process failure before the queued mutation
+        # commits leaves the entry undiscoverable (safe recompute); it can
+        # never expose an uncommitted or out-of-order residency.
+        async_publish = os.environ.get("GMS_KV_DIRECTORY_ASYNC_PUBLISH", "1")
         self._async_publish = async_publish.lower() not in (
             "0",
             "false",
@@ -140,6 +147,10 @@ class ContentDirectory:
     @property
     def authoritative(self) -> bool:
         return self.mode == "authoritative"
+
+    @property
+    def async_read_enabled(self) -> bool:
+        return self.enabled and self._async_read
 
     def _close_locked(self) -> None:
         if self._client is not None:
@@ -273,7 +284,8 @@ class ContentDirectory:
 
     @property
     def read_view_cursor(self) -> tuple[Optional[int], int]:
-        return self._view_epoch, int(self._view_revision)
+        with self._view_lock:
+            return self._view_epoch, int(self._view_revision)
 
     def start_async_read(self) -> bool:
         """Start snapshot/delta synchronization without blocking the caller."""
@@ -296,19 +308,19 @@ class ContentDirectory:
 
     @property
     def read_view_is_current_writer(self) -> bool:
-        return (
-            self._view_ready.is_set()
-            and self._view_caught_up
-            and self._view_writer == self.writer_id
-        )
+        if not self._view_ready.is_set():
+            return False
+        with self._view_lock:
+            return self._view_caught_up and self._view_writer == self.writer_id
 
     def _invalidate_read_view(self) -> None:
         self._view_ready.clear()
-        self._view = {}
-        self._view_revision = 0
-        self._view_epoch = None
-        self._view_writer = None
-        self._view_caught_up = False
+        with self._view_lock:
+            self._view = {}
+            self._view_revision = 0
+            self._view_epoch = None
+            self._view_writer = None
+            self._view_caught_up = False
 
     def _install_snapshot(
         self,
@@ -317,31 +329,31 @@ class ContentDirectory:
         epoch: int,
         writer_id: Optional[str],
     ) -> None:
-        self._view = entries
-        self._view_revision = int(revision)
-        self._view_epoch = int(epoch)
-        self._view_writer = writer_id
-        self._view_caught_up = True
+        with self._view_lock:
+            self._view = entries
+            self._view_revision = int(revision)
+            self._view_epoch = int(epoch)
+            self._view_writer = writer_id
+            self._view_caught_up = True
         self._view_ready.set()
 
     def _apply_changes(self, response: dict) -> None:
         if response["reset_required"]:
             self._invalidate_read_view()
             return
-        view = dict(self._view)
-        for change in response["changes"]:
-            content_hash = change["content_hash"]
-            entry = change["entry"]
-            if entry is None:
-                view.pop(content_hash, None)
-            else:
-                view[content_hash] = entry
-        self._view = view
-        self._view_revision = int(response["next_revision"])
-        self._view_epoch = int(response["directory_epoch"])
-        writer = response.get("writer_id")
-        self._view_writer = None if writer is None else str(writer)
-        self._view_caught_up = not bool(response["has_more"])
+        with self._view_lock:
+            for change in response["changes"]:
+                content_hash = change["content_hash"]
+                entry = change["entry"]
+                if entry is None:
+                    self._view.pop(content_hash, None)
+                else:
+                    self._view[content_hash] = entry
+            self._view_revision = int(response["next_revision"])
+            self._view_epoch = int(response["directory_epoch"])
+            writer = response.get("writer_id")
+            self._view_writer = None if writer is None else str(writer)
+            self._view_caught_up = not bool(response["has_more"])
         self._view_ready.set()
 
     def _read_view_loop(self) -> None:
@@ -362,9 +374,10 @@ class ContentDirectory:
                     entries, revision, epoch, writer = snapshot
                     self._install_snapshot(entries, revision, epoch, writer)
                     continue
+                _epoch, revision = self.read_view_cursor
                 response = client.directory_changes(
                     self.manifest_id,
-                    self._view_revision,
+                    revision,
                     scope=self.engine,
                     wait_ms=max(1, int(self._poll_seconds * 1_000)),
                 )
@@ -403,32 +416,33 @@ class ContentDirectory:
         """Return a stable copy of matching entries without daemon IPC."""
         if not self._view_ready.is_set():
             return []
-        result = []
-        for content_hash, entry in self._view.items():
-            if state and entry.get("state") != state:
-                continue
-            if tier is not None and entry.get("tier") != tier:
-                continue
-            result.append((bytes(content_hash), dict(entry)))
-            if limit is not None and len(result) >= limit:
-                break
-        return result
+        with self._view_lock:
+            result = []
+            for content_hash, entry in self._view.items():
+                if state and entry.get("state") != state:
+                    continue
+                if tier is not None and entry.get("tier") != tier:
+                    continue
+                result.append((bytes(content_hash), dict(entry)))
+                if limit is not None and len(result) >= limit:
+                    break
+            return result
 
     def _read_view_lookup(
         self, content_hashes: list[bytes]
     ) -> list[Optional[dict]]:
         if not self._view_ready.is_set():
             return [None] * len(content_hashes)
-        view = self._view
-        return [
-            (
-                dict(entry)
-                if (entry := view.get(content_hash)) is not None
-                and entry.get("state") == "ready"
-                else None
-            )
-            for content_hash in content_hashes
-        ]
+        with self._view_lock:
+            return [
+                (
+                    dict(entry)
+                    if (entry := self._view.get(content_hash)) is not None
+                    and entry.get("state") == "ready"
+                    else None
+                )
+                for content_hash in content_hashes
+            ]
 
     def _call(
         self, operation: Callable[[DaemonClient], _T], *, retryable: bool = True
