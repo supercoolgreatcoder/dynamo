@@ -70,7 +70,44 @@ def test_semantic_kv_tags_disambiguate_duplicate_layer_identity():
     assert tag_b.endswith(":dup1")
 
 
-def test_private_bootstrap_kv_zeros_as_empty_only_rewrites_int8(monkeypatch):
+@pytest.mark.parametrize(
+    ("existing_tags", "expected"),
+    [
+        ([], False),
+        (["kv:a", "kv:b"], True),
+    ],
+)
+def test_persistent_tag_plan_distinguishes_new_and_complete_reattach(
+    existing_tags, expected
+):
+    class Manager:
+        def list_persistent(self, engine_id=None, *, include_unclaimed=False):
+            assert engine_id == "engine"
+            assert include_unclaimed is True
+            return [SimpleNamespace(tag=tag) for tag in existing_tags]
+
+    assert (
+        install_vmm_ipc_kv._persistent_tag_plan_reattaches(
+            Manager(), "engine", ["kv:a", "kv:b"]
+        )
+        is expected
+    )
+
+
+def test_persistent_tag_plan_rejects_partial_reattach():
+    manager = SimpleNamespace(
+        list_persistent=lambda engine_id=None, include_unclaimed=False: [
+            SimpleNamespace(tag="kv:a")
+        ]
+    )
+
+    with pytest.raises(RuntimeError, match="only partially present"):
+        install_vmm_ipc_kv._persistent_tag_plan_reattaches(
+            manager, "engine", ["kv:a", "kv:b"]
+        )
+
+
+def test_persistent_kv_zeros_as_empty_only_rewrites_int8(monkeypatch):
     import sys
     from types import SimpleNamespace
 
@@ -94,7 +131,7 @@ def test_private_bootstrap_kv_zeros_as_empty_only_rewrites_int8(monkeypatch):
     )
     monkeypatch.setitem(sys.modules, "torch", fake_torch)
 
-    with install_vmm_ipc_kv._private_bootstrap_kv_zeros_as_empty(True):
+    with install_vmm_ipc_kv._persistent_kv_zeros_as_empty(True):
         assert fake_torch.zeros((16,), dtype=int8_marker, device="cuda") == (
             "empty",
             int8_marker,
@@ -109,7 +146,7 @@ def test_private_bootstrap_kv_zeros_as_empty_only_rewrites_int8(monkeypatch):
     assert calls[1][0] == "zeros"
 
     calls.clear()
-    with install_vmm_ipc_kv._private_bootstrap_kv_zeros_as_empty(False):
+    with install_vmm_ipc_kv._persistent_kv_zeros_as_empty(False):
         assert fake_torch.zeros((16,), dtype=int8_marker) == ("zeros", int8_marker)
     assert calls == [("zeros", ((16,),), {"dtype": int8_marker})]
 
@@ -134,7 +171,9 @@ def test_v1_profiling_kv_tensors_bypass_persistent_pool(monkeypatch):
 
     def fake_get_or_create(*args, **kwargs):
         calls.append(("register", args, kwargs))
-        return object()
+        return SimpleNamespace(
+            list_persistent=lambda engine_id=None, include_unclaimed=False: [],
+        )
 
     @contextmanager
     def fake_pool(tag, device):
