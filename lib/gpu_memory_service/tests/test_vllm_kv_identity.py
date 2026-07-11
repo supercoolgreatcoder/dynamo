@@ -16,19 +16,9 @@ pytestmark = [
 
 @pytest.fixture(autouse=True)
 def _clear_dynamic_gms_role_env(monkeypatch):
-    for name in (
-        "DYN_VLLM_GMS_ACTIVE_LOCK_HELD",
-        "DYN_VLLM_GMS_FORCE_PRIVATE_BOOTSTRAP_KV",
-        "GMS_PERSISTENT_DEFER_PHYSICAL_SCRATCH_BACKED",
-    ):
-        monkeypatch.delenv(name, raising=False)
+    monkeypatch.delenv("DYN_VLLM_GMS_ACTIVE_LOCK_HELD", raising=False)
     yield
-    for name in (
-        "DYN_VLLM_GMS_ACTIVE_LOCK_HELD",
-        "DYN_VLLM_GMS_FORCE_PRIVATE_BOOTSTRAP_KV",
-        "GMS_PERSISTENT_DEFER_PHYSICAL_SCRATCH_BACKED",
-    ):
-        monkeypatch.delenv(name, raising=False)
+    monkeypatch.delenv("DYN_VLLM_GMS_ACTIVE_LOCK_HELD", raising=False)
 
 
 def test_v2_semantic_kv_tags_follow_layer_identity():
@@ -173,14 +163,9 @@ def test_vllm_v2_device_index_uses_current_cuda_device_for_unindexed_cuda(
     assert install_vmm_ipc_kv._device_index(SimpleNamespace(index=None)) == 3
 
 
-def test_private_bootstrap_geometry_wait_honors_vllm_specific_timeout(monkeypatch):
+def test_geometry_wait_honors_vllm_specific_timeout(monkeypatch):
     from gpu_memory_service.integrations.vllm import install_vmm_ipc_kv
 
-    monkeypatch.setenv("DYN_GMS_FAILOVER_SHADOW_MODE", "true")
-    monkeypatch.setenv("DYN_GMS_FAILOVER_PRIMARY_ENGINE_ID", "0")
-    monkeypatch.setenv("ENGINE_ID", "1")
-    monkeypatch.setenv("DYN_VLLM_GMS_SHADOW_MODE", "true")
-    monkeypatch.setenv("DYN_VLLM_GMS_PRIVATE_BOOTSTRAP_KV", "1")
     monkeypatch.setenv("GMS_KV_LEASE_GEOMETRY_WAIT_MS", "300000")
     monkeypatch.setenv("GMS_VLLM_KV_GEOMETRY_WAIT_MS", "42")
 

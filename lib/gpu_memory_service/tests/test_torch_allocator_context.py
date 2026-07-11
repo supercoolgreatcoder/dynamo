@@ -13,13 +13,6 @@ from gpu_memory_service.client.torch import allocator
 from gpu_memory_service.common.locks import GrantedLockType
 
 
-@pytest.fixture(autouse=True)
-def _clear_scratch_backed_env(monkeypatch):
-    monkeypatch.delenv("GMS_PERSISTENT_DEFER_PHYSICAL_SCRATCH_BACKED", raising=False)
-    yield
-    monkeypatch.delenv("GMS_PERSISTENT_DEFER_PHYSICAL_SCRATCH_BACKED", raising=False)
-
-
 class _FakeCuda:
     def __init__(self) -> None:
         self.calls: list[tuple[object, object]] = []
