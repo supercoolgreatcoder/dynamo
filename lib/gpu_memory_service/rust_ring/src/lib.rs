@@ -589,16 +589,28 @@ fn kv_lease_seal(
                 continue;
             }
             let state_ptr = ptr.add(base + LR_STATE) as *const AtomicU32;
-            if (*state_ptr)
-                .compare_exchange(
-                    LEASE_STATE_LEASED,
-                    LEASE_STATE_SEALED,
-                    Ordering::AcqRel,
-                    Ordering::Acquire,
-                )
-                .is_ok()
-            {
-                sealed = sealed.wrapping_add(1);
+            // Lock the record in TRANSITION, then re-validate the generation
+            // before publishing SEALED. A fenced (stale) owner must not seal a
+            // block that changed hands between the pre-CAS generation check and
+            // the state transition: e.g. the new owner adopted it (bumping the
+            // generation) and the stale seal would otherwise mark unwritten
+            // bytes complete. Mirrors release_acquired_lease_blocks' post-CAS
+            // generation recheck under the TRANSITION lock.
+            match (*state_ptr).compare_exchange(
+                LEASE_STATE_LEASED,
+                LEASE_STATE_TRANSITION,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => {
+                    if (*generation_ptr).load(Ordering::Acquire) != generation {
+                        (*state_ptr).store(LEASE_STATE_LEASED, Ordering::Release);
+                    } else {
+                        (*state_ptr).store(LEASE_STATE_SEALED, Ordering::Release);
+                        sealed = sealed.wrapping_add(1);
+                    }
+                }
+                Err(_) => {}
             }
         }
     }
