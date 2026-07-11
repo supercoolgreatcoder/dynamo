@@ -466,6 +466,33 @@ class WorkerFactory:
         await lock.acquire(engine_id=f"engine-{engine_id}", timeout=timeout)
         return lock
 
+    async def _wake_up_kv_fenced(self, handler, tags: list[str]) -> None:
+        """Run collective_rpc('wake_up') with a bounded timeout, fail-closed.
+
+        A promotion remap that wedges (CUDA error, stuck engine core) must not
+        leave this process holding the failover lock while it reports healthy --
+        that is an unrecoverable partial failover that locks out every other
+        standby. On timeout, raise so the process exits and the kernel releases
+        the flock for another standby.
+        """
+        timeout = float(
+            os.environ.get("DYN_GMS_FAILOVER_WAKEUP_TIMEOUT_SECS", "120")
+        )
+        try:
+            await asyncio.wait_for(
+                handler.engine_client.collective_rpc(
+                    "wake_up", kwargs={"tags": tags}
+                ),
+                timeout=timeout,
+            )
+        except asyncio.TimeoutError:
+            logger.critical(
+                "[GMS failover] wake_up/remap did not complete within %.0fs; "
+                "failing closed so the failover lock is released",
+                timeout,
+            )
+            raise
+
     def _maybe_start_rank_liveness_monitor(self, handler, config: Config):
         """Leader side of the cross-node ZMQ rank-liveness channel.
 
@@ -691,10 +718,7 @@ class WorkerFactory:
                     "[Shadow] Pre-promoting private-bootstrap KV while "
                     "undiscovered; lock still gates serving"
                 )
-                await handler.engine_client.collective_rpc(
-                    "wake_up",
-                    kwargs={"tags": ["kv_pool"]},
-                )
+                await self._wake_up_kv_fenced(handler, ["kv_pool"])
                 prepromoted_private_bootstrap = True
                 logger.info(
                     "[Shadow] Private-bootstrap KV pre-promotion complete; "
@@ -723,10 +747,7 @@ class WorkerFactory:
                     "[Shadow] Promoting private-bootstrap KV before discovery "
                     "registration"
                 )
-                await handler.engine_client.collective_rpc(
-                    "wake_up",
-                    kwargs={"tags": ["kv_pool"]},
-                )
+                await self._wake_up_kv_fenced(handler, ["kv_pool"])
             if promotion_warmup is not None and not prelock_warmup_ran:
                 await promotion_warmup()
             elif prelock_warmup_ran:
@@ -826,6 +847,12 @@ class WorkerFactory:
                 "[Shadow] Waiting for failover lock before vLLM engine init "
                 "to protect shared GMS KV warmup"
             )
+            # Signal startup/liveness health BEFORE blocking on the lock so a
+            # waiting standby's probe passes and the orchestrator does not kill
+            # it (CrashLoopBackOff) while the primary holds the lock. This is
+            # liveness only -- the engine is not registered for serving until
+            # init and discovery registration complete further below.
+            runtime.set_health_status(True)
             early_failover_lock = await self._acquire_failover_lock()
             await run_gms_failover_post_lock_fence(
                 backend_name="vllm",
