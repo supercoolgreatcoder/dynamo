@@ -5,8 +5,6 @@
 
 from __future__ import annotations
 
-import os
-
 from gpu_memory_service.integrations.common.utils import (
     env_enabled_by_default,
     get_gms_persistent_kv_engine_id,
@@ -28,69 +26,33 @@ def shared_kv_enabled() -> bool:
 
 
 def private_bootstrap_kv_enabled() -> bool:
-    """True when this process must initialize on member-scoped KV.
+    """Deferred for the vLLM-first MVP: always False.
 
-    In Bulwark failover the static primary id is only a bootstrap preference.
-    After failover, the restarted primary container may be a standby while the
-    promoted shadow owns the active lock, so the worker factory can override the
-    static id with a dynamic pre-init role decision.
+    Private-bootstrap KV let a shadow pre-warm CUDA graphs against throwaway
+    scratch backing and hot-swap the physical pages to the shared pool at
+    promotion. It is a pre-warmed-shadow OPTIMIZATION on top of the default
+    lock-before-init failover path (a shadow simply waits on the failover lock,
+    then warms up after promotion), not a correctness requirement. It is deferred
+    to a follow-up; the MVP ships lock-before-init only.
     """
-    requested = truthy_env(
-        "DYN_VLLM_GMS_PRIVATE_BOOTSTRAP_KV",
-        default=truthy_env("GMS_VLLM_PRIVATE_BOOTSTRAP_KV", default=False),
-    )
-    if not requested:
-        return False
-    if truthy_env("DYN_VLLM_GMS_ACTIVE_LOCK_HELD", default=False):
-        return False
-    if truthy_env("DYN_VLLM_GMS_FORCE_PRIVATE_BOOTSTRAP_KV", default=False):
-        return True
-    if not truthy_env("DYN_GMS_FAILOVER_SHADOW_MODE", default=False):
-        return True
-    return _member_id() != _primary_member_id()
+    return False
 
 
 def private_bootstrap_scratch_warmup_enabled() -> bool:
-    """True when private-bootstrap KV may be touched before promotion.
-
-    This mode keeps the final KV virtual layout but backs the deferred private
-    namespace with a small aliased scratch allocation. It is only safe for
-    discarded shadow warmup traffic; real serving still requires promotion to
-    the shared persistent KV namespace.
-    """
-    if not private_bootstrap_kv_enabled():
-        return False
-    return truthy_env(
-        "DYN_VLLM_GMS_PRIVATE_BOOTSTRAP_SCRATCH_WARMUP",
-        default=truthy_env("GMS_VLLM_PRIVATE_BOOTSTRAP_SCRATCH_WARMUP"),
-    )
+    """Deferred with private-bootstrap KV (see private_bootstrap_kv_enabled)."""
+    return False
 
 
 def stable_engine_id(device: int) -> str:
     return get_gms_persistent_kv_engine_id("vllm", device, "GMS_VLLM_VMM_IPC_ENGINE_ID")
 
 
-def _member_id() -> str:
-    for name in ("ENGINE_ID", "DYN_WORKER_ID", "HOSTNAME"):
-        value = os.environ.get(name)
-        if value:
-            return value
-    return str(os.getpid())
-
-
-def _primary_member_id() -> str:
-    return os.environ.get("DYN_GMS_FAILOVER_PRIMARY_ENGINE_ID", "0")
-
-
 def allocation_engine_id(device: int) -> str:
-    engine_id = stable_engine_id(device)
-    if private_bootstrap_kv_enabled():
-        return f"{engine_id}|bootstrap={_member_id()}"
-    return engine_id
+    return stable_engine_id(device)
 
 
 def allocation_shared() -> bool:
-    return shared_kv_enabled() and not private_bootstrap_kv_enabled()
+    return shared_kv_enabled()
 
 
 def promotion_engine_id(device: int) -> str:
@@ -98,7 +60,7 @@ def promotion_engine_id(device: int) -> str:
 
 
 def use_existing_shared_geometry() -> bool:
-    return shared_kv_enabled() or private_bootstrap_kv_enabled()
+    return shared_kv_enabled()
 
 
 def release_private_bootstrap_kv_pool(manager, engine_id: str, *, logger=None) -> int:
