@@ -32,9 +32,11 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
+from gpu_memory_service.client.rpc import GMS_ERR_CLAIM_CONFLICT, GmsRemoteError
 from gpu_memory_service.client.session import _GMSClientSession
 from gpu_memory_service.common.cuda_utils import (
     align_to_granularity,
@@ -351,6 +353,42 @@ class GMSClientMemoryManager:
 
     # ==================== Persistent allocations (KV-pool namespace) ===
 
+    def _claim_persistent_with_conflict_retry(
+        self, *, engine_id: str, tag: str, aligned_size: int, shared: bool
+    ):
+        """Issue the claim RPC, retrying only a transient claim conflict.
+
+        A replacement engine reconnecting with the same engine_id can race the
+        daemon's cleanup of the previous connection's claim (its disconnect EOF
+        is processed asynchronously), surfacing as GMS_ERR_CLAIM_CONFLICT. A fast
+        supervisor restart or in-process abort->connect would otherwise fail
+        bootstrap hard from inside torch's malloc callback. Retry briefly with
+        backoff; every other error is fatal and re-raised immediately.
+        """
+        retry_secs = float(os.environ.get("GMS_PERSISTENT_CLAIM_RETRY_SECS", "2.0"))
+        deadline = time.monotonic() + max(0.0, retry_secs)
+        delay = 0.05
+        while True:
+            try:
+                return self._client_rpc.claim_persistent(
+                    engine_id=engine_id,
+                    tag=tag,
+                    size=aligned_size,
+                    shared=shared,
+                )
+            except GmsRemoteError as exc:
+                if exc.code != GMS_ERR_CLAIM_CONFLICT or time.monotonic() >= deadline:
+                    raise
+                logger.warning(
+                    "GMS persistent claim conflict for %s/%s; retrying in %.2fs "
+                    "(likely a prior connection's claim not yet cleaned up)",
+                    engine_id,
+                    tag,
+                    delay,
+                )
+                time.sleep(delay)
+                delay = min(delay * 2, 0.5)
+
     def claim_persistent(
         self,
         engine_id: str,
@@ -374,10 +412,10 @@ class GMSClientMemoryManager:
                 "Memory manager must be connected before claim_persistent",
             )
         aligned_size = align_to_granularity(size, self.granularity)
-        response = self._client_rpc.claim_persistent(
+        response = self._claim_persistent_with_conflict_retry(
             engine_id=engine_id,
             tag=tag,
-            size=aligned_size,
+            aligned_size=aligned_size,
             shared=shared,
         )
         returned_size = int(response.aligned_size)
@@ -824,12 +862,26 @@ class GMSClientMemoryManager:
             if mapping.handle != 0:
                 continue
 
-            allocation_id, aligned_size, _reattached = self.claim_persistent(
+            allocation_id, aligned_size, reattached = self.claim_persistent(
                 engine_id=engine_id,
                 tag=mapping.tag,
                 size=mapping.size,
                 shared=shared,
             )
+            # remap is always a re-attach to SURVIVING physical pages. If the
+            # daemon reports it created a fresh (cold) allocation instead, the
+            # persistent pool was lost -- e.g. the GMS daemon restarted and its
+            # in-memory allocation store is empty -- so these bytes are
+            # uninitialized. Remapping them as warm KV would silently serve
+            # garbage; fail closed instead.
+            if not reattached:
+                raise StaleMemoryLayoutError(
+                    f"Persistent allocation {engine_id}/{mapping.tag} did not "
+                    f"survive: daemon returned a fresh (cold) allocation on "
+                    f"remap, indicating the persistent pool was lost (likely a "
+                    f"GMS daemon restart). Refusing to remap uninitialized "
+                    f"memory as warm KV."
+                )
             if int(aligned_size) != int(mapping.aligned_size):
                 raise StaleMemoryLayoutError(
                     f"Persistent allocation {engine_id}/{mapping.tag} size changed: "
