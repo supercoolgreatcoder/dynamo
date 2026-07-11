@@ -1191,11 +1191,21 @@ class BaseWorkerHandler(ABC, Generic[RequestT, ResponseT]):
                 "message": "request body must be a JSON object",
             }
         level = body.get("level", 1)
+        handoff = bool(body.get("release_failover_lock") or body.get("handoff"))
         async with self._pause_lock:
             if self._pause_controller.is_paused:
+                # Already sleeping -- but a handoff request must STILL release the
+                # failover lock, otherwise the standby blocks on the flock forever
+                # while the orchestrator believes cutover completed. Idempotent.
+                lock_released = False
+                if handoff:
+                    lock_released = await release_attached_gms_failover_lock(
+                        self, backend_name="vllm"
+                    )
                 return {
                     "status": "ok",
                     "message": "Engine already sleeping",
+                    "failover_lock_released": lock_released,
                 }
             if self._pause_controller.needs_resume_recovery:
                 return {
@@ -1217,7 +1227,6 @@ class BaseWorkerHandler(ABC, Generic[RequestT, ResponseT]):
                 # generation is fully paused before unmapping memory. On a
                 # failover handoff, keep the KV cache (no clear) so the GMS
                 # pages survive for remap by the standby.
-                handoff = bool(body.get("release_failover_lock") or body.get("handoff"))
                 if not await self._pause_controller.pause(
                     level, clear_cache=not handoff
                 ):
