@@ -306,11 +306,12 @@ def test_gms_minimal_cold_hbm_failover_vllm(
         assert manager.kv_directory_manifest is not None
 
         primary = manager.start_engine("primary")
-        assert_completion_ok(
+        primary_output = assert_completion_ok(
             manager.frontend_port,
             _HBM_RECOVERY_PROMPT,
             failure_message="Primary cold-failover warmup failed",
             success_message="Primary cold-failover warmup OK",
+            body_overrides={"temperature": 0},
         )
         repeated_primary_output = assert_completion_ok(
             manager.frontend_port,
@@ -343,13 +344,15 @@ def test_gms_minimal_cold_hbm_failover_vllm(
             read_only_weights=True,
             directory_standby=True,
         )
-        assert_completion_ok(
+        shadow_output = assert_completion_ok(
             manager.frontend_port,
             _HBM_RECOVERY_PROMPT,
             failure_message="Cold replacement HBM recovery probe failed",
             success_message="Cold replacement HBM recovery probe OK",
             retry_timeout=30.0,
+            body_overrides={"temperature": 0},
         )
+        assert shadow_output == primary_output
         logs = shadow.read_logs()
         assert "adopted_hbm_blocks=" in logs, _directory_diagnostics(primary, shadow)
 
