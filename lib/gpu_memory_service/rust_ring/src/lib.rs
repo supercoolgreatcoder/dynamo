@@ -805,6 +805,16 @@ unsafe fn reclaim_foreign_lease_blocks(
         // reconstructs the exact count without guessing whether the
         // interrupted update happened.
         if state == LEASE_STATE_TRANSITION {
+            // A protected (directory-advertised, recoverable) block that was
+            // mid-transition when its writer died must NOT be rolled forward to
+            // FREE -- doing so lets a later acquire reuse HBM the directory
+            // still believes holds valid KV. Restore it to SEALED (the safe,
+            // adoptable state) so lazy adoption can recover it. Only unprotected
+            // interrupted transitions are freed.
+            if protected_blocks.binary_search(&block_id).is_ok() {
+                (*state_ptr).store(LEASE_STATE_SEALED, Ordering::Release);
+                continue;
+            }
             (*owner_ptr).store(0, Ordering::Release);
             (*state_ptr).store(LEASE_STATE_FREE, Ordering::Release);
             released = released.wrapping_add(1);
