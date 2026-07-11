@@ -29,7 +29,7 @@ from gpu_memory_service.client.torch.allocator import (
     retarget_persistent_allocator,
 )
 from gpu_memory_service.common.locks import GrantedLockType, RequestedLockType
-from gpu_memory_service.common.utils import get_socket_path, is_scratch_kv_enabled
+from gpu_memory_service.common.utils import get_socket_path
 from gpu_memory_service.integrations.common import patch_empty_cache
 from gpu_memory_service.integrations.common.utils import (
     env_enabled_by_default,
@@ -60,7 +60,6 @@ from gpu_memory_service.integrations.vllm.model_loader import (
     abort_pending_gms_write,
     get_imported_weights_bytes,
     get_mx_load_context,
-    has_pending_gms_write,
     publish_pending_gms_write,
     register_gms_loader,
 )
@@ -423,20 +422,20 @@ class GMSWorker(Worker):
     def _determine_available_memory_before_gms_publish(self) -> int:
         """Profile without touching reserve-only private-bootstrap KV."""
         if not self._private_bootstrap_kv_active():
-            return self._determine_available_memory_with_scratch_accounting()
+            return self._determine_available_memory_with_gms_weight_accounting()
         if private_bootstrap_scratch_warmup_enabled():
             logger.info(
                 "[GMS] Allowing vLLM CUDA graph memory profiling for "
                 "scratch-backed private-bootstrap shadow KV"
             )
-            return self._determine_available_memory_with_scratch_accounting()
+            return self._determine_available_memory_with_gms_weight_accounting()
 
         from vllm.config import CUDAGraphMode
 
         compilation_config = self.vllm_config.compilation_config
         saved_mode = compilation_config.cudagraph_mode
         if saved_mode == CUDAGraphMode.NONE:
-            return self._determine_available_memory_with_scratch_accounting()
+            return self._determine_available_memory_with_gms_weight_accounting()
 
         logger.info(
             "[GMS] Deferring vLLM CUDA graph memory profiling for "
@@ -444,68 +443,9 @@ class GMSWorker(Worker):
         )
         compilation_config.cudagraph_mode = CUDAGraphMode.NONE
         try:
-            return self._determine_available_memory_with_scratch_accounting()
+            return self._determine_available_memory_with_gms_weight_accounting()
         finally:
             compilation_config.cudagraph_mode = saved_mode
-
-    def _determine_available_memory_with_scratch_accounting(self) -> int:
-        if not is_scratch_kv_enabled():
-            return self._determine_available_memory_with_gms_weight_accounting()
-
-        import vllm.envs as envs
-        from vllm.config import CUDAGraphMode
-        from vllm.platforms import current_platform
-
-        has_pending_write = has_pending_gms_write()
-
-        torch.cuda.reset_peak_memory_stats()
-        self.model_runner.profile_run()
-        torch.cuda.synchronize()
-        torch_peak = torch.cuda.max_memory_allocated()
-
-        cudagraph_memory_estimate = 0
-        if (
-            current_platform.is_cuda()
-            and self.vllm_config.compilation_config.cudagraph_mode != CUDAGraphMode.NONE
-        ):
-            cudagraph_memory_estimate = self.model_runner.profile_cudagraph_memory()
-        cudagraph_memory_estimate_applied = (
-            cudagraph_memory_estimate
-            if envs.VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS
-            else 0
-        )
-        self.cudagraph_memory_estimate = cudagraph_memory_estimate
-
-        invisible_weights_memory = (
-            0 if has_pending_write else get_imported_weights_bytes()
-        )
-        non_kv_cache_memory = torch_peak + invisible_weights_memory
-
-        projected_available = (
-            self.requested_memory
-            - non_kv_cache_memory
-            - cudagraph_memory_estimate_applied
-        )
-        self.available_kv_cache_memory_bytes = int(projected_available)
-
-        msg = (
-            "[GMS] projected available memory "
-            "%.2f GiB (requested=%.2f GiB, non_kv=%.2f GiB, "
-            "torch_peak=%.2f GiB, invisible_weights=%.2f GiB, "
-            "cudagraph_estimate=%.2f GiB, cudagraph_applied=%.2f GiB)"
-            % (
-                projected_available / (1 << 30),
-                self.requested_memory / (1 << 30),
-                non_kv_cache_memory / (1 << 30),
-                torch_peak / (1 << 30),
-                invisible_weights_memory / (1 << 30),
-                cudagraph_memory_estimate / (1 << 30),
-                cudagraph_memory_estimate_applied / (1 << 30),
-            )
-        )
-        logger.info(msg)
-        print(msg, flush=True)
-        return int(projected_available)
 
     def _maybe_tighten_serving_collective_timeout(self) -> None:
         """Post-warmup hook: the engine is fully initialized in this rank's worker

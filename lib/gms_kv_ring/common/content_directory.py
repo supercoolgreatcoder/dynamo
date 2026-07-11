@@ -650,16 +650,3 @@ class ContentDirectory:
             {},
         )
 
-    def compare_prefix(
-        self,
-        content_hashes: list[bytes],
-        legacy_count: int,
-    ) -> tuple[list[Optional[dict]], bool]:
-        """Lookup once and report whether its contiguous prefix agrees."""
-        entries = self.lookup(content_hashes)
-        directory_count = 0
-        for entry in entries:
-            if entry is None:
-                break
-            directory_count += 1
-        return entries, directory_count == int(legacy_count)
