@@ -1783,39 +1783,6 @@ async def test_generate_text_mode_rejects_string_prompt_over_context():
         "Please reduce the length of the messages or completion."
     )
     assert engine_client.generate_called is False
-def test_vllm_failover_shape_warmup_payload_covers_serving_shape(monkeypatch):
-    from dynamo.vllm.worker_factory import _vllm_failover_shape_warmup_payload
-
-    monkeypatch.delenv("DYN_VLLM_GMS_FAILOVER_SHAPE_WARMUP_MAX_TOKENS", raising=False)
-    payload = _vllm_failover_shape_warmup_payload(
-        {"prompt": "Test", "max_tokens": 1, "_HEALTH_CHECK": True}
-    )
-
-    assert "_HEALTH_CHECK" not in payload
-    assert payload["prompt"] != "Test"
-    assert payload["temperature"] == 0.0
-    assert payload["max_tokens"] == 16
-
-
-def test_vllm_failover_shape_warmup_payload_token_mode(monkeypatch):
-    from dynamo.vllm.worker_factory import _vllm_failover_shape_warmup_payload
-
-    monkeypatch.setenv("DYN_VLLM_GMS_FAILOVER_SHAPE_WARMUP_INPUT_TOKENS", "7")
-    monkeypatch.setenv("DYN_VLLM_GMS_FAILOVER_SHAPE_WARMUP_MAX_TOKENS", "3")
-
-    payload = _vllm_failover_shape_warmup_payload(
-        {
-            "token_ids": [42],
-            "sampling_options": {"temperature": 1.0},
-            "stop_conditions": {"max_tokens": 1},
-            "_HEALTH_CHECK": True,
-        }
-    )
-
-    assert "_HEALTH_CHECK" not in payload
-    assert payload["token_ids"] == [42] * 7
-    assert payload["sampling_options"]["temperature"] == 0.0
-    assert payload["stop_conditions"]["max_tokens"] == 3
 
 
 def test_gms_shadow_init_geometry_wait_honors_generic_timeout(monkeypatch):
@@ -1869,343 +1836,26 @@ def test_vllm_gms_failover_jit_cache_isolation_can_be_disabled(monkeypatch):
     assert os.environ["TMPDIR"] == "/dev/shm/dynamo-jit/tmp"
 
 
-async def test_gms_preinit_static_primary_uses_shared_kv_when_lock_free(monkeypatch):
+async def test_gms_reject_removed_private_bootstrap_options(monkeypatch):
     from dynamo.vllm.worker_factory import WorkerFactory
 
-    events = []
-    lock = object()
-    factory = WorkerFactory(
-        lambda *args, **kwargs: None,
-        lambda *args, **kwargs: None,
-        lambda *args, **kwargs: None,
-        lambda *args, **kwargs: None,
-        lambda *args, **kwargs: None,
-    )
+    for name in WorkerFactory._REMOVED_PRIVATE_BOOTSTRAP_ENV_VARS:
+        monkeypatch.delenv(name, raising=False)
 
-    async def fake_acquire(*, timeout=None):
-        events.append(("lock", timeout))
-        return lock
+    # No knobs set -> no error.
+    WorkerFactory._reject_removed_private_bootstrap_options()
 
-    async def fake_post_lock_fence(*, backend_name, role):
-        events.append(("fence", backend_name, role))
-
-    config = SimpleNamespace(
-        gms_shadow_mode=True,
-        engine_args=SimpleNamespace(load_format="gms"),
-    )
-
-    monkeypatch.setenv("DYN_VLLM_GMS_PRIVATE_BOOTSTRAP_KV", "1")
-    monkeypatch.setenv("DYN_GMS_FAILOVER_SHADOW_MODE", "true")
-    monkeypatch.setenv("ENGINE_ID", "0")
-    monkeypatch.setenv("DYN_GMS_FAILOVER_PRIMARY_ENGINE_ID", "0")
-    monkeypatch.setattr(factory, "_acquire_failover_lock", fake_acquire)
-    monkeypatch.setattr(
-        "dynamo.vllm.worker_factory.run_gms_failover_post_lock_fence",
-        fake_post_lock_fence,
-    )
-
-    got_lock, fence_run = await factory._configure_gms_preinit_failover_role(config)
-
-    assert got_lock is lock
-    assert fence_run is True
-    assert os.environ["DYN_VLLM_GMS_ACTIVE_LOCK_HELD"] == "1"
-    assert os.environ["DYN_VLLM_GMS_FORCE_PRIVATE_BOOTSTRAP_KV"] == "0"
-    assert events == [("lock", 0.0), ("fence", "vllm", "engine-0-pre-init")]
+    # Each removed knob must fail closed rather than silently run a shadow
+    # against the shared KV pool before it owns the failover lock.
+    for name in WorkerFactory._REMOVED_PRIVATE_BOOTSTRAP_ENV_VARS:
+        monkeypatch.setenv(name, "1")
+        with pytest.raises(RuntimeError, match="private-bootstrap"):
+            WorkerFactory._reject_removed_private_bootstrap_options()
+        monkeypatch.delenv(name, raising=False)
 
 
 @pytest.mark.asyncio
-async def test_gms_preinit_static_primary_uses_private_kv_when_lock_held(monkeypatch):
-    from gpu_memory_service.failover_lock.interface import FailoverLockError
-
-    from dynamo.vllm.worker_factory import WorkerFactory
-
-    factory = WorkerFactory(
-        lambda *args, **kwargs: None,
-        lambda *args, **kwargs: None,
-        lambda *args, **kwargs: None,
-        lambda *args, **kwargs: None,
-        lambda *args, **kwargs: None,
-    )
-
-    async def fake_acquire(*, timeout=None):
-        raise FailoverLockError("held")
-
-    config = SimpleNamespace(
-        gms_shadow_mode=True,
-        engine_args=SimpleNamespace(load_format="gms"),
-    )
-
-    monkeypatch.setenv("DYN_VLLM_GMS_PRIVATE_BOOTSTRAP_KV", "1")
-    monkeypatch.setenv("DYN_GMS_FAILOVER_SHADOW_MODE", "true")
-    monkeypatch.setenv("ENGINE_ID", "0")
-    monkeypatch.setenv("DYN_GMS_FAILOVER_PRIMARY_ENGINE_ID", "0")
-    monkeypatch.setattr(factory, "_acquire_failover_lock", fake_acquire)
-
-    got_lock, fence_run = await factory._configure_gms_preinit_failover_role(config)
-
-    assert got_lock is None
-    assert fence_run is False
-    assert os.environ["DYN_VLLM_GMS_ACTIVE_LOCK_HELD"] == "0"
-    assert os.environ["DYN_VLLM_GMS_FORCE_PRIVATE_BOOTSTRAP_KV"] == "1"
-
-
-@pytest.mark.asyncio
-async def test_gms_preinit_static_shadow_uses_private_kv_without_lock(monkeypatch):
-    from dynamo.vllm.worker_factory import WorkerFactory
-
-    factory = WorkerFactory(
-        lambda *args, **kwargs: None,
-        lambda *args, **kwargs: None,
-        lambda *args, **kwargs: None,
-        lambda *args, **kwargs: None,
-        lambda *args, **kwargs: None,
-    )
-
-    async def fail_acquire(*, timeout=None):
-        raise AssertionError("static shadow should not steal initial active lock")
-
-    config = SimpleNamespace(
-        gms_shadow_mode=True,
-        engine_args=SimpleNamespace(load_format="gms"),
-    )
-
-    monkeypatch.setenv("DYN_VLLM_GMS_PRIVATE_BOOTSTRAP_KV", "1")
-    monkeypatch.setenv("DYN_GMS_FAILOVER_SHADOW_MODE", "true")
-    monkeypatch.setenv("ENGINE_ID", "1")
-    monkeypatch.setenv("DYN_GMS_FAILOVER_PRIMARY_ENGINE_ID", "0")
-    monkeypatch.setattr(factory, "_acquire_failover_lock", fail_acquire)
-
-    got_lock, fence_run = await factory._configure_gms_preinit_failover_role(config)
-
-    assert got_lock is None
-    assert fence_run is False
-    assert os.environ["DYN_VLLM_GMS_ACTIVE_LOCK_HELD"] == "0"
-    assert os.environ["DYN_VLLM_GMS_FORCE_PRIVATE_BOOTSTRAP_KV"] == "1"
-
-
-@pytest.mark.asyncio
-async def test_gms_private_shadow_waits_for_lock_without_startup_sleep(monkeypatch):
-    from dynamo.vllm.worker_factory import WorkerFactory
-
-    events = []
-    lock = object()
-    factory = WorkerFactory(
-        lambda *args, **kwargs: None,
-        lambda *args, **kwargs: None,
-        lambda *args, **kwargs: None,
-        lambda *args, **kwargs: None,
-        lambda *args, **kwargs: None,
-    )
-
-    async def fake_acquire():
-        events.append("lock")
-        return lock
-
-    async def fake_promotion_warmup():
-        events.append("warmup")
-
-    async def fake_post_lock_fence(*, backend_name, role):
-        events.append(("fence", backend_name, role))
-
-    class QuiesceController:
-        async def quiesce(self, *args, **kwargs):
-            raise AssertionError("private-bootstrap shadow must not sleep at startup")
-
-        async def resume(self, *args, **kwargs):
-            raise AssertionError("private-bootstrap shadow promotes KV directly")
-
-        def mark_resumed(self):
-            raise AssertionError("private-bootstrap shadow promotes KV directly")
-
-    class EngineClient:
-        async def collective_rpc(self, method, *, kwargs=None):
-            events.append(("collective_rpc", method, kwargs))
-
-    class Runtime:
-        def set_health_status(self, status):
-            events.append(("health", status))
-
-    handler = SimpleNamespace(
-        _quiesce_controller=QuiesceController(),
-        engine_client=EngineClient(),
-    )
-    config = SimpleNamespace(gms_shadow_mode=True)
-
-    monkeypatch.setenv("DYN_GMS_FAILOVER_PRIVATE_BOOTSTRAP_KV", "1")
-    monkeypatch.setenv("ENGINE_ID", "1")
-    monkeypatch.setenv("DYN_GMS_FAILOVER_PRIMARY_ENGINE_ID", "0")
-    monkeypatch.delenv("DYN_VLLM_GMS_SHADOW_SKIP_STARTUP_SLEEP", raising=False)
-    monkeypatch.setattr(factory, "_acquire_failover_lock", fake_acquire)
-    monkeypatch.setattr(
-        "dynamo.vllm.worker_factory.run_gms_failover_post_lock_fence",
-        fake_post_lock_fence,
-    )
-
-    await factory._maybe_wait_for_failover_lock(
-        handler,
-        Runtime(),
-        config,
-        promotion_warmup=fake_promotion_warmup,
-    )
-
-    assert getattr(handler, "_gms_failover_lock") is lock
-    assert events == [
-        ("health", True),
-        "lock",
-        ("fence", "vllm", "private-bootstrap-shadow"),
-        ("collective_rpc", "wake_up", {"tags": ["kv_pool"]}),
-        "warmup",
-    ]
-
-
-@pytest.mark.asyncio
-async def test_gms_private_shadow_can_prepromote_kv_before_lock(monkeypatch):
-    from dynamo.vllm.worker_factory import WorkerFactory
-
-    events = []
-    lock = object()
-    factory = WorkerFactory(
-        lambda *args, **kwargs: None,
-        lambda *args, **kwargs: None,
-        lambda *args, **kwargs: None,
-        lambda *args, **kwargs: None,
-        lambda *args, **kwargs: None,
-    )
-
-    async def fake_acquire():
-        events.append("lock")
-        return lock
-
-    async def fake_promotion_warmup():
-        events.append("warmup")
-
-    async def fake_post_lock_fence(*, backend_name, role):
-        events.append(("fence", backend_name, role))
-
-    class QuiesceController:
-        async def quiesce(self, *args, **kwargs):
-            raise AssertionError("private-bootstrap shadow must not sleep at startup")
-
-    class EngineClient:
-        async def collective_rpc(self, method, *, kwargs=None):
-            events.append(("collective_rpc", method, kwargs))
-
-    class Runtime:
-        def set_health_status(self, status):
-            events.append(("health", status))
-
-    handler = SimpleNamespace(
-        _quiesce_controller=QuiesceController(),
-        engine_client=EngineClient(),
-    )
-    config = SimpleNamespace(gms_shadow_mode=True)
-
-    monkeypatch.setenv("DYN_GMS_FAILOVER_PRIVATE_BOOTSTRAP_KV", "1")
-    monkeypatch.setenv("DYN_VLLM_GMS_PREPROMOTE_SHADOW_KV", "1")
-    monkeypatch.setenv("ENGINE_ID", "1")
-    monkeypatch.setenv("DYN_GMS_FAILOVER_PRIMARY_ENGINE_ID", "0")
-    monkeypatch.delenv("DYN_VLLM_GMS_SHADOW_SKIP_STARTUP_SLEEP", raising=False)
-    monkeypatch.setattr(factory, "_acquire_failover_lock", fake_acquire)
-    monkeypatch.setattr(
-        "dynamo.vllm.worker_factory.run_gms_failover_post_lock_fence",
-        fake_post_lock_fence,
-    )
-
-    await factory._maybe_wait_for_failover_lock(
-        handler,
-        Runtime(),
-        config,
-        promotion_warmup=fake_promotion_warmup,
-    )
-
-    assert getattr(handler, "_gms_failover_lock") is lock
-    assert events == [
-        ("collective_rpc", "wake_up", {"tags": ["kv_pool"]}),
-        ("health", True),
-        "lock",
-        ("fence", "vllm", "private-bootstrap-shadow"),
-        "warmup",
-    ]
-
-
-@pytest.mark.asyncio
-async def test_gms_private_shadow_runs_prelock_scratch_warmup(monkeypatch):
-    from dynamo.vllm.worker_factory import WorkerFactory
-
-    events = []
-    lock = object()
-    factory = WorkerFactory(
-        lambda *args, **kwargs: None,
-        lambda *args, **kwargs: None,
-        lambda *args, **kwargs: None,
-        lambda *args, **kwargs: None,
-        lambda *args, **kwargs: None,
-    )
-
-    async def fake_acquire():
-        events.append("lock")
-        return lock
-
-    async def fake_promotion_warmup():
-        events.append("postlock-warmup")
-
-    async def fake_prelock_warmup():
-        events.append("prelock-warmup")
-
-    async def fake_post_lock_fence(*, backend_name, role):
-        events.append(("fence", backend_name, role))
-
-    class QuiesceController:
-        async def quiesce(self, *args, **kwargs):
-            raise AssertionError("private-bootstrap shadow must not sleep at startup")
-
-    class EngineClient:
-        async def collective_rpc(self, method, *, kwargs=None):
-            events.append(("collective_rpc", method, kwargs))
-
-    class Runtime:
-        def set_health_status(self, status):
-            events.append(("health", status))
-
-    handler = SimpleNamespace(
-        _quiesce_controller=QuiesceController(),
-        engine_client=EngineClient(),
-    )
-    config = SimpleNamespace(gms_shadow_mode=True)
-
-    monkeypatch.setenv("DYN_GMS_FAILOVER_PRIVATE_BOOTSTRAP_KV", "1")
-    monkeypatch.setenv("DYN_VLLM_GMS_PREPROMOTE_SHADOW_KV", "1")
-    monkeypatch.setenv("DYN_VLLM_GMS_PREWARM_SHADOW_BEFORE_LOCK", "1")
-    monkeypatch.setenv("DYN_VLLM_GMS_PRIVATE_BOOTSTRAP_SCRATCH_WARMUP", "1")
-    monkeypatch.setenv("ENGINE_ID", "1")
-    monkeypatch.setenv("DYN_GMS_FAILOVER_PRIMARY_ENGINE_ID", "0")
-    monkeypatch.delenv("DYN_VLLM_GMS_SHADOW_SKIP_STARTUP_SLEEP", raising=False)
-    monkeypatch.setattr(factory, "_acquire_failover_lock", fake_acquire)
-    monkeypatch.setattr(
-        "dynamo.vllm.worker_factory.run_gms_failover_post_lock_fence",
-        fake_post_lock_fence,
-    )
-
-    await factory._maybe_wait_for_failover_lock(
-        handler,
-        Runtime(),
-        config,
-        promotion_warmup=fake_promotion_warmup,
-        prelock_warmup=fake_prelock_warmup,
-    )
-
-    assert getattr(handler, "_gms_failover_lock") is lock
-    assert events == [
-        "prelock-warmup",
-        ("collective_rpc", "wake_up", {"tags": ["kv_pool"]}),
-        ("health", True),
-        "lock",
-        ("fence", "vllm", "private-bootstrap-shadow"),
-    ]
-
-
-@pytest.mark.asyncio
-async def test_gms_primary_does_not_use_private_bootstrap_promotion(monkeypatch):
+async def test_gms_primary_acquires_active_lock_before_registration(monkeypatch):
     from dynamo.vllm.worker_factory import WorkerFactory
 
     events = []
@@ -2234,7 +1884,7 @@ async def test_gms_primary_does_not_use_private_bootstrap_promotion(monkeypatch)
 
     class EngineClient:
         async def collective_rpc(self, *args, **kwargs):
-            raise AssertionError("primary must not promote private-bootstrap KV")
+            raise AssertionError("primary must not wake_up/promote KV before serving")
 
     class Runtime:
         def set_health_status(self, status):
@@ -2246,12 +1896,8 @@ async def test_gms_primary_does_not_use_private_bootstrap_promotion(monkeypatch)
     )
     config = SimpleNamespace(gms_shadow_mode=True)
 
-    monkeypatch.setenv("DYN_GMS_FAILOVER_PRIVATE_BOOTSTRAP_KV", "1")
-    monkeypatch.delenv("DYN_VLLM_GMS_FORCE_PRIVATE_BOOTSTRAP_KV", raising=False)
-    monkeypatch.delenv("DYN_VLLM_GMS_ACTIVE_LOCK_HELD", raising=False)
     monkeypatch.setenv("ENGINE_ID", "0")
     monkeypatch.setenv("DYN_GMS_FAILOVER_PRIMARY_ENGINE_ID", "0")
-    monkeypatch.delenv("DYN_VLLM_GMS_SHADOW_SKIP_STARTUP_SLEEP", raising=False)
     monkeypatch.setattr(factory, "_acquire_failover_lock", fake_acquire)
     monkeypatch.setattr(
         "dynamo.vllm.worker_factory.run_gms_failover_post_lock_fence",
@@ -2307,7 +1953,7 @@ async def test_gms_preinit_lock_owner_starts_rank_liveness_monitor(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_gms_shadow_startup_sleep_can_be_forced_for_legacy_path(monkeypatch):
+async def test_gms_shadow_sleeps_until_lock_then_wakes(monkeypatch):
     from dynamo.vllm.worker_factory import WorkerFactory
 
     events = []
@@ -2344,10 +1990,8 @@ async def test_gms_shadow_startup_sleep_can_be_forced_for_legacy_path(monkeypatc
     handler = SimpleNamespace(_pause_controller=PauseController())
     config = SimpleNamespace(gms_shadow_mode=True)
 
-    monkeypatch.setenv("DYN_GMS_FAILOVER_PRIVATE_BOOTSTRAP_KV", "1")
     monkeypatch.setenv("ENGINE_ID", "1")
     monkeypatch.setenv("DYN_GMS_FAILOVER_PRIMARY_ENGINE_ID", "0")
-    monkeypatch.setenv("DYN_VLLM_GMS_SHADOW_SKIP_STARTUP_SLEEP", "0")
     monkeypatch.setattr(factory, "_acquire_failover_lock", fake_acquire)
     monkeypatch.setattr(
         "dynamo.vllm.worker_factory.run_gms_failover_post_lock_fence",
@@ -2361,7 +2005,7 @@ async def test_gms_shadow_startup_sleep_can_be_forced_for_legacy_path(monkeypatc
         ("pause", (1,), {"clear_cache": False}),
         ("health", True),
         "lock",
-        ("fence", "vllm", "legacy-shadow"),
+        ("fence", "vllm", "shadow"),
         "resume",
         "mark_resumed",
     ]

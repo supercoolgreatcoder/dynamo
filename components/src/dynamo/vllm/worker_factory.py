@@ -59,76 +59,6 @@ logger = logging.getLogger(__name__)
 EngineSetupResult = tuple[AsyncLLM, VllmConfig, Any, Any, Optional[LLMBackendMetrics]]
 
 
-def _int_env(name: str, default: int) -> int:
-    value = os.environ.get(name)
-    if value is None:
-        return default
-    try:
-        return int(value)
-    except ValueError:
-        logger.warning("Ignoring invalid %s=%r", name, value)
-        return default
-
-
-def _truthy_env(name: str, *, default: bool = False) -> bool:
-    value = os.environ.get(name)
-    if value is None:
-        return default
-    return value.strip().lower() not in ("", "0", "false", "no", "off")
-
-
-def _vllm_prelock_shadow_warmup_enabled() -> bool:
-    return _truthy_env("DYN_VLLM_GMS_PREWARM_SHADOW_BEFORE_LOCK")
-
-
-def _vllm_scratch_private_bootstrap_enabled() -> bool:
-    return _truthy_env(
-        "DYN_VLLM_GMS_PRIVATE_BOOTSTRAP_SCRATCH_WARMUP",
-        default=_truthy_env("GMS_VLLM_PRIVATE_BOOTSTRAP_SCRATCH_WARMUP"),
-    )
-
-
-def _vllm_failover_shape_warmup_payload(base_payload: dict[str, Any]) -> dict[str, Any]:
-    """Build a small real-request canary that covers post-failover serving JIT."""
-
-    payload = dict(base_payload)
-    payload.pop("_HEALTH_CHECK", None)
-    max_tokens = max(
-        1,
-        _int_env(
-            "DYN_VLLM_GMS_FAILOVER_SHAPE_WARMUP_MAX_TOKENS",
-            _int_env("DYN_GMS_FAILOVER_SHAPE_WARMUP_MAX_TOKENS", 16),
-        ),
-    )
-    token_count = max(
-        1,
-        _int_env(
-            "DYN_VLLM_GMS_FAILOVER_SHAPE_WARMUP_INPUT_TOKENS",
-            _int_env("DYN_GMS_FAILOVER_SHAPE_WARMUP_INPUT_TOKENS", 25),
-        ),
-    )
-
-    if "token_ids" in payload:
-        token_ids = payload.get("token_ids") or [1]
-        token_id = int(token_ids[0])
-        payload["token_ids"] = [token_id] * token_count
-        sampling_options = dict(payload.get("sampling_options") or {})
-        sampling_options["temperature"] = 0.0
-        payload["sampling_options"] = sampling_options
-        stop_conditions = dict(payload.get("stop_conditions") or {})
-        stop_conditions["max_tokens"] = max_tokens
-        payload["stop_conditions"] = stop_conditions
-        return payload
-
-    payload["prompt"] = os.environ.get(
-        "DYN_VLLM_GMS_FAILOVER_SHAPE_WARMUP_PROMPT",
-        "Return one concise deterministic sentence about GMS failover validation.",
-    )
-    payload["temperature"] = 0.0
-    payload["max_tokens"] = max_tokens
-    return payload
-
-
 async def _wait_and_load_benchmark(bench_cfg: dict, vllm_config: VllmConfig) -> dict:
     """Wait for benchmark result files and aggregate across DP ranks."""
     base_path = Path(
@@ -447,15 +377,39 @@ class WorkerFactory:
             return default
         return value.strip().lower() not in ("", "0", "false", "no", "off")
 
+    # Private-bootstrap/scratch shadow KV is deferred: the isolated scratch pool
+    # that used to back a shadow's pre-lock init/prewarm has been removed. These
+    # knobs are now unsafe -- with them on, a shadow would init or prewarm against
+    # the SHARED GMS KV pool before it owns the failover lock, corrupting the live
+    # primary's KV. Fail closed rather than silently run against shared KV.
+    _REMOVED_PRIVATE_BOOTSTRAP_ENV_VARS = (
+        "DYN_VLLM_GMS_PRIVATE_BOOTSTRAP_KV",
+        "GMS_VLLM_PRIVATE_BOOTSTRAP_KV",
+        "DYN_GMS_FAILOVER_PRIVATE_BOOTSTRAP_KV",
+        "DYN_VLLM_GMS_FORCE_PRIVATE_BOOTSTRAP_KV",
+        "DYN_VLLM_GMS_PRIVATE_BOOTSTRAP_SCRATCH_WARMUP",
+        "GMS_VLLM_PRIVATE_BOOTSTRAP_SCRATCH_WARMUP",
+        "DYN_VLLM_GMS_PREWARM_SHADOW_BEFORE_LOCK",
+        "DYN_VLLM_GMS_PREPROMOTE_SHADOW_KV",
+    )
+
     @classmethod
-    def _private_bootstrap_requested(cls) -> bool:
-        return cls._truthy_env(
-            "DYN_VLLM_GMS_PRIVATE_BOOTSTRAP_KV",
-            default=cls._truthy_env(
-                "GMS_VLLM_PRIVATE_BOOTSTRAP_KV",
-                default=cls._truthy_env("DYN_GMS_FAILOVER_PRIVATE_BOOTSTRAP_KV"),
-            ),
-        )
+    def _reject_removed_private_bootstrap_options(cls) -> None:
+        enabled = [
+            name
+            for name in cls._REMOVED_PRIVATE_BOOTSTRAP_ENV_VARS
+            if cls._truthy_env(name)
+        ]
+        if enabled:
+            raise RuntimeError(
+                "Refusing to start the vLLM GMS worker: private-bootstrap/scratch "
+                f"shadow KV options are enabled ({', '.join(enabled)}), but the "
+                "isolated scratch KV that made them safe has been removed. With "
+                "these enabled a shadow would initialize or prewarm against the "
+                "SHARED GMS KV pool before it owns the failover lock, which would "
+                "corrupt the live primary's KV. Unset them; shadow prewarm is "
+                "deferred pending a replacement mechanism."
+            )
 
     async def _acquire_failover_lock(self, *, timeout: float | None = None):
         from gpu_memory_service.failover_lock.flock import FlockFailoverLock
@@ -540,81 +494,6 @@ class WorkerFactory:
         logger.info("[GMS liveness] started vLLM leader rank-liveness monitor")
         return monitor
 
-    async def _configure_gms_preinit_failover_role(
-        self,
-        config: Config,
-    ) -> tuple[Any | None, bool]:
-        """Choose shared vs private-bootstrap KV before vLLM initializes.
-
-        vLLM sizes/profiles memory before the worker handler exists. In a
-        Bulwark pair that uses private-bootstrap shadows, the process that owns
-        the failover lock may initialize against the stable shared KV namespace;
-        all other processes must initialize against member-scoped private KV.
-        This is dynamic: after failover, a restarted ENGINE_ID=0 container is a
-        standby while ENGINE_ID=1 owns the lock.
-        """
-
-        os.environ.pop("DYN_VLLM_GMS_ACTIVE_LOCK_HELD", None)
-        os.environ.pop("DYN_VLLM_GMS_FORCE_PRIVATE_BOOTSTRAP_KV", None)
-
-        if not config.gms_shadow_mode:
-            return None, False
-        if getattr(config.engine_args, "load_format", None) != "gms":
-            return None, False
-        if not self._private_bootstrap_requested():
-            return None, False
-        if not self._truthy_env("DYN_VLLM_GMS_DYNAMIC_PREINIT_ROLE", default=True):
-            return None, False
-
-        engine_id = os.environ.get("ENGINE_ID", "0")
-        primary_engine_id = os.environ.get("DYN_GMS_FAILOVER_PRIMARY_ENGINE_ID", "0")
-        is_static_primary = engine_id == primary_engine_id
-
-        if not is_static_primary:
-            os.environ["DYN_VLLM_GMS_FORCE_PRIVATE_BOOTSTRAP_KV"] = "1"
-            os.environ["DYN_VLLM_GMS_ACTIVE_LOCK_HELD"] = "0"
-            logger.info(
-                "[GMS] Static shadow engine-%s initializing with private-bootstrap KV",
-                engine_id,
-            )
-            return None, False
-
-        logger.info(
-            "[GMS] Static primary engine-%s attempting active failover lock "
-            "before vLLM engine init",
-            engine_id,
-        )
-        try:
-            lock = await self._acquire_failover_lock(timeout=0.0)
-        except Exception as exc:  # noqa: BLE001 - lock contention is expected.
-            try:
-                from gpu_memory_service.failover_lock.interface import FailoverLockError
-            except ImportError:  # pragma: no cover
-                FailoverLockError = RuntimeError  # type: ignore[assignment]
-
-            if not isinstance(exc, FailoverLockError):
-                raise
-            os.environ["DYN_VLLM_GMS_FORCE_PRIVATE_BOOTSTRAP_KV"] = "1"
-            os.environ["DYN_VLLM_GMS_ACTIVE_LOCK_HELD"] = "0"
-            logger.info(
-                "[GMS] Active failover lock is held; static primary engine-%s "
-                "will initialize as private-bootstrap standby",
-                engine_id,
-            )
-            return None, False
-
-        os.environ["DYN_VLLM_GMS_ACTIVE_LOCK_HELD"] = "1"
-        os.environ["DYN_VLLM_GMS_FORCE_PRIVATE_BOOTSTRAP_KV"] = "0"
-        await run_gms_failover_post_lock_fence(
-            backend_name="vllm",
-            role=f"engine-{engine_id}-pre-init",
-        )
-        logger.info(
-            "[GMS] Static primary engine-%s owns active lock before vLLM init",
-            engine_id,
-        )
-        return lock, True
-
     async def _maybe_wait_for_failover_lock(
         self,
         handler,
@@ -623,13 +502,18 @@ class WorkerFactory:
         *,
         lock_already_acquired: bool = False,
         promotion_warmup: Callable[[], Awaitable[None]] | None = None,
-        prelock_warmup: Callable[[], Awaitable[None]] | None = None,
         post_lock_fence_already_run: bool = False,
     ) -> None:
-        # Shadow mode: lock-driven activation.
-        # Default safe flow for GMS shared KV is lock-before-init, because vLLM
-        # warmup writes KV before this handler can quiesce the engine. The legacy
-        # warm-standby path remains behind DYN_VLLM_GMS_LOCK_BEFORE_INIT=0.
+        # Shadow mode: lock-driven activation. Two supported flows:
+        #  - lock-before-init (default): the process blocks on the failover lock
+        #    before vLLM initializes, so only the active writer ever touches the
+        #    shared GMS KV pool (see _create_decode_worker).
+        #  - sleeping standby (DYN_VLLM_GMS_LOCK_BEFORE_INIT=0): the engine
+        #    initializes, then pauses so it holds no active writer role over the
+        #    shared KV until it wins the lock. Keeps a pre-initialized engine for
+        #    fast (sub-second) takeover.
+        # Private-bootstrap/scratch shadow prewarm is deferred; the unsafe knobs
+        # are rejected up front by _reject_removed_private_bootstrap_options().
         if not config.gms_shadow_mode:
             return
 
@@ -656,11 +540,7 @@ class WorkerFactory:
 
         engine_id = os.environ.get("ENGINE_ID", "0")
         primary_engine_id = os.environ.get("DYN_GMS_FAILOVER_PRIMARY_ENGINE_ID", "0")
-        forced_private_bootstrap = self._truthy_env(
-            "DYN_VLLM_GMS_FORCE_PRIVATE_BOOTSTRAP_KV"
-        )
-        is_shadow = forced_private_bootstrap or engine_id != primary_engine_id
-        private_bootstrap = self._private_bootstrap_requested() and is_shadow
+        is_shadow = engine_id != primary_engine_id
 
         if not is_shadow:
             logger.info(
@@ -682,82 +562,8 @@ class WorkerFactory:
             logger.info("[Primary] Active lock acquired, registering with discovery")
             return
 
-        skip_startup_sleep = os.environ.get(
-            "DYN_VLLM_GMS_SHADOW_SKIP_STARTUP_SLEEP",
-            "1" if private_bootstrap else "0",
-        ).lower() not in {"0", "false", "no", "off"}
-        if skip_startup_sleep:
-            prelock_warmup_ran = False
-            if (
-                private_bootstrap
-                and prelock_warmup is not None
-                and _vllm_prelock_shadow_warmup_enabled()
-            ):
-                if _vllm_scratch_private_bootstrap_enabled():
-                    logger.info(
-                        "[Shadow] Running pre-lock scratch-backed warmup while "
-                        "undiscovered"
-                    )
-                    await prelock_warmup()
-                    prelock_warmup_ran = True
-                    logger.info(
-                        "[Shadow] Pre-lock scratch-backed warmup complete; "
-                        "waiting for active lock"
-                    )
-                else:
-                    logger.warning(
-                        "[Shadow] Skipping pre-lock warmup because scratch-backed "
-                        "private-bootstrap KV is not enabled"
-                    )
-
-            prepromoted_private_bootstrap = False
-            if private_bootstrap and self._truthy_env(
-                "DYN_VLLM_GMS_PREPROMOTE_SHADOW_KV"
-            ):
-                logger.info(
-                    "[Shadow] Pre-promoting private-bootstrap KV while "
-                    "undiscovered; lock still gates serving"
-                )
-                await self._wake_up_kv_fenced(handler, ["kv_pool"])
-                prepromoted_private_bootstrap = True
-                logger.info(
-                    "[Shadow] Private-bootstrap KV pre-promotion complete; "
-                    "waiting for active lock"
-                )
-
-            runtime.set_health_status(True)
-            logger.info(
-                "[Shadow] Engine initialized and kept awake but undiscovered; "
-                "startup probe now passing, waiting for lock"
-            )
-
-            lock = await self._acquire_failover_lock()
-            setattr(handler, "_gms_failover_lock", lock)
-            await run_gms_failover_post_lock_fence(
-                backend_name="vllm",
-                role="private-bootstrap-shadow",
-            )
-            if prepromoted_private_bootstrap:
-                logger.info(
-                    "[Shadow] Private-bootstrap KV already promoted before "
-                    "lock; skipping promotion before discovery registration"
-                )
-            else:
-                logger.info(
-                    "[Shadow] Promoting private-bootstrap KV before discovery "
-                    "registration"
-                )
-                await self._wake_up_kv_fenced(handler, ["kv_pool"])
-            if promotion_warmup is not None and not prelock_warmup_ran:
-                await promotion_warmup()
-            elif prelock_warmup_ran:
-                logger.info(
-                    "[Shadow] Pre-lock warmup already ran; skipping post-lock "
-                    "promotion warmup"
-                )
-            logger.info("[Shadow] Lock acquired, registering with discovery")
-            return
-
+        # Sleeping standby: pause the engine so it is not an active writer over
+        # the shared GMS KV pool, pass the startup probe, then block on the lock.
         await handler._pause_controller.pause(1, clear_cache=False)
 
         runtime.set_health_status(True)
@@ -769,7 +575,7 @@ class WorkerFactory:
         setattr(handler, "_gms_failover_lock", lock)
         await run_gms_failover_post_lock_fence(
             backend_name="vllm",
-            role="legacy-shadow",
+            role="shadow",
         )
         logger.info("[Shadow] Lock acquired, waking engine")
 
@@ -791,6 +597,7 @@ class WorkerFactory:
         """
         Instantiate and serve
         """
+        self._reject_removed_private_bootstrap_options()
 
         generate_endpoint = runtime.endpoint(
             f"{config.namespace}.{config.component}.{config.endpoint}"
@@ -833,16 +640,13 @@ class WorkerFactory:
 
         early_failover_lock = None
         early_failover_fence_run = False
-        (
-            early_failover_lock,
-            early_failover_fence_run,
-        ) = await self._configure_gms_preinit_failover_role(config)
         lock_before_init = os.environ.get("DYN_VLLM_GMS_LOCK_BEFORE_INIT", "1").lower()
-        if (
-            early_failover_lock is None
-            and config.gms_shadow_mode
-            and lock_before_init not in {"0", "false", "no", "off"}
-        ):
+        if config.gms_shadow_mode and lock_before_init not in {
+            "0",
+            "false",
+            "no",
+            "off",
+        }:
             logger.info(
                 "[Shadow] Waiting for failover lock before vLLM engine init "
                 "to protect shared GMS KV warmup"
@@ -860,7 +664,6 @@ class WorkerFactory:
             )
             early_failover_fence_run = True
             os.environ["DYN_VLLM_GMS_ACTIVE_LOCK_HELD"] = "1"
-            os.environ["DYN_VLLM_GMS_FORCE_PRIVATE_BOOTSTRAP_KV"] = "0"
             logger.info("[Shadow] Failover lock acquired before vLLM engine init")
 
         # Use pre-created engine if provided (checkpoint mode), otherwise create new
@@ -1000,20 +803,12 @@ class WorkerFactory:
                 handler.generate, health_check_payload, backend_name="vllm"
             )
 
-        shape_warmup_payload = _vllm_failover_shape_warmup_payload(health_check_payload)
-
-        async def prelock_warmup() -> None:
-            await run_gms_failover_promotion_warmup(
-                handler.generate, shape_warmup_payload, backend_name="vllm"
-            )
-
         await self._maybe_wait_for_failover_lock(
             handler,
             runtime,
             config,
             lock_already_acquired=early_failover_lock is not None,
             promotion_warmup=promotion_warmup,
-            prelock_warmup=prelock_warmup,
             post_lock_fence_already_run=early_failover_fence_run,
         )
 
@@ -1137,6 +932,7 @@ class WorkerFactory:
         """
         Instantiate and serve
         """
+        self._reject_removed_private_bootstrap_options()
         generate_endpoint = runtime.endpoint(
             f"{config.namespace}.{config.component}.{config.endpoint}"
         )
