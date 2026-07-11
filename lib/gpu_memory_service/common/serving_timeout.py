@@ -42,6 +42,11 @@ logger = logging.getLogger(__name__)
 
 _applied = False
 _warned = False
+# Ids of process groups already tightened ("default" sentinel for the world
+# group). Tracking per-PG -- rather than a single latch -- lets a later call
+# tighten PGs created after the first application (e.g. TP/PP sub-groups built
+# during a deferred warmup) instead of leaving them on the startup timeout.
+_applied_pg_ids: set = set()
 
 
 def serving_timeout_s() -> float:
@@ -82,7 +87,7 @@ def apply_serving_collective_timeout(seconds: float | None = None) -> bool:
     is unavailable / not yet initialized, so it is safe to call early or repeatedly."""
     global _applied
     seconds = serving_timeout_s() if seconds is None else seconds
-    if seconds <= 0 or _applied:
+    if seconds <= 0:
         return False
     try:
         import torch.distributed as dist
@@ -101,20 +106,28 @@ def apply_serving_collective_timeout(seconds: float | None = None) -> bool:
 
     td = datetime.timedelta(seconds=seconds)
     applied = 0
-    try:
-        set_fn(td, None)  # default / world group
-        applied += 1
-    except Exception:
-        logger.debug("[GMS serving-timeout] set on default group failed", exc_info=True)
+    if "default" not in _applied_pg_ids:
+        try:
+            set_fn(td, None)  # default / world group
+            applied += 1
+            _applied_pg_ids.add("default")
+        except Exception:
+            logger.debug(
+                "[GMS serving-timeout] set on default group failed", exc_info=True
+            )
     # Cover TP/PP sub-groups: each forward-pass collective runs on its own PG whose
-    # ProcessGroupNCCL watchdog uses that PG's own timeout.
+    # ProcessGroupNCCL watchdog uses that PG's own timeout. Skip PGs already
+    # tightened so a repeat call only handles newly-created groups.
     try:
         world = getattr(c10d, "_world", None)
         pg_map = getattr(world, "pg_map", {}) if world is not None else {}
         for pg in list(pg_map.keys()):
+            if id(pg) in _applied_pg_ids:
+                continue
             try:
                 set_fn(td, pg)
                 applied += 1
+                _applied_pg_ids.add(id(pg))
             except Exception:
                 logger.debug(
                     "[GMS serving-timeout] set on a sub-PG failed", exc_info=True
