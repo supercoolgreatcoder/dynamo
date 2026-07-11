@@ -558,6 +558,12 @@ class GMSWorker(Worker):
                 "after private-bootstrap KV promotion"
             )
             self._gms_deferred_private_bootstrap_warmup = False
+            # Even when deferred warmup is skipped, this promoted shadow is about
+            # to serve, so still tighten the NCCL serving-collective timeout.
+            # Otherwise the failover-promoted replica -- the one whose peers just
+            # demonstrated they can die -- would serve with the generous startup
+            # timeout and a hung peer mid-collective would not be bounded.
+            self._maybe_tighten_serving_collective_timeout()
             return
 
         logger.info(
