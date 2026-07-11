@@ -430,9 +430,17 @@ class ContentDirectory:
             for content_hash in content_hashes
         ]
 
-    def _call(self, operation: Callable[[DaemonClient], _T]) -> _T:
+    def _call(
+        self, operation: Callable[[DaemonClient], _T], *, retryable: bool = True
+    ) -> _T:
+        # ``retryable`` must be False for non-idempotent, destructive ops
+        # (ensure_hbm_capacity evicts entries; adopt_claim consumes a token). If
+        # the reply is lost after the daemon executed such an op, a blind retry
+        # would double-evict or falsely report a stale writer. Only retry ops
+        # that are safe to run twice.
         with self._lock:
-            for attempt in range(2):
+            attempts = 2 if retryable else 1
+            for attempt in range(attempts):
                 try:
                     if self._client is None:
                         self._client = DaemonClient(
@@ -443,7 +451,7 @@ class ContentDirectory:
                     return operation(self._client)
                 except Exception:
                     self._close_locked()
-                    if attempt:
+                    if attempt + 1 >= attempts:
                         raise
             raise AssertionError("unreachable")
 
@@ -458,6 +466,8 @@ class ContentDirectory:
         self,
         operation: Callable[[DaemonClient, int], tuple[_T, bool]],
         passive_value: _T,
+        *,
+        retryable: bool = True,
     ) -> _T:
         """Run one fenced mutation, refreshing after external promotion."""
         for attempt in range(2):
@@ -465,7 +475,8 @@ class ContentDirectory:
                 self.status()
             assert self._writer_epoch is not None
             value, rejected = self._call(
-                lambda client: operation(client, int(self._writer_epoch))
+                lambda client: operation(client, int(self._writer_epoch)),
+                retryable=retryable,
             )
             if not rejected:
                 self._has_owned = True
@@ -576,6 +587,7 @@ class ContentDirectory:
                 self.manifest_id, self.writer_id, epoch, claim_token, items
             ),
             0,
+            retryable=False,
         )
 
     def ensure_hbm_capacity(self, required_blocks: int) -> list[dict]:
@@ -586,6 +598,7 @@ class ContentDirectory:
                 self.manifest_id, self.writer_id, epoch, int(required_blocks)
             ),
             [],
+            retryable=False,
         )
 
     def mark_hbm_dormant(self, content_hashes: list[bytes]) -> int:
