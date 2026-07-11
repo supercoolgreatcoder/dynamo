@@ -169,6 +169,10 @@ class ListPersistentAllocationsRequest(
     tag="list_persistent_allocations_request",
 ):
     engine_id: Optional[str] = None
+    # When true, list ALL persistent allocations (not just this session's
+    # claims) so a caller can discover orphaned allocations left by a crashed
+    # engine and reclaim their HBM. Defaults false for backward compatibility.
+    include_unclaimed: bool = False
 
 
 class PersistentAllocationInfo(

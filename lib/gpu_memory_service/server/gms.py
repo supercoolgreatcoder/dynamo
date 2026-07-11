@@ -533,14 +533,18 @@ class GMS:
 
         if msg_type is ReleasePersistentAllocationRequest:
             if not self._has_persistent_claim(conn, msg.engine_id, msg.tag):
-                return (
-                    ErrorResponse(
-                        error="persistent allocation not claimed by session",
-                        code=4,
-                    ),
-                    -1,
-                    False,
-                )
+                # Permit reclaiming a TRULY orphaned allocation (claimed by no
+                # live session) so a crashed engine's HBM can be GC'd without a
+                # daemon restart. Refuse only if some other session holds it.
+                if self._persistent.is_claimed(msg.engine_id, msg.tag):
+                    return (
+                        ErrorResponse(
+                            error="persistent allocation claimed by another session",
+                            code=4,
+                        ),
+                        -1,
+                        False,
+                    )
             try:
                 released = self._persistent.release(
                     engine_id=msg.engine_id,
@@ -588,11 +592,16 @@ class GMS:
             session_claims = self._persistent_claims_by_session.get(
                 conn.session_id, set()
             )
-            allocations = [
-                a
-                for a in self._persistent.list(engine_id=msg.engine_id)
-                if (a.engine_id, a.tag) in session_claims
-            ]
+            if getattr(msg, "include_unclaimed", False):
+                # Orphan discovery: return every allocation so a caller can find
+                # and reclaim HBM left behind by a crashed engine's session.
+                allocations = list(self._persistent.list(engine_id=msg.engine_id))
+            else:
+                allocations = [
+                    a
+                    for a in self._persistent.list(engine_id=msg.engine_id)
+                    if (a.engine_id, a.tag) in session_claims
+                ]
             return (
                 ListPersistentAllocationsResponse(
                     allocations=[

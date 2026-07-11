@@ -564,12 +564,60 @@ def test_persistent_rpc_requires_session_claim_for_release_and_export(gms):
         )
     )
     assert isinstance(resp, ErrorResponse)
-    assert "not claimed by session" in resp.error
+    # Release is refused because the allocation is still claimed by `owner`.
+    assert "claimed by another session" in resp.error
     assert gms._persistent.is_claimed("eng-X", "kv_pool")
 
     resp, _, _ = asyncio.run(
         gms.handle_request(
             owner,
+            ReleasePersistentAllocationRequest("eng-X", "kv_pool"),
+            lambda: True,
+        )
+    )
+    assert isinstance(resp, ReleasePersistentAllocationResponse)
+    assert resp.released is True
+
+
+def test_orphaned_allocation_is_discoverable_and_reclaimable(gms):
+    """After a claimant's session goes away (crash), its allocation is orphaned:
+    another session must be able to discover it via include_unclaimed and
+    release it to reclaim HBM, without a daemon restart."""
+    owner = _make_dummy_conn()
+    other = _make_dummy_conn()
+    asyncio.run(
+        gms.handle_request(
+            owner,
+            ClaimPersistentAllocationRequest("eng-X", "kv_pool", 8192),
+            lambda: True,
+        )
+    )
+    # Simulate the owner's disconnect cleanup: claim dropped, allocation kept.
+    asyncio.run(gms.cleanup_connection(owner))
+    assert not gms._persistent.is_claimed("eng-X", "kv_pool")
+
+    # Default list from another session sees nothing (no claims of its own).
+    resp, _, _ = asyncio.run(
+        gms.handle_request(
+            other, ListPersistentAllocationsRequest("eng-X"), lambda: True
+        )
+    )
+    assert [a for a in resp.allocations] == []
+
+    # include_unclaimed surfaces the orphan.
+    resp, _, _ = asyncio.run(
+        gms.handle_request(
+            other,
+            ListPersistentAllocationsRequest("eng-X", include_unclaimed=True),
+            lambda: True,
+        )
+    )
+    assert any(a.tag == "kv_pool" for a in resp.allocations)
+
+    # The orphan can be reclaimed by a session that never claimed it.
+    resp, _, _ = asyncio.run(
+        gms.handle_request(
+            other,
             ReleasePersistentAllocationRequest("eng-X", "kv_pool"),
             lambda: True,
         )

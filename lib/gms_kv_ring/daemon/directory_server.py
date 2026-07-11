@@ -58,6 +58,13 @@ class DirectoryDaemon:
             self._handle,
             path=self.listen_socket,
         )
+        # Restrict the directory socket to the owning user: any client on this
+        # socket can promote the directory writer (fencing the real writer), so
+        # do not leave it world-accessible under the process umask.
+        try:
+            os.chmod(self.listen_socket, 0o600)
+        except OSError:
+            pass
         try:
             await self._stop_event.wait()
         finally:
