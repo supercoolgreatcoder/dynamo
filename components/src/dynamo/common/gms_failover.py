@@ -265,44 +265,75 @@ def _normalize_lease_engine_name(backend_name: str) -> str:
     return normalized
 
 
-def _promote_directory_and_collect_protected(
-    directory: object, backend_name: str, role: str
-) -> "set[int]":
-    """Promote this process to directory writer and collect protected slots.
+def _directory_socket(backend_name: str) -> str:
+    explicit = os.environ.get("GMS_KV_DIRECTORY_SOCKET", "").strip()
+    if explicit:
+        return explicit
+    engine = _normalize_lease_engine_name(backend_name).upper()
+    return os.environ.get(f"GMS_{engine}_DAEMON_SOCKET", "").strip()
 
-    The directory (engine-provided, duck-typed with ``promote()`` and
-    ``hbm_inventory()``) is promoted so the standby fences the crashed writer,
-    and the union of HBM-resident slot ids is returned so the post-fence reclaim
-    preserves those blocks (they hold recoverable KV) instead of freeing them
-    and degrading failover to a full recompute.
+
+def _promote_content_directory_after_fence(backend_name: str, role: str) -> "set[int]":
+    """Promote this process to directory writer and collect protected HBM slots.
+
+    Constructs the content directory from the environment (so it works without
+    the caller threading a directory in), promotes the writer -- fencing the
+    crashed one -- and returns the union of HBM-resident slot ids so the
+    post-fence reclaim preserves those blocks (recoverable KV) instead of freeing
+    them and degrading failover to a full recompute.
     """
-    protected: set[int] = set()
-    if directory is None:
-        return protected
+    from gms_kv_ring.common.content_directory import (
+        ContentDirectory,
+        resolve_directory_mode,
+    )
+
+    mode = resolve_directory_mode()
+    if mode == "off":
+        return set()
+    socket_path = _directory_socket(backend_name)
+    if not socket_path:
+        message = "GMS KV directory enabled without GMS_KV_DIRECTORY_SOCKET"
+        if mode == "authoritative":
+            raise RuntimeError(message)
+        logger.warning("[GMS failover] %s %s", backend_name, message)
+        return set()
+    directory = ContentDirectory(
+        socket_path,
+        engine=_normalize_lease_engine_name(backend_name),
+        block_size=0,
+        engine_id=os.environ.get("ENGINE_ID", "0"),
+        mode=mode,
+    )
+    started = time.monotonic()
+    protected_blocks: set[int] = set()
     try:
-        promote = getattr(directory, "promote", None)
-        if promote is not None:
-            promote()
-        inventory = getattr(directory, "hbm_inventory", None)
-        if inventory is not None:
-            for slot_ids in inventory().values():
-                protected.update(int(s) for s in slot_ids)
+        epoch = directory.promote()
+        protected_blocks.update(
+            block_id
+            for slot_ids in directory.hbm_inventory().values()
+            for block_id in slot_ids
+        )
         logger.info(
-            "[GMS failover] %s %s promoted directory writer; protecting %d "
-            "HBM slots from reclaim",
+            "[GMS failover] %s %s directory writer promoted epoch=%d "
+            "protected_hbm_blocks=%d elapsed_ms=%.2f",
             backend_name,
             role,
-            len(protected),
+            epoch,
+            len(protected_blocks),
+            (time.monotonic() - started) * 1000.0,
         )
     except Exception:
+        if mode == "authoritative":
+            raise
         logger.warning(
-            "[GMS failover] %s %s directory promote/inventory failed; "
-            "reclaim will not protect directory HBM",
+            "[GMS failover] %s %s directory promotion failed in shadow mode",
             backend_name,
             role,
             exc_info=True,
         )
-    return protected
+    finally:
+        directory.close()
+    return protected_blocks
 
 
 def _reclaim_foreign_kv_leases_after_fence(
@@ -367,13 +398,13 @@ async def run_gms_failover_post_lock_fence(
     *,
     backend_name: str,
     role: str,
-    directory: object = None,
 ) -> None:
     """Fence and reclaim shared-KV lease state after active ownership changes.
 
-    If a content ``directory`` is provided, this promotes the directory writer
-    (fencing the crashed one) and preserves its HBM-resident slots from reclaim,
-    so persistent-KV failover reuses those blocks instead of recomputing them.
+    When a content directory is configured, this first promotes the directory
+    writer (fencing the crashed one) and collects its HBM-resident slots so the
+    reclaim preserves them for adoption instead of freeing them and degrading
+    failover to a full recompute.
     """
 
     fence_ms = _post_lock_fence_ms(backend_name)
@@ -385,8 +416,15 @@ async def run_gms_failover_post_lock_fence(
             fence_ms,
         )
         await asyncio.sleep(fence_ms / 1000.0)
-    protected = _promote_directory_and_collect_protected(directory, backend_name, role)
-    _reclaim_foreign_kv_leases_after_fence(backend_name, role, protected_blocks=protected)
+    protected_blocks: set[int] = set()
+    if os.environ.get("GMS_KV_DIRECTORY_MODE", "off").strip().lower() != "off":
+        # Blocking socket I/O -- run off the event loop.
+        protected_blocks = await asyncio.to_thread(
+            _promote_content_directory_after_fence, backend_name, role
+        )
+    _reclaim_foreign_kv_leases_after_fence(
+        backend_name, role, protected_blocks=protected_blocks
+    )
 
 
 def _controller_from(owner: Any) -> Any:
