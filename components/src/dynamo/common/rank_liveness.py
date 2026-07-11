@@ -212,14 +212,32 @@ class RankLivenessMonitor:
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._fired = False
+        self._bind_ready = threading.Event()
+        self._bind_error: Optional[BaseException] = None
 
     def start(self) -> None:
         if self._thread is not None:
             return
+        self._bind_ready = threading.Event()
+        self._bind_error: Optional[BaseException] = None
         self._thread = threading.Thread(
             target=self._run, name="gms-rank-liveness-monitor", daemon=True
         )
         self._thread.start()
+        # Wait for the socket bind to actually happen. Previously start() logged
+        # "bound" and returned while the real sock.bind() ran later in the thread
+        # with no error handling, so a bind failure (e.g. two replicas on the
+        # same default port) silently killed the monitor while logs claimed it
+        # was armed -- leaving the replica with no fast crash detection.
+        if not self._bind_ready.wait(timeout=5.0):
+            raise RuntimeError(
+                f"[GMS liveness] monitor bind to {self._bind_addr} timed out"
+            )
+        if self._bind_error is not None:
+            raise RuntimeError(
+                f"[GMS liveness] monitor bind to {self._bind_addr} failed: "
+                f"{self._bind_error}"
+            )
         logger.info(
             "[GMS liveness] leader monitor bound %s (timeout %dms)",
             self._bind_addr,
@@ -240,7 +258,13 @@ class RankLivenessMonitor:
         sock.setsockopt(zmq.LINGER, 0)
         sock.setsockopt(zmq.HEARTBEAT_IVL, int(self._timeout * 1000 / 3))
         sock.setsockopt(zmq.HEARTBEAT_TIMEOUT, int(self._timeout * 1000))
-        sock.bind(self._bind_addr)
+        try:
+            sock.bind(self._bind_addr)
+        except Exception as exc:  # surface to start() instead of dying silently
+            self._bind_error = exc
+            self._bind_ready.set()
+            return
+        self._bind_ready.set()
         poller = zmq.Poller()
         poller.register(sock, zmq.POLLIN)
 
