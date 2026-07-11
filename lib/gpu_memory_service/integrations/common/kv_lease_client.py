@@ -652,12 +652,17 @@ class SharedMemoryKVLeaseClient:
     def _sync_file_reservation_to_shm(self) -> None:
         if not self._supports_shm_reservation():
             return
-        fcntl.flock(self._reservation_fd, fcntl.LOCK_SH)
+        # The shm reservation seqlock has no internal writer mutual exclusion, so
+        # concurrent writers must be serialized externally or they interleave and
+        # publish a stable-but-torn (reserved_blocks, owner_hash) pair. Hold the
+        # reservation file lock EXCLUSIVELY across the seqlock write (all writers
+        # lock the same path), not just across the file read.
+        fcntl.flock(self._reservation_fd, fcntl.LOCK_EX)
         try:
             reservation = _read_reservation_fd(self._reservation_fd)
+            _write_reservation_mmap(self._rust, self._mmap, reservation)
         finally:
             fcntl.flock(self._reservation_fd, fcntl.LOCK_UN)
-        _write_reservation_mmap(self._rust, self._mmap, reservation)
 
     def _reservation_signature(self) -> tuple[int, int, int]:
         stat = os.fstat(self._reservation_fd)
@@ -883,7 +888,10 @@ def _write_reservation_shm_if_present(
     except FileNotFoundError:
         return
     try:
-        fcntl.flock(fd, fcntl.LOCK_SH)
+        # Exclusive lock: this writes the shm reservation seqlock, which has no
+        # internal writer mutual exclusion. A shared lock would let two writers
+        # interleave and publish torn fields; serialize on the shm file lock.
+        fcntl.flock(fd, fcntl.LOCK_EX)
         header = _read_shm_header(fd)
         if not _valid_shm_header(header):
             return
