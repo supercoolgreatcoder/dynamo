@@ -130,6 +130,7 @@ def _start_primary(
     kv_cache_gms,
     *,
     weights_hash: str,
+    cleared_layouts: int = 2,
 ):
     primary = manager.start_engine("primary", read_only_weights=True)
     assert_completion_ok(
@@ -147,7 +148,7 @@ def _start_primary(
     )
     assert_kv_history(
         kv_cache_gms.get_event_history().events,
-        cleared_layouts=2,
+        cleared_layouts=cleared_layouts,
         suffix=["rw_connected"],
     )
     return primary, weights_with_primary
