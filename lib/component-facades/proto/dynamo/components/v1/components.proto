@@ -1,0 +1,124 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+package dynamo.components.v1;
+
+message ItemError {
+  string kind = 1;
+  string message = 2;
+  bool retryable = 3;
+}
+
+message PreprocessItem {
+  string item_id = 1;
+  bytes openai_request_json = 2;
+  bool preserve_omitted_max_tokens = 3;
+  string lora_name = 4;
+  int64 deadline_unix_ms = 5;
+}
+
+message PreprocessBatchRequest { repeated PreprocessItem items = 1; }
+
+message PreparedItem {
+  string item_id = 1;
+  bytes normalized_openai_request_json = 2;
+  bytes backend_request_json = 3;
+  map<string, string> annotations = 4;
+  bool prompt_injected_reasoning = 5;
+  bytes guided_tool_constraint_json = 6;
+  optional uint64 image_tokens = 7;
+  ItemError error = 8;
+  bool uses_tool_call_structural_tag = 9;
+}
+
+message PreprocessBatchResponse { repeated PreparedItem items = 1; }
+
+service Preprocessor {
+  rpc PrepareBatch(PreprocessBatchRequest) returns (PreprocessBatchResponse);
+}
+
+message JsonItem {
+  string item_id = 1;
+  bytes payload_json = 2;
+  int64 deadline_unix_ms = 3;
+}
+
+message JsonBatchRequest { repeated JsonItem items = 1; }
+message JsonResult {
+  string item_id = 1;
+  bytes payload_json = 2;
+  ItemError error = 3;
+}
+message JsonBatchResponse { repeated JsonResult items = 1; }
+
+message WorkerMutation {
+  enum Operation {
+    OPERATION_UNSPECIFIED = 0;
+    UPSERT = 1;
+    PATCH = 2;
+    DELETE = 3;
+  }
+  string item_id = 1;
+  Operation operation = 2;
+  uint64 worker_id = 3;
+  bytes payload_json = 4;
+  int64 deadline_unix_ms = 5;
+}
+message WorkerMutationBatchRequest { repeated WorkerMutation items = 1; }
+
+message ReservationEvent {
+  enum Operation {
+    OPERATION_UNSPECIFIED = 0;
+    PREFILL_COMPLETE = 1;
+    ADD_OUTPUT_BLOCK = 2;
+    FREE = 3;
+  }
+  string item_id = 1;
+  Operation operation = 2;
+  string reservation_id = 3;
+  optional double decay_fraction = 4;
+  int64 deadline_unix_ms = 5;
+}
+message ReservationEventBatchRequest { repeated ReservationEvent items = 1; }
+
+message ReadyRequest {}
+
+service Selector {
+  rpc SelectBatch(JsonBatchRequest) returns (JsonBatchResponse);
+  rpc SelectAndReserveBatch(JsonBatchRequest) returns (JsonBatchResponse);
+  rpc CreateReservationBatch(JsonBatchRequest) returns (JsonBatchResponse);
+  rpc MutateWorkersBatch(WorkerMutationBatchRequest) returns (JsonBatchResponse);
+  rpc ApplyReservationEventsBatch(ReservationEventBatchRequest) returns (JsonBatchResponse);
+  rpc Ready(ReadyRequest) returns (JsonResult);
+}
+
+message PostprocessOpen {
+  string request_id = 1;
+  bytes normalized_openai_request_json = 2;
+  bool prompt_injected_reasoning = 3;
+  bool uses_tool_call_structural_tag = 4;
+}
+message PostprocessChunk {
+  string request_id = 1;
+  bytes openai_chunk_json = 2;
+  bool finished = 3;
+}
+message PostprocessCancel { string request_id = 1; }
+message PostprocessInput {
+  oneof frame {
+    PostprocessOpen open = 1;
+    PostprocessChunk chunk = 2;
+    PostprocessCancel cancel = 3;
+  }
+}
+message PostprocessOutput {
+  string request_id = 1;
+  bytes openai_chunk_json = 2;
+  bool finished = 3;
+  ItemError error = 4;
+}
+
+service Postprocessor {
+  rpc Process(stream PostprocessInput) returns (stream PostprocessOutput);
+}

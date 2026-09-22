@@ -8,7 +8,9 @@ SPDX-License-Identifier: Apache-2.0
 Goal: implement fresh gRPC facades around canonical Dynamo preprocessing, selection,
 and postprocessing, retaining existing vLLM/SGLang workers or Dynamo wrappers.
 
-Branch: `feat/dynamo-grpc-components`, starting at `88ef69a41c`.
+Reference branch: `feat/dynamo-grpc-components`, retained at `ce04286ef7`.
+Implementation branch: `feat/dynamo-grpc-components-v2`, created directly from
+upstream `origin/main` at `7d4c346fa0` and carrying only the plan commit.
 
 Detailed Sol handoff: [SOL-IMPLEMENTATION-PLAN.md](SOL-IMPLEMENTATION-PLAN.md).
 User clarified four required gateway variants: AGW static, AGW generic, Envoy
@@ -39,6 +41,22 @@ the execution plan; implementation and validation remain pending.
 - Sandbox commands fail because bwrap cannot establish its mount namespace.
   apply_patch works inside an approved unsandboxed interactive shell.
 
+## Implementation progress
+
+- Added `dynamo-component-facades` as a normal workspace crate with workspace path
+  dependencies on `dynamo-llm`, `dynamo-kv-router`, and `dynamo-runtime`.
+- Extracted the existing chat normalization/preparation sequence into public
+  `OpenAIPreprocessor` methods; the existing frontend calls the same implementation.
+- Added versioned protobuf services for bounded preprocessing batches, canonical
+  selector operations/lifecycle, and multiplexed streaming postprocessing.
+- Added one runnable binary with preprocessor, selector, and postprocessor modes,
+  gRPC health services, limits, per-item errors, and deadlines where applicable.
+- Documented the ownership boundary and rebase/upgrade procedure in `README.md`.
+- Differential preprocessing tests pass: 3 passed, 0 failed. The crate and binary
+  compile against Dynamo 1.6 at `7d4c346fa0`.
+- Strict CODEOWNERS generation reports 100% coverage; the new crate is shared by
+  frontend, router, and runtime owners.
+
 ## Recorded prototype comparison targets
 
 One trial, six load generators, concurrency 128 each, 45-second cells. These are
@@ -59,9 +77,9 @@ and binary identities, token counts, and actual transport configuration.
 
 ## Remaining work
 
-1. Define versioned contracts and minimal shared API extraction where necessary.
-2. Implement canonical preprocessing, selection, and postprocessing facades.
-3. Connect an existing Dynamo backend wrapper without a replacement worker engine.
-4. Differential and transport lifecycle tests, local build, and cluster deployment.
-5. Equivalent-work benchmarks and investigation of any performance regression.
-6. Document upstream-update workflow and validation evidence; commit and push branch.
+1. Add selector lifecycle and bidirectional postprocessor transport tests.
+2. Connect an existing Dynamo backend wrapper without a replacement worker engine.
+3. Implement AGW static, AGW generic, Envoy generic, and Envoy generic with callouts.
+4. Build artifacts/manifests and deploy an isolated cluster stack.
+5. Run real-engine E2E plus the repeated 24-cell mock benchmark matrix.
+6. Investigate performance gaps, complete update rehearsal, commit, and push evidence.

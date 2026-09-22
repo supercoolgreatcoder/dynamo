@@ -1572,8 +1572,18 @@ impl<R: NvExtProvider> NvExtProvider for NormalizedArgsRequest<'_, R> {
 }
 
 #[derive(Clone, Copy, Debug, Default)]
-struct PreprocessRequestOptions {
-    preserve_omitted_max_tokens: bool,
+pub struct PreprocessRequestOptions {
+    pub preserve_omitted_max_tokens: bool,
+}
+
+/// Canonical chat preparation result shared by every frontend transport.
+pub struct PreparedChatRequest {
+    pub backend_request: PreprocessedRequest,
+    pub annotations: HashMap<String, String>,
+    pub prompt_injected_reasoning: bool,
+    pub guided_tool_constraint: crate::protocols::openai::GuidedToolConstraint,
+    pub image_tokens: Option<usize>,
+    tool_processing_route: ToolProcessingRoute,
 }
 
 struct EmbeddingTokenizerState {
@@ -2753,6 +2763,64 @@ impl OpenAIPreprocessor {
             )
             .await?;
         Ok((request, annotations, prompt_injected_reasoning))
+    }
+
+    /// Apply the request normalization used by the OpenAI chat frontend.
+    ///
+    /// This must run before constructing the response generator and before
+    /// [`Self::prepare_chat_request`]. Keeping it here prevents transports from
+    /// reimplementing model-specific thinking and tool-choice policy.
+    pub fn normalize_chat_request(
+        &self,
+        request: &mut NvCreateChatCompletionRequest,
+        original_stream_flag: bool,
+    ) {
+        request.enable_usage_for_nonstreaming(original_stream_flag);
+        request.inner.stream = Some(true);
+        let thinking_control_from_client = Self::request_has_client_thinking_control(request);
+        self.apply_default_thinking_mode(request);
+        Self::normalize_thinking_arg_with_source(
+            request,
+            self.runtime_config.reasoning_parser.as_deref(),
+            self.tool_call_parser.as_deref(),
+            thinking_control_from_client,
+        );
+        Self::normalize_kimi_k3_named_tool_choice(request, self.tool_call_parser.as_deref());
+    }
+
+    /// Prepare a normalized OpenAI chat request using Dynamo's canonical policy.
+    pub async fn prepare_chat_request(
+        &self,
+        request: &NvCreateChatCompletionRequest,
+        tracker: Option<&RequestTracker>,
+        options: PreprocessRequestOptions,
+        lora_name: Option<String>,
+    ) -> Result<PreparedChatRequest> {
+        let (mut backend_request, annotations, prompt_injected_reasoning, image_tokens) = self
+            .preprocess_request_with_options(request, tracker, options, lora_name)
+            .await?;
+        let guided_tool_constraint = self.apply_tool_choice_guided_decoding(
+            request,
+            &mut backend_request,
+            prompt_injected_reasoning,
+        )?;
+        let tool_processing_route = self.tool_processing_route(request, &guided_tool_constraint)?;
+        validate_legacy_jail_nvext_choice_count(
+            request.inner.n.unwrap_or(1),
+            request
+                .nvext
+                .as_ref()
+                .and_then(|nvext| nvext.extra_fields.as_deref()),
+            tool_processing_route.uses_legacy_jail(),
+        )?;
+        Ok(PreparedChatRequest {
+            backend_request,
+            annotations,
+            prompt_injected_reasoning,
+            guided_tool_constraint,
+            image_tokens,
+            tool_processing_route,
+        })
     }
 
     async fn preprocess_request_with_options<
@@ -4852,6 +4920,32 @@ impl OpenAIPreprocessor {
             guided_tool_constraint,
             tool_processing_route,
         )
+    }
+
+    /// Apply canonical reasoning/tool parsing and normalize assistant roles.
+    ///
+    /// This is the transport-independent response seam used by out-of-process
+    /// postprocessor facades after backend detokenization.
+    pub fn postprocess_chat_stream<S>(
+        &self,
+        stream: S,
+        request: &NvCreateChatCompletionRequest,
+        prompt_injected_reasoning: bool,
+        uses_tool_call_structural_tag: bool,
+    ) -> anyhow::Result<
+        impl Stream<Item = Annotated<NvCreateChatCompletionStreamResponse>> + Send + 'static,
+    >
+    where
+        S: Stream<Item = Annotated<NvCreateChatCompletionStreamResponse>> + Send + 'static,
+    {
+        Ok(Self::normalize_chat_stream_roles(
+            self.postprocessor_parsing_stream(
+                stream,
+                request,
+                prompt_injected_reasoning,
+                uses_tool_call_structural_tag,
+            )?,
+        ))
     }
 
     fn postprocessor_parsing_stream_with_constraint<S>(
@@ -7122,22 +7216,7 @@ impl
         // For non-streaming requests (stream=false), enable usage by default
         // This ensures compliance with OpenAI API spec where non-streaming responses
         // always include usage statistics
-        request.enable_usage_for_nonstreaming(original_stream_flag);
-
-        // Set stream=true for internal processing (after request payload capture)
-        request.inner.stream = Some(true);
-        // Apply the deployment default before parser-specific normalization so
-        // it can override an implicit model default (for example Kimi K2.5),
-        // while explicit request controls still take precedence.
-        let thinking_control_from_client = Self::request_has_client_thinking_control(&request);
-        self.apply_default_thinking_mode(&mut request);
-        Self::normalize_thinking_arg_with_source(
-            &mut request,
-            self.runtime_config.reasoning_parser.as_deref(),
-            self.tool_call_parser.as_deref(),
-            thinking_control_from_client,
-        );
-        Self::normalize_kimi_k3_named_tool_choice(&mut request, self.tool_call_parser.as_deref());
+        self.normalize_chat_request(&mut request, original_stream_flag);
 
         // create a response generator
         let response_generator = request.response_generator(context.id().to_string());
@@ -7150,8 +7229,15 @@ impl
         };
 
         // convert the chat completion request to a common completion request
-        let (mut common_request, annotations, prompt_injected_reasoning, image_tokens) = self
-            .preprocess_request_with_options(
+        let PreparedChatRequest {
+            backend_request: mut common_request,
+            annotations,
+            prompt_injected_reasoning,
+            guided_tool_constraint,
+            image_tokens,
+            tool_processing_route,
+        } = self
+            .prepare_chat_request(
                 &request,
                 tracker.as_deref(),
                 preprocess_options,
@@ -7164,22 +7250,6 @@ impl
             .instrument(preprocessing.clone())
             .await?;
         attach_agent_context_from_context(&mut common_request, &context);
-
-        let guided_tool_constraint = self.apply_tool_choice_guided_decoding(
-            &request,
-            &mut common_request,
-            prompt_injected_reasoning,
-        )?;
-        let tool_processing_route =
-            self.tool_processing_route(&request, &guided_tool_constraint)?;
-        validate_legacy_jail_nvext_choice_count(
-            request.inner.n.unwrap_or(1),
-            request
-                .nvext
-                .as_ref()
-                .and_then(|nvext| nvext.extra_fields.as_deref()),
-            tool_processing_route.uses_legacy_jail(),
-        )?;
 
         tracing::trace!(request = ?common_request, prompt_injected_reasoning, "Pre-processed request");
         let trace_state = crate::request_trace::build_request_end_trace_state(

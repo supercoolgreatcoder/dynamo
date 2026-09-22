@@ -628,6 +628,11 @@ shared:
   owners:
   - frontend
   - agents
+- glob: lib/component-facades/
+  owners:
+  - frontend
+  - router
+  - runtime
 - glob: docs/fern/pages/use-cases/agents/
   owners:
   - docs

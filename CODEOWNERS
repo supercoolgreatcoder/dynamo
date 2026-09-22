@@ -594,6 +594,7 @@ requirements.txt                                                                
 /.devcontainer/sglang/                                                                                  @ai-dynamo/dynamo-ops-codeowners @ai-dynamo/dynamo-backend-sglang-codeowners
 /.devcontainer/trtllm/                                                                                  @ai-dynamo/dynamo-ops-codeowners @ai-dynamo/dynamo-backend-trtllm-codeowners
 /dev/docker-compose.yml                                                                                 @ai-dynamo/dynamo-ops-codeowners @ai-dynamo/dynamo-runtime-codeowners
+/lib/component-facades/                                                                                 @ai-dynamo/dynamo-frontend-codeowners @ai-dynamo/dynamo-router-codeowners @ai-dynamo/dynamo-runtime-codeowners
 /dev/observability/*xpu*                                                                                @ai-dynamo/dynamo-xpu-codeowners @ai-dynamo/dynamo-observability-codeowners
 /lib/runtime/src/nvtx.rs                                                                                @ai-dynamo/dynamo-runtime-codeowners @ai-dynamo/dynamo-performance-codeowners
 /recipes/**/tokenspeed/**                                                                               @ai-dynamo/dynamo-performance-codeowners @ai-dynamo/dynamo-tokenspeed-codeowners

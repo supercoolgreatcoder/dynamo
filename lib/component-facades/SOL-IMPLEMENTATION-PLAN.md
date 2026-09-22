@@ -7,7 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 
 ## 1. User intent and mandatory scope
 
-Build a fresh implementation on `feat/dynamo-grpc-components`, based on the
+Build a fresh implementation on `feat/dynamo-grpc-components-v2`, based on the
 prototype's demonstrated capabilities but backed by the canonical Dynamo source.
 Decompose preprocessing/tokenization, worker selection, and worker-side
 postprocessing into independently deployable components with batched gRPC facades.
@@ -34,7 +34,8 @@ implementation in the planning turn. The receiving Sol session should execute it
 
 ## 2. Starting state and authority
 
-- Repository: `/work/dynamo-epp`; branch already created from `88ef69a41c`.
+- Repository: `/work/dynamo-epp`; the implementation branch was created directly
+  from upstream `origin/main` at `7d4c346fa0`.
 - `COMPONENTS-WORKLOG.md` records initial findings and historical benchmark targets.
 - No new facade or gateway implementation has been written on this branch yet.
 - Earlier prototype code is reference material and a comparison oracle, not the new
@@ -412,7 +413,7 @@ edits; it has worked inside an approved interactive unsandboxed shell here.
 
 Suggested opening instruction to Sol:
 
-> Execute SOL-IMPLEMENTATION-PLAN.md on feat/dynamo-grpc-components. Implement all
+> Execute SOL-IMPLEMENTATION-PLAN.md on feat/dynamo-grpc-components-v2. Implement all
 > four gateway variants; prioritize Envoy generic with Envoy-owned callouts without
 > dropping the other three. Keep inference logic in canonical Dynamo and workers in
 > existing engines/wrappers. Build, deploy, run differential/E2E/fault tests and fair

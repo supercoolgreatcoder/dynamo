@@ -2461,6 +2461,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "dynamo-component-facades"
+version = "1.6.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "dynamo-kv-router",
+ "dynamo-llm",
+ "dynamo-runtime",
+ "futures",
+ "prost 0.13.5",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-stream",
+ "tonic 0.13.1",
+ "tonic-build 0.13.1",
+ "tonic-health 0.13.1",
+ "tower 0.5.3",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "dynamo-custom-policy-builtin"
 version = "1.6.0"
 dependencies = [
