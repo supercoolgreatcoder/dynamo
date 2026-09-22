@@ -32,9 +32,17 @@ struct Args {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Write the descriptor used by descriptor-driven gateway hosts.
+    Descriptor(DescriptorArgs),
     Preprocessor(ModelArgs),
     Postprocessor(PostprocessorArgs),
     Selector(SelectorArgs),
+}
+
+#[derive(clap::Args)]
+struct DescriptorArgs {
+    #[arg(long, short)]
+    output: PathBuf,
 }
 
 #[derive(clap::Args)]
@@ -97,6 +105,10 @@ async fn main() -> anyhow::Result<()> {
         .init();
     let args = Args::parse();
     match args.command {
+        Command::Descriptor(config) => {
+            std::fs::write(&config.output, FILE_DESCRIPTOR_SET)
+                .with_context(|| format!("write descriptor to {}", config.output.display()))?;
+        }
         Command::Preprocessor(config) => {
             let service = PreprocessorFacade::new(
                 load_preprocessor(&config)?,

@@ -1,0 +1,37 @@
+[package]
+name = "envoy-generic-pipeline"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[features]
+default = []
+# Requires patches/envoy-callout-options.patch to be applied to the pinned
+# Envoy source used by this dependency.
+envoy-callout-options = []
+
+[dependencies]
+# Pinned to the same revision the existing P/D module uses, so both load into the same
+# Envoy 1.39.1 build.
+envoy-proxy-dynamic-modules-rust-sdk = { git = "https://github.com/envoyproxy/envoy", rev = "1f921705de13c94326ba72d406fc4113ed81ab70" }
+# The SAME interpreter agentgateway hosts. Not a port: a port would make any comparison
+# between the two gateways a comparison of two implementations of the same idea.
+dynamo-generic-pipeline = { path = "../../generic-core" }
+dynamo-pipeline-grpc = { path = "../../grpc-transport" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "http2"] }
+async-trait = "0.1"
+futures = "0.3"
+pprof = "0.15"
+
+[profile.release]
+opt-level = 3
+
+[workspace]

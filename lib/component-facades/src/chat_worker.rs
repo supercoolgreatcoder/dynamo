@@ -12,7 +12,7 @@ use futures::{Stream, StreamExt};
 use tonic::{Request, Response, Status};
 
 use crate::{
-    deadline_expired,
+    deadline_expired, item_error,
     proto::{ChatWorkerRequest, PostprocessOutput, chat_worker_bridge_server::ChatWorkerBridge},
     worker::CanonicalBackendEngine,
 };
@@ -103,20 +103,37 @@ impl ChatWorkerBridge for ChatWorkerFacade {
             )
             .map_err(|error| Status::invalid_argument(error.to_string()))?;
         let max_chunk_bytes = self.max_chunk_bytes;
-        let output = stream.map(move |chunk| {
-            let payload =
-                serde_json::to_vec(&chunk).map_err(|error| Status::internal(error.to_string()))?;
-            if payload.len() > max_chunk_bytes {
-                return Err(Status::resource_exhausted(
-                    "response chunk byte limit exceeded",
-                ));
+        let output = stream.filter_map(move |chunk| {
+            let request_id = request_id.clone();
+            async move {
+                let data = match chunk.into_data() {
+                    Ok(Some(data)) => data,
+                    Ok(None) => return None,
+                    Err(error) => {
+                        return Some(Ok(PostprocessOutput {
+                            request_id,
+                            openai_chunk_json: Vec::new(),
+                            finished: true,
+                            error: Some(item_error("backend", error.to_string(), false)),
+                        }));
+                    }
+                };
+                let payload = match serde_json::to_vec(&data) {
+                    Ok(payload) => payload,
+                    Err(error) => return Some(Err(Status::internal(error.to_string()))),
+                };
+                if payload.len() > max_chunk_bytes {
+                    return Some(Err(Status::resource_exhausted(
+                        "response chunk byte limit exceeded",
+                    )));
+                }
+                Some(Ok(PostprocessOutput {
+                    request_id,
+                    openai_chunk_json: payload,
+                    finished: false,
+                    error: None,
+                }))
             }
-            Ok(PostprocessOutput {
-                request_id: request_id.clone(),
-                openai_chunk_json: payload,
-                finished: false,
-                error: None,
-            })
         });
         Ok(Response::new(Box::pin(output)))
     }

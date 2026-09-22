@@ -283,6 +283,62 @@ impl GrpcTransport {
         Ok(())
     }
 
+    /// Whether the method bound by this graph request streams responses.
+    pub fn is_server_streaming(&self, request: &Request) -> Result<bool, GrpcError> {
+        Ok(self.method(&binding(request)?)?.is_server_streaming())
+    }
+
+    /// HTTP/2 `:path` for the method bound by this graph request.
+    pub fn method_path(&self, request: &Request) -> Result<String, GrpcError> {
+        let method = self.method(&binding(request)?)?;
+        Ok(format!(
+            "/{}/{}",
+            method.parent_service().full_name(),
+            method.name()
+        ))
+    }
+
+    /// Encode a graph request into the bound method's protobuf wire payload.
+    /// Envoy-owned transports use this to retain the exact same descriptor codec
+    /// as the independent tonic path.
+    pub fn encode_input(&self, request: &Request) -> Result<Vec<u8>, GrpcError> {
+        let method = self.method(&binding(request)?)?;
+        let mut body = request.body.clone();
+        encode_structured_bytes(&mut body, &method.input())?;
+        let text = body.to_string();
+        let mut deserializer = serde_json::Deserializer::from_str(&text);
+        let message = DynamicMessage::deserialize(method.input(), &mut deserializer)
+            .map_err(|error| GrpcError::Encode(error.to_string()))?;
+        let mut bytes = Vec::with_capacity(message.encoded_len());
+        message
+            .encode(&mut bytes)
+            .map_err(|error| GrpcError::Encode(error.to_string()))?;
+        Ok(bytes)
+    }
+
+    /// Decode one protobuf response frame using the graph request's declared
+    /// JSON-bytes and response-body transformations.
+    pub fn decode_output(&self, request: &Request, bytes: &[u8]) -> Result<Value, GrpcError> {
+        let method = self.method(&binding(request)?)?;
+        let message = DynamicMessage::decode(method.output(), bytes)
+            .map_err(|error| GrpcError::Decode(error.to_string()))?;
+        let decode_json_bytes = request
+            .extensions
+            .get("x-grpc-json-bytes")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let response_body = request
+            .extensions
+            .get("x-grpc-response-body")
+            .and_then(Value::as_str);
+        transform_response(
+            response_json(&message)?,
+            &method.output(),
+            decode_json_bytes,
+            response_body,
+        )
+    }
+
     async fn channel(&self, url: &str) -> Result<tonic::transport::Channel, GrpcError> {
         if let Some(c) = self.channels.lock().await.get(url) {
             return Ok(c.clone());
