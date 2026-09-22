@@ -1,0 +1,21 @@
+{
+  "benchmark_series_id": "component-gateways-aiperf-0.12.0-2026-09-22",
+  "units": {"throughput":"successful requests/second","requests":"count"},
+  "cells": [
+    {"workload":"short","arm":"agw-static","rps":11127.67,"successful":502508,"errors":3,"audit":"valid"},
+    {"workload":"short","arm":"agw-generic","rps":5379.16,"successful":243576,"errors":0,"audit":"valid"},
+    {"workload":"short","arm":"envoy-independent","rps":5789.67,"successful":261148,"errors":0,"audit":"valid"},
+    {"workload":"short","arm":"envoy-callouts","rps":5615.05,"successful":253357,"errors":0,"audit":"valid"},
+    {"workload":"short","arm":"dynamo","rps":7238.75,"successful":326397,"errors":1,"audit":"valid"},
+    {"workload":"isl4000","arm":"agw-static","rps":6628.32,"successful":300980,"errors":1,"audit":"valid"},
+    {"workload":"isl4000","arm":"agw-generic","rps":4183.08,"successful":189795,"errors":0,"audit":"valid"},
+    {"workload":"isl4000","arm":"envoy-independent","rps":4738.48,"successful":213786,"errors":0,"audit":"valid"},
+    {"workload":"isl4000","arm":"envoy-callouts","rps":4963.60,"successful":223866,"errors":0,"audit":"valid"},
+    {"workload":"isl4000","arm":"dynamo","rps":5303.30,"successful":240219,"errors":2,"audit":"valid"},
+    {"workload":"mooncake","arm":"agw-static","rps":634.40,"successful":38278,"errors":0,"audit":"valid"},
+    {"workload":"mooncake","arm":"agw-generic","rps":409.62,"successful":24718,"errors":228,"audit":"invalid"},
+    {"workload":"mooncake","arm":"envoy-independent","rps":565.42,"successful":34205,"errors":0,"audit":"valid"},
+    {"workload":"mooncake","arm":"envoy-callouts","rps":458.60,"successful":27530,"errors":108633,"audit":"invalid"},
+    {"workload":"mooncake","arm":"dynamo","rps":0.0,"successful":0,"errors":90626,"audit":"invalid"}
+  ]
+}

@@ -42,3 +42,14 @@ atomically; hard-coded Pod IPs are intentionally not checked into this repositor
 GPU-backed vLLM or SGLang correctness testing also remains inside the vCluster. If its
 virtual nodes do not advertise GPU resources, that test is unavailable there and must
 not be silently moved to the host cluster.
+`real-workers.yaml` follows the slim-container deployment pattern: BusyBox supplies
+only the root filesystem, while immutable Python/engine, CUDA, compiler, and support
+closures are mounted from the shared read-only Nix store. Publish the complete closure
+to the NFS export's `store/` subdirectory before applying the manifest. The init
+container builds only writable `/sbin` and `/cuda` compatibility views; engine code is
+never copied into the container image. Nix packages `nvcc` separately from the merged
+CUDA toolkit, so `CPATH`, `CPLUS_INCLUDE_PATH`, and `NVCC_PREPEND_FLAGS` explicitly point
+at `/cuda/include` for runtime JIT compilation.
+
+The audited AIPerf campaign and real-engine correctness evidence are under
+`results/2026-09-22-campaign/`.

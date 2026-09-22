@@ -1,0 +1,34 @@
+{
+  "status": "valid_with_recovery",
+  "benchmark_series_id": "component-gateways-aiperf-0.12.0-2026-09-22",
+  "plan": "benchmark_execution.json",
+  "performance_question": "Compare end-to-end orchestration throughput and stability for four split-component gateways and the stock Dynamo frontend.",
+  "workload_identity": ["short-100x50","isl4000-4000x50","mooncake-fixed-80x"],
+  "parser": "AIPerf 0.12.0 aggregate console export; manually normalized from immutable Job logs",
+  "tool_version_check": {"expected":"0.12.0","actual":"0.12.0","comparable":true},
+  "integrity_checks": {
+    "model_and_endpoint_match": true,
+    "six_clients_per_cell": true,
+    "cells_serialized": true,
+    "duplicate_envoy_request_ids_fixed_before_valid_cells": true,
+    "real_worker_correctness_separate": true,
+    "per_request_exports_in_git": false
+  },
+  "valid_cells": [
+    "short/agw-static","short/agw-generic","short/envoy-independent","short/envoy-callouts","short/dynamo",
+    "isl4000/agw-static","isl4000/agw-generic","isl4000/envoy-independent","isl4000/envoy-callouts","isl4000/dynamo",
+    "mooncake/agw-static","mooncake/envoy-independent"
+  ],
+  "invalid_cells": {
+    "mooncake/agw-generic": "228 client connection resets and gateway OOMKilled (exit 137)",
+    "mooncake/envoy-callouts": "108633 empty-response errors correlated with prepare-callout gRPC LocalReset",
+    "mooncake/dynamo": "90626 connection failures, zero successful responses",
+    "pre-fix/envoy": "discarded diagnostic cells used non-unique request IDs"
+  },
+  "recovery_actions": [
+    "Re-ran Envoy short and ISL4000 cells after replacing time/body-length IDs with process-entropy plus atomic sequence IDs.",
+    "Set Mooncake isl-block-size=128 because AIPerf 0.12.0 rejected the trace's partial final hash blocks at its 512-token default."
+  ],
+  "blockers": ["Per-request AIPerf exports are pod-local, so percentile reconstruction and request-ID audits are unavailable in git."],
+  "next_action": "continue_analysis"
+}

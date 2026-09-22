@@ -36,7 +36,7 @@
 //! Envoy thread then drains the queue with `send_response_data`. Nothing touches an Envoy
 //! handle from the runtime thread.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use dynamo_generic_pipeline::{
@@ -85,6 +85,35 @@ static PIPESTATS_EVERY: std::sync::LazyLock<u64> = std::sync::LazyLock::new(|| {
         .and_then(|v| v.parse().ok())
         .unwrap_or(0)
 });
+/// Per-process entropy keeps IDs distinct across gateway replicas; the sequence keeps the
+/// request path deterministic, allocation-only, and unique under concurrency.
+///
+/// IDs used to be `(unix_seconds, body_length)`. Identical benchmark prompts therefore
+/// collided inside a preprocessor batch, which correctly rejected them as duplicate
+/// `item_id` values. The resulting empty SSE streams looked like gateway overload.
+static REQUEST_ID_PREFIX: std::sync::LazyLock<u64> = std::sync::LazyLock::new(|| {
+    use std::io::Read as _;
+
+    let mut bytes = [0u8; 8];
+    if std::fs::File::open("/dev/urandom")
+        .and_then(|mut f| f.read_exact(&mut bytes))
+        .is_ok()
+    {
+        u64::from_ne_bytes(bytes)
+    } else {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos() as u64)
+            .unwrap_or(0);
+        nanos ^ ((std::process::id() as u64) << 32)
+    }
+});
+static REQUEST_ID_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
+fn next_request_id() -> String {
+    let sequence = REQUEST_ID_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    format!("chatcmpl-{:016x}-{sequence:016x}", *REQUEST_ID_PREFIX)
+}
 
 fn init() -> bool {
     maybe_start_profiler();
@@ -1496,7 +1525,7 @@ impl<EHF: EnvoyHttpFilter> HttpFilter<EHF> for GenericFilter {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs())
             .unwrap_or(0);
-        let id = format!("chatcmpl-{created}-{:x}", body.len());
+        let id = next_request_id();
         self.chunk_id = id.clone();
         self.created = created;
 
@@ -2195,6 +2224,32 @@ impl<EHF: EnvoyHttpFilter> HttpFilter<EHF> for GenericFilter {
     }
 }
 
+#[cfg(test)]
+mod request_id_tests {
+    use super::*;
+
+    #[test]
+    fn request_ids_are_unique_across_concurrent_gateway_threads() {
+        let threads = 16;
+        let ids_per_thread = 1_000;
+        let handles: Vec<_> = (0..threads)
+            .map(|_| {
+                std::thread::spawn(move || {
+                    (0..ids_per_thread)
+                        .map(|_| next_request_id())
+                        .collect::<Vec<_>>()
+                })
+            })
+            .collect();
+
+        let ids: std::collections::HashSet<_> = handles
+            .into_iter()
+            .flat_map(|h| h.join().expect("ID generator thread"))
+            .collect();
+
+        assert_eq!(ids.len(), threads * ids_per_thread);
+    }
+}
 #[cfg(test)]
 mod grpc_framing_tests {
     use super::*;

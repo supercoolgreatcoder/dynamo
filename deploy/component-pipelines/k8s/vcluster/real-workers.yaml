@@ -1,0 +1,256 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Functional-only deployments for validating the canonical Dynamo request path
+# against real single-GPU engines inside the vCluster. Each pod uses a slim
+# BusyBox rootfs plus a pinned Nix closure from the shared read-only store.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: real-vllm
+  labels: {app: real-vllm}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: real-vllm}
+  template:
+    metadata:
+      labels: {app: real-vllm}
+    spec:
+      nodeSelector:
+        topology.unikorn-cloud.org/node-pool: B200
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Equal
+          value: "true"
+          effect: NoSchedule
+      initContainers:
+        - name: prepare-runtime
+          image: busybox:1.36
+          command: [sh, -c]
+          args:
+            - >-
+              ln -sf /nix/store/pf30k3mg7n6bibc1k6609gyq7glk00k2-glibc-2.42-61-bin/bin/ldconfig /sbin-shim/ldconfig;
+              ln -sf /nix/store/893x2zqx2kjd3rypfr2pb890cngz7l1j-cuda-merged-13.3/bin /cuda-shim/bin;
+              ln -sf /nix/store/893x2zqx2kjd3rypfr2pb890cngz7l1j-cuda-merged-13.3/include /cuda-shim/include;
+              mkdir -p /cuda-shim/lib64;
+              ln -sf /nix/store/893x2zqx2kjd3rypfr2pb890cngz7l1j-cuda-merged-13.3/lib/* /cuda-shim/lib64/
+          volumeMounts:
+            - {name: nix, mountPath: /nix/store, subPath: store, readOnly: true}
+            - {name: sbin-shim, mountPath: /sbin-shim}
+            - {name: cuda-shim, mountPath: /cuda-shim}
+      containers:
+        - name: worker
+          image: busybox:1.36
+          imagePullPolicy: IfNotPresent
+          command:
+            - /nix/store/nvg5cakj6yqskr794rbzk5lqxrisfa8h-vllm-worker-env/bin/python
+            - -m
+            - dynamo.vllm
+          args:
+            - --model
+            - Qwen/Qwen3-0.6B
+            - --served-model-name
+            - Qwen/Qwen3-0.6B
+            - --gpu-memory-utilization
+            - "0.10"
+            - --max-model-len
+            - "4096"
+            - --enforce-eager
+          env: &vllm-runtime-env
+            - {name: ETCD_ENDPOINTS, value: "http://etcd:2379"}
+            - {name: DYN_NAMESPACE, value: real-vllm}
+            - {name: DYN_DISCOVERY_BACKEND, value: etcd}
+            - {name: DYN_REQUEST_PLANE, value: tcp}
+            - {name: DYN_RESPONSE_PLANE, value: tcp}
+            - {name: DYN_EVENT_PLANE, value: zmq}
+            - {name: HF_HOME, value: /cache/huggingface}
+            - {name: CUDA_HOME, value: /cuda}
+            - {name: CUDA_PATH, value: /cuda}
+            # Nix packages nvcc separately from the merged toolkit, so its
+            # executable cannot infer the compatibility view's include path.
+            - {name: CPATH, value: /cuda/include}
+            - {name: CPLUS_INCLUDE_PATH, value: /cuda/include}
+            - {name: NVCC_PREPEND_FLAGS, value: "-I/cuda/include"}
+            - {name: CC, value: /nix/store/qd70v8g0561vm8m33kmnp79z00cgyi5n-gcc-wrapper-15.2.0/bin/cc}
+            - {name: NVIDIA_CTK_LIBCUDA_DIR, value: /usr/lib/x86_64-linux-gnu}
+            - {name: NVIDIA_DRIVER_CAPABILITIES, value: "compute,utility"}
+            - {name: PYTHONUNBUFFERED, value: "1"}
+            - {name: PATH, value: "/nix/store/36zaqsjb04wl8ppvpsxcn8hvnwqvdd2j-ninja-1.13.2/bin:/nix/store/qd70v8g0561vm8m33kmnp79z00cgyi5n-gcc-wrapper-15.2.0/bin:/cuda/bin:/nix/store/nvg5cakj6yqskr794rbzk5lqxrisfa8h-vllm-worker-env/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"}
+            - {name: LD_LIBRARY_PATH, value: "/nix/store/fjkx1l5cnskzrqacf08z7i8z17256w0j-glibc-2.42-61/lib:/cuda/lib64:/nix/store/si4q3zks5mn5jhzzyri9hhd3cv789vlm-gcc-15.2.0-lib/lib:/usr/lib/x86_64-linux-gnu:/run/opengl-driver/lib"}
+          resources:
+            requests:
+              cpu: "2"
+              memory: 8Gi
+              nvidia.com/gpu: "1"
+            limits:
+              nvidia.com/gpu: "1"
+          volumeMounts: &vllm-volume-mounts
+            - {name: nix, mountPath: /nix/store, subPath: store, readOnly: true}
+            - {name: cache, mountPath: /cache}
+            - {name: shm, mountPath: /dev/shm}
+            - {name: sbin-shim, mountPath: /sbin}
+            - {name: cuda-shim, mountPath: /cuda}
+        - name: frontend
+          image: busybox:1.36
+          imagePullPolicy: IfNotPresent
+          command:
+            - /nix/store/nvg5cakj6yqskr794rbzk5lqxrisfa8h-vllm-worker-env/bin/python
+            - -m
+            - dynamo.frontend
+          args: [--http-port, "8000"]
+          env: *vllm-runtime-env
+          ports: [{name: http, containerPort: 8000}]
+          volumeMounts: *vllm-volume-mounts
+          readinessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 5
+            failureThreshold: 60
+      volumes:
+        - name: nix
+          nfs:
+            server: 192.168.0.220
+            path: /unikorn-identity-03cfadd31877-551/pvc-19aeb650-5f77-45c4-8b8b-0a3b88542f39
+            readOnly: true
+        - name: cache
+          emptyDir: {}
+        - name: shm
+          emptyDir: {medium: Memory, sizeLimit: 8Gi}
+        - name: sbin-shim
+          emptyDir: {}
+        - name: cuda-shim
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: real-vllm
+spec:
+  selector: {app: real-vllm}
+  ports: [{name: http, port: 8000, targetPort: http}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: real-sglang
+  labels: {app: real-sglang}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: real-sglang}
+  template:
+    metadata:
+      labels: {app: real-sglang}
+    spec:
+      nodeSelector:
+        topology.unikorn-cloud.org/node-pool: B200
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Equal
+          value: "true"
+          effect: NoSchedule
+      initContainers:
+        - name: prepare-runtime
+          image: busybox:1.36
+          command: [sh, -c]
+          args:
+            - >-
+              ln -sf /nix/store/pf30k3mg7n6bibc1k6609gyq7glk00k2-glibc-2.42-61-bin/bin/ldconfig /sbin-shim/ldconfig;
+              ln -sf /nix/store/893x2zqx2kjd3rypfr2pb890cngz7l1j-cuda-merged-13.3/bin /cuda-shim/bin;
+              ln -sf /nix/store/893x2zqx2kjd3rypfr2pb890cngz7l1j-cuda-merged-13.3/include /cuda-shim/include;
+              mkdir -p /cuda-shim/lib64;
+              ln -sf /nix/store/893x2zqx2kjd3rypfr2pb890cngz7l1j-cuda-merged-13.3/lib/* /cuda-shim/lib64/
+          volumeMounts:
+            - {name: nix, mountPath: /nix/store, subPath: store, readOnly: true}
+            - {name: sbin-shim, mountPath: /sbin-shim}
+            - {name: cuda-shim, mountPath: /cuda-shim}
+      containers:
+        - name: worker
+          image: busybox:1.36
+          imagePullPolicy: IfNotPresent
+          command:
+            - /nix/store/cra3bmqp5hvv4c7wxbkh67f4gwx8mkdr-sglang-worker-env/bin/python
+            - -m
+            - dynamo.sglang
+          args:
+            - --model-path
+            - Qwen/Qwen3-0.6B
+            - --served-model-name
+            - Qwen/Qwen3-0.6B
+            - --mem-fraction-static
+            - "0.10"
+            - --context-length
+            - "4096"
+            - --disable-cuda-graph
+          env: &sglang-runtime-env
+            - {name: ETCD_ENDPOINTS, value: "http://etcd:2379"}
+            - {name: DYN_NAMESPACE, value: real-sglang}
+            - {name: DYN_DISCOVERY_BACKEND, value: etcd}
+            - {name: DYN_REQUEST_PLANE, value: tcp}
+            - {name: DYN_RESPONSE_PLANE, value: tcp}
+            - {name: DYN_EVENT_PLANE, value: zmq}
+            - {name: HF_HOME, value: /cache/huggingface}
+            - {name: CUDA_HOME, value: /cuda}
+            - {name: CUDA_PATH, value: /cuda}
+            # Nix packages nvcc separately from the merged toolkit, so its
+            # executable cannot infer the compatibility view's include path.
+            - {name: CPATH, value: /cuda/include}
+            - {name: CPLUS_INCLUDE_PATH, value: /cuda/include}
+            - {name: NVCC_PREPEND_FLAGS, value: "-I/cuda/include"}
+            - {name: CC, value: /nix/store/qd70v8g0561vm8m33kmnp79z00cgyi5n-gcc-wrapper-15.2.0/bin/cc}
+            - {name: NVIDIA_CTK_LIBCUDA_DIR, value: /usr/lib/x86_64-linux-gnu}
+            - {name: NVIDIA_DRIVER_CAPABILITIES, value: "compute,utility"}
+            - {name: PYTHONUNBUFFERED, value: "1"}
+            - {name: PYTHONPATH, value: /nix/store/cyk7v0sicn2slmz5c17y0wa9xxi43ivh-python3.12-blake3-1.0.8/lib/python3.12/site-packages}
+            - {name: PATH, value: "/nix/store/36zaqsjb04wl8ppvpsxcn8hvnwqvdd2j-ninja-1.13.2/bin:/nix/store/qd70v8g0561vm8m33kmnp79z00cgyi5n-gcc-wrapper-15.2.0/bin:/cuda/bin:/nix/store/cra3bmqp5hvv4c7wxbkh67f4gwx8mkdr-sglang-worker-env/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"}
+            - {name: LD_LIBRARY_PATH, value: "/nix/store/fjkx1l5cnskzrqacf08z7i8z17256w0j-glibc-2.42-61/lib:/cuda/lib64:/nix/store/si4q3zks5mn5jhzzyri9hhd3cv789vlm-gcc-15.2.0-lib/lib:/usr/lib/x86_64-linux-gnu:/run/opengl-driver/lib"}
+          resources:
+            requests:
+              cpu: "2"
+              memory: 8Gi
+              nvidia.com/gpu: "1"
+            limits:
+              nvidia.com/gpu: "1"
+          volumeMounts: &sglang-volume-mounts
+            - {name: nix, mountPath: /nix/store, subPath: store, readOnly: true}
+            - {name: cache, mountPath: /cache}
+            - {name: shm, mountPath: /dev/shm}
+            - {name: sbin-shim, mountPath: /sbin}
+            - {name: cuda-shim, mountPath: /cuda}
+        - name: frontend
+          image: busybox:1.36
+          imagePullPolicy: IfNotPresent
+          command:
+            - /nix/store/cra3bmqp5hvv4c7wxbkh67f4gwx8mkdr-sglang-worker-env/bin/python
+            - -m
+            - dynamo.frontend
+          args: [--http-port, "8000"]
+          env: *sglang-runtime-env
+          ports: [{name: http, containerPort: 8000}]
+          volumeMounts: *sglang-volume-mounts
+          readinessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 5
+            failureThreshold: 60
+      volumes:
+        - name: nix
+          nfs:
+            server: 192.168.0.220
+            path: /unikorn-identity-03cfadd31877-551/pvc-19aeb650-5f77-45c4-8b8b-0a3b88542f39
+            readOnly: true
+        - name: cache
+          emptyDir: {}
+        - name: shm
+          emptyDir: {medium: Memory, sizeLimit: 8Gi}
+        - name: sbin-shim
+          emptyDir: {}
+        - name: cuda-shim
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: real-sglang
+spec:
+  selector: {app: real-sglang}
+  ports: [{name: http, port: 8000, targetPort: http}]
