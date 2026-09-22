@@ -49,5 +49,8 @@ Export the descriptor used by either host from the facade binary:
 dynamo-component-facade descriptor --output components_descriptor.bin
 ```
 
-The AGW adapters and disaggregated graph are the next implementation increment; the
-aggregate graph and Envoy host here do not by themselves claim those variants complete.
+The Agentgateway patch contains both the static compiled aggregate pipeline and the
+descriptor-driven generic pipeline. Together with the two Envoy transport modes this
+provides the four benchmark arms: AGW static, AGW generic, Envoy generic with independent
+tonic transport, and Envoy generic with Envoy-owned callouts. The vCluster packaging and
+benchmark procedure is documented in `k8s/vcluster/README.md`.

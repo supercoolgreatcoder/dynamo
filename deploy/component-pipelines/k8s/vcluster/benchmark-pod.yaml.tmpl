@@ -1,0 +1,46 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: component-benchmark
+  namespace: ${VCLUSTER_NAMESPACE}
+  labels:
+    app: component-benchmark
+spec:
+  automountServiceAccountToken: false
+  restartPolicy: Never
+  containers:
+    - name: benchmark
+      image: busybox:1.36
+      command: [/bin/sh, -c]
+      args:
+        - |
+          set -eu
+          PD=${PD_STORE_PATH}/bin/pd
+          for trial in 1 2 3; do
+            for arm in agw-static agw-generic envoy-independent envoy-callouts dynamo-frontend-reference; do
+              for concurrency in 1 16 64; do
+                "$PD" -mode load \
+                  -target "http://${arm}:8080" \
+                  -concurrency "$concurrency" \
+                  -requests 2000 \
+                  -warmup 200 \
+                  -arm "$arm" \
+                  -profile zero-delay \
+                  -trial "$trial" \
+                  -model Qwen/Qwen2.5-0.5B-Instruct
+              done
+            done
+          done
+      volumeMounts:
+        - name: root-store
+          mountPath: /nix/store
+          subPath: store
+          readOnly: true
+  volumes:
+    - name: root-store
+      nfs:
+        server: ${NIX_STORE_NFS_SERVER}
+        path: ${NIX_STORE_NFS_PATH}

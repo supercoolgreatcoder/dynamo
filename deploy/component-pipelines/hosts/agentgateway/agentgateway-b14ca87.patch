@@ -1,0 +1,417 @@
+diff --git a/crates/agentgateway/Cargo.toml b/crates/agentgateway/Cargo.toml
+index 2fcdfb4..3b95f83 100644
+--- a/crates/agentgateway/Cargo.toml
++++ b/crates/agentgateway/Cargo.toml
+@@ -32,6 +32,7 @@ arc-swap.workspace = true
+ async-compression.workspace = true
+ async-openai.workspace = true
+ async-trait.workspace = true
++async-stream.workspace = true
+ atomic_float.workspace = true
+ aws-config.workspace = true
+ aws-credential-types.workspace = true
+@@ -49,6 +50,9 @@ azure_core.workspace = true
+ azure_identity.workspace = true
+ base64.workspace = true
+ bytes.workspace = true
++dynamo-generic-pipeline = { path = "../../../dynamo-epp/deploy/component-pipelines/generic-core" }
++dynamo-pipeline-grpc = { path = "../../../dynamo-epp/deploy/component-pipelines/grpc-transport" }
++dynamo-static-pipeline = { path = "../../../dynamo-epp/deploy/component-pipelines/static-core" }
+ cookie.workspace = true
+ cel.workspace = true
+ chrono.workspace = true
+diff --git a/crates/agentgateway/src/app.rs b/crates/agentgateway/src/app.rs
+index 07f3014..be58327 100644
+--- a/crates/agentgateway/src/app.rs
++++ b/crates/agentgateway/src/app.rs
+@@ -93,6 +93,14 @@ pub async fn run(config: Arc<Config>) -> anyhow::Result<Bound> {
+ 	state_manager::start_self_workload_resolution(&config, stores.clone(), &ready);
+ 
+ 	let model_catalog = crate::llm::cost::ModelCatalog::new(config.model_catalog.sources.clone())?;
++	let component_pipeline = match config.component_pipeline.as_ref() {
++		Some(component) => Some(Arc::new(
++			crate::dynamo_components::ComponentPipeline::load(component)
++				.await
++				.context("Dynamo component pipeline starts")?,
++		)),
++		None => None,
++	};
+ 
+ 	let mut xds_rx_for_task = xds_rx.clone();
+ 	tokio::spawn(async move {
+@@ -118,6 +126,7 @@ pub async fn run(config: Arc<Config>) -> anyhow::Result<Bound> {
+ 	info!("serving UI at http://{}/ui", config.admin_addr);
+ 
+ 	let pi = ProxyInputs {
++		component_pipeline,
+ 		cfg: config.clone(),
+ 		stores: stores.clone(),
+ 		metrics: metrics_handle.clone(),
+diff --git a/crates/agentgateway/src/config.rs b/crates/agentgateway/src/config.rs
+index 388d87b..6c73fc0 100644
+--- a/crates/agentgateway/src/config.rs
++++ b/crates/agentgateway/src/config.rs
+@@ -365,6 +365,7 @@ pub fn parse_config(
+ 		.or_else(|| raw.logging.as_ref().and_then(|l| l.database.clone()));
+ 
+ 	Ok(crate::Config {
++		component_pipeline: raw.component_pipeline,
+ 		ipv6_enabled,
+ 		network: network.clone().into(),
+ 		self_identity,
+diff --git a/crates/agentgateway/src/dynamo_components.rs b/crates/agentgateway/src/dynamo_components.rs
+new file mode 100644
+index 0000000..3ad4283
+--- /dev/null
++++ b/crates/agentgateway/src/dynamo_components.rs
+@@ -0,0 +1,252 @@
++// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
++// SPDX-License-Identifier: Apache-2.0
++
++//! Thin agentgateway host for Dynamo component pipelines.
++//!
++//! This module owns HTTP body/SSE framing only. Prompt rendering, tokenization,
++//! selection, inference, detokenization, and OpenAI response policy stay in the
++//! Dynamo facade services and their canonical engines.
++
++use std::{collections::BTreeMap, convert::Infallible, sync::Arc};
++
++use dynamo_generic_pipeline::{Document, Pipeline, Prepared, Sink, referenced_specs};
++use dynamo_pipeline_grpc::GrpcTransport;
++use dynamo_static_pipeline::StaticAggregatePipeline;
++use futures_util::StreamExt;
++use http_body_util::BodyExt;
++use serde_json::Value;
++
++use crate::http::{Body, Request, Response};
++
++const CHAT_COMPLETIONS_PATH: &str = "/v1/chat/completions";
++
++#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
++#[cfg_attr(feature = "schema", derive(crate::JsonSchema))]
++#[serde(tag = "mode", rename_all = "snake_case", deny_unknown_fields)]
++pub enum ComponentPipelineConfig {
++	Static {
++		preprocessor_endpoint: String,
++		selector_endpoint: String,
++	},
++	Generic {
++		pipeline_file: std::path::PathBuf,
++		grpc_descriptor_file: std::path::PathBuf,
++	},
++}
++
++#[derive(Clone)]
++pub enum ComponentPipeline {
++	Static(StaticAggregatePipeline),
++	Generic {
++		prepared: Arc<Prepared>,
++		transport: Arc<GrpcTransport>,
++	},
++}
++
++impl std::fmt::Debug for ComponentPipeline {
++	fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
++		formatter.write_str(match self {
++			Self::Static(_) => "ComponentPipeline::Static",
++			Self::Generic { .. } => "ComponentPipeline::Generic",
++		})
++	}
++}
++
++impl ComponentPipeline {
++	pub async fn load(config: &ComponentPipelineConfig) -> anyhow::Result<Self> {
++		match config {
++			ComponentPipelineConfig::Static {
++				preprocessor_endpoint,
++				selector_endpoint,
++			} => Ok(Self::Static(
++				StaticAggregatePipeline::connect(preprocessor_endpoint.clone(), selector_endpoint.clone())
++					.await?,
++			)),
++			ComponentPipelineConfig::Generic {
++				pipeline_file,
++				grpc_descriptor_file,
++			} => {
++				let text = std::fs::read_to_string(pipeline_file)?;
++				let pipeline = Pipeline::from_yaml(&text)
++					.map_err(|error| anyhow::anyhow!("parse {}: {error}", pipeline_file.display()))?;
++				let root = pipeline_file
++					.parent()
++					.ok_or_else(|| anyhow::anyhow!("pipeline path has no parent"))?;
++				let mut specs = BTreeMap::new();
++				for reference in referenced_specs(&pipeline) {
++					let path = root.join(&reference);
++					let spec = std::fs::read_to_string(&path)?;
++					specs.insert(
++						reference,
++						Document::from_yaml(&spec)
++							.map_err(|error| anyhow::anyhow!("parse {}: {error}", path.display()))?,
++					);
++				}
++				let prepared = Prepared::new(pipeline, &specs)
++					.map_err(|error| anyhow::anyhow!("pipeline validation: {error}"))?;
++				let descriptor = std::fs::read(grpc_descriptor_file)?;
++				let transport = GrpcTransport::new(&descriptor)
++					.map_err(|error| anyhow::anyhow!("descriptor: {error}"))?;
++				Ok(Self::Generic {
++					prepared: Arc::new(prepared),
++					transport: Arc::new(transport),
++				})
++			},
++		}
++	}
++
++	pub fn handles(&self, request: &Request) -> bool {
++		request.method() == http::Method::POST && request.uri().path() == CHAT_COMPLETIONS_PATH
++	}
++
++	pub async fn handle(&self, request: Request) -> Response {
++		let (_, body) = request.into_parts();
++		let body = match body.collect().await {
++			Ok(body) => body.to_bytes(),
++			Err(error) => return error_response(http::StatusCode::BAD_REQUEST, error.to_string()),
++		};
++		let parsed: Value = match serde_json::from_slice(&body) {
++			Ok(parsed) => parsed,
++			Err(error) => return error_response(http::StatusCode::BAD_REQUEST, error.to_string()),
++		};
++		if parsed.get("stream").and_then(Value::as_bool) != Some(true) {
++			return error_response(
++				http::StatusCode::NOT_IMPLEMENTED,
++				"component pipeline currently requires stream=true",
++			);
++		}
++
++		let request_id = uuid::Uuid::new_v4().to_string();
++		match self {
++			Self::Static(pipeline) => static_response(pipeline, request_id, body.to_vec()).await,
++			Self::Generic {
++				prepared,
++				transport,
++			} => generic_response(prepared.clone(), transport.clone(), request_id, parsed),
++		}
++	}
++}
++
++fn error_response(status: http::StatusCode, message: impl ToString) -> Response {
++	let body = serde_json::json!({"error": {"message": message.to_string()}}).to_string();
++	http::Response::builder()
++		.status(status)
++		.header(http::header::CONTENT_TYPE, "application/json")
++		.body(Body::from(body))
++		.expect("static response is valid")
++}
++
++fn sse_response(
++	stream: impl futures_core::Stream<Item = Result<bytes::Bytes, Infallible>> + Send + Sync + 'static,
++) -> Response {
++	http::Response::builder()
++		.status(http::StatusCode::OK)
++		.header(http::header::CONTENT_TYPE, "text/event-stream")
++		.header(http::header::CACHE_CONTROL, "no-cache")
++		.body(Body::from_stream(stream))
++		.expect("static response is valid")
++}
++
++async fn static_response(
++	pipeline: &StaticAggregatePipeline,
++	request_id: String,
++	body: Vec<u8>,
++) -> Response {
++	let mut stream = match pipeline.execute(request_id, body, 0).await {
++		Ok(stream) => stream,
++		Err(error) => return error_response(http::StatusCode::BAD_GATEWAY, error),
++	};
++	let (tx, rx) = tokio::sync::mpsc::channel(256);
++	tokio::spawn(async move {
++		while let Some(item) = stream.next().await {
++			match item {
++				Ok(item) if item.error.is_none() && !item.openai_chunk_json.is_empty() => {
++					if tx.send(Ok(frame(&item.openai_chunk_json))).await.is_err() {
++						return;
++					}
++				},
++				Ok(item) if item.error.is_some() => {
++					let _ = tx
++						.send(Ok(frame_error(item.error.expect("checked above").message)))
++						.await;
++					return;
++				},
++				Ok(_) => {},
++				Err(error) => {
++					let _ = tx.send(Ok(frame_error(error.message()))).await;
++					return;
++				},
++			}
++		}
++		let _ = tx
++			.send(Ok(bytes::Bytes::from_static(b"data: [DONE]\n\n")))
++			.await;
++	});
++	sse_response(tokio_stream::wrappers::ReceiverStream::new(rx))
++}
++
++struct ChannelSink {
++	tx: tokio::sync::mpsc::Sender<Value>,
++}
++
++#[async_trait::async_trait]
++impl Sink for ChannelSink {
++	async fn item(&self, value: Value) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
++		self
++			.tx
++			.send(value)
++			.await
++			.map_err(|_| "client disconnected".into())
++	}
++}
++
++fn generic_response(
++	prepared: Arc<Prepared>,
++	transport: Arc<GrpcTransport>,
++	request_id: String,
++	body: Value,
++) -> Response {
++	let (tx, mut rx) = tokio::sync::mpsc::channel(256);
++	tokio::spawn(async move {
++		let sink = ChannelSink { tx: tx.clone() };
++		let request = serde_json::json!({"id": request_id, "body": body});
++		if let Err(error) = prepared.run_with_sink(&*transport, request, &sink).await {
++			let _ = tx
++				.send(serde_json::json!({"error": error.to_string()}))
++				.await;
++		}
++	});
++	let output = async_stream::stream! {
++	while let Some(item) = rx.recv().await {
++	if let Some(error) = item.get("error").and_then(Value::as_str) {
++	yield Ok::<_, Infallible>(frame_error(error));
++	return;
++	}
++	match serde_json::to_vec(&item) {
++	Ok(chunk) => yield Ok(frame(&chunk)),
++	Err(error) => {
++	yield Ok(frame_error(error));
++	return;
++	},
++	}
++	}
++	yield Ok(bytes::Bytes::from_static(b"data: [DONE]\n\n"));
++	};
++	sse_response(output)
++}
++
++fn frame(chunk: &[u8]) -> bytes::Bytes {
++	let mut output = Vec::with_capacity(chunk.len() + 8);
++	output.extend_from_slice(b"data: ");
++	output.extend_from_slice(chunk);
++	output.extend_from_slice(b"\n\n");
++	bytes::Bytes::from(output)
++}
++
++fn frame_error(error: impl ToString) -> bytes::Bytes {
++	frame(
++		serde_json::json!({"error": {"message": error.to_string()}})
++			.to_string()
++			.as_bytes(),
++	)
++}
+diff --git a/crates/agentgateway/src/lib.rs b/crates/agentgateway/src/lib.rs
+index d8a5870..8d893dd 100644
+--- a/crates/agentgateway/src/lib.rs
++++ b/crates/agentgateway/src/lib.rs
+@@ -28,6 +28,7 @@ pub mod cel;
+ pub mod client;
+ pub mod config;
+ pub mod control;
++pub mod dynamo_components;
+ pub mod http;
+ pub mod json;
+ pub mod llm;
+@@ -145,6 +146,8 @@ pub struct RawDnsConfig {
+ #[derive(Default)]
+ // RawConfig represents the inputs a user can pass in. Config represents the internal representation of this.
+ pub struct RawConfig {
++	/// Optional Dynamo component pipeline for OpenAI chat completions.
++	component_pipeline: Option<dynamo_components::ComponentPipelineConfig>,
+ 	enable_ipv6: Option<bool>,
+ 
+ 	/// DNS resolver settings.
+@@ -528,6 +531,7 @@ impl schemars::JsonSchema for StringBoolFloat {
+ #[derive(serde::Serialize, Clone, Debug)]
+ #[serde(rename_all = "camelCase", deny_unknown_fields)]
+ pub struct Config {
++	pub component_pipeline: Option<dynamo_components::ComponentPipelineConfig>,
+ 	pub ipv6_enabled: bool,
+ 	pub network: Strng,
+ 	/// How the gateway discovers its own workload for locality-aware load balancing.
+@@ -686,6 +690,7 @@ impl ConfigSource {
+ 
+ #[derive(Debug, Clone)]
+ pub struct ProxyInputs {
++	pub component_pipeline: Option<Arc<dynamo_components::ComponentPipeline>>,
+ 	pub cfg: Arc<Config>,
+ 	pub stores: Stores,
+ 
+@@ -720,6 +725,7 @@ impl ProxyInputs {
+ 			upstream,
+ 			metrics,
+ 			model_catalog: Arc::new(model_catalog.unwrap_or_default()),
++			component_pipeline: None,
+ 			admin: None,
+ 			mcp_state,
+ 			ca,
+diff --git a/crates/agentgateway/src/mcp/upstream/openapi/tests.rs b/crates/agentgateway/src/mcp/upstream/openapi/tests.rs
+index 0134fbd..a3d0ef9 100644
+--- a/crates/agentgateway/src/mcp/upstream/openapi/tests.rs
++++ b/crates/agentgateway/src/mcp/upstream/openapi/tests.rs
+@@ -42,6 +42,7 @@ async fn setup_with_prefix(prefix: &str) -> (MockServer, Handler) {
+ 		None,
+ 	);
+ 	let pi = Arc::new(ProxyInputs {
++		component_pipeline: None,
+ 		cfg: Arc::new(config),
+ 		stores: stores.clone(),
+ 		metrics: Arc::new(crate::metrics::Metrics::new(
+diff --git a/crates/agentgateway/src/proxy/httpproxy.rs b/crates/agentgateway/src/proxy/httpproxy.rs
+index cfdc973..073e923 100644
+--- a/crates/agentgateway/src/proxy/httpproxy.rs
++++ b/crates/agentgateway/src/proxy/httpproxy.rs
+@@ -1287,6 +1287,12 @@ impl HTTPProxy {
+ 		response_policies: &mut ResponsePolicies,
+ 		mut req: Request,
+ 	) -> Result<Response, SnapshottedProxyResponse> {
++		if let Some(component_pipeline) = self.inputs.component_pipeline.as_ref()
++			&& component_pipeline.handles(&req)
++		{
++			return Ok(component_pipeline.handle(req).await);
++		}
++
+ 		if let Some(backend_timeout) = response_policies
+ 			.timeout
+ 			.as_ref()
+diff --git a/crates/agentgateway/src/proxy/tcpproxy.rs b/crates/agentgateway/src/proxy/tcpproxy.rs
+index 544ca03..c05af63 100644
+--- a/crates/agentgateway/src/proxy/tcpproxy.rs
++++ b/crates/agentgateway/src/proxy/tcpproxy.rs
+@@ -924,6 +924,7 @@ mod tests {
+ 			None,
+ 		);
+ 		Arc::new(crate::ProxyInputs {
++			component_pipeline: None,
+ 			cfg: Arc::new(config),
+ 			stores: stores.clone(),
+ 			metrics: Arc::new(crate::metrics::Metrics::new(
+diff --git a/crates/agentgateway/src/test_helpers/proxymock.rs b/crates/agentgateway/src/test_helpers/proxymock.rs
+index c84db65..558ca89 100644
+--- a/crates/agentgateway/src/test_helpers/proxymock.rs
++++ b/crates/agentgateway/src/test_helpers/proxymock.rs
+@@ -1224,6 +1224,7 @@ pub fn setup_proxy_test_with_config(config: crate::Config) -> TestBind {
+ 	let client = client::Client::new(&config.dns, None, Default::default(), None);
+ 	let (drain_tx, drain_rx) = drain::new();
+ 	let pi = Arc::new(ProxyInputs {
++		component_pipeline: None,
+ 		cfg: Arc::new(config),
+ 		stores: stores.clone(),
+ 		metrics: Arc::new(crate::metrics::Metrics::new(

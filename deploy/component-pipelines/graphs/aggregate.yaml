@@ -30,13 +30,6 @@ steps:
         normalized_request: "$.response.normalized_openai_request_json"
         backend_request: "$.response.backend_request_json"
         selector_request: "$.response.selector_request_json"
-        prompt_injected_reasoning: "$.response.prompt_injected_reasoning"
-        uses_tool_call_structural_tag: "$.response.uses_tool_call_structural_tag"
-        prompt_tokens: "$.response.prompt_tokens"
-        image_tokens: "$.response.image_tokens"
-        image_count: "$.response.image_count"
-        video_count: "$.response.video_count"
-        audio_count: "$.response.audio_count"
       batch: {maxSize: 32, lingerUs: 100}
   - id: select
     call:
@@ -59,13 +52,6 @@ steps:
         request_id: "$.request.id"
         backend_request_json: "$.vars.backend_request"
         normalized_openai_request_json: "$.vars.normalized_request"
-        prompt_injected_reasoning: "$.vars.prompt_injected_reasoning"
-        uses_tool_call_structural_tag: "$.vars.uses_tool_call_structural_tag"
-        prompt_tokens: "$.vars.prompt_tokens"
-        image_tokens: "$.vars.image_tokens"
-        image_count: "$.vars.image_count"
-        video_count: "$.vars.video_count"
-        audio_count: "$.vars.audio_count"
         deadline_unix_ms: 0
       stream: {}
       respond: true

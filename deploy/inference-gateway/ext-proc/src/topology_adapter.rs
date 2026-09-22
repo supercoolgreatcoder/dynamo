@@ -12,7 +12,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use dynamo_kv_router::DEFAULT_ROUTING_GROUP;
 use dynamo_kv_router::services::selection::{
-    CatalogReconciler, WorkerCatalogSource, WorkerRequest,
+    CatalogReconciler, SelectionService, WorkerCatalogSource, WorkerRequest,
 };
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
@@ -86,6 +86,16 @@ impl TopologyAdapter {
         selector: Arc<Selector>,
         defaults: RegistrationDefaults,
     ) -> Self {
+        Self::spawn_service(reflector, Arc::clone(&selector.service), defaults)
+    }
+
+    /// Reconcile an InferencePool directly into the canonical selection
+    /// service, without constructing the EPP wrapper or Dynamo runtime.
+    pub fn spawn_service(
+        reflector: PodDiscovery,
+        selection: Arc<SelectionService>,
+        defaults: RegistrationDefaults,
+    ) -> Self {
         let cancel = CancellationToken::new();
         let source = PodReflectorSource {
             changes: reflector.subscribe_changes(),
@@ -95,8 +105,7 @@ impl TopologyAdapter {
             closed: false,
         };
         tokio::spawn(
-            CatalogReconciler::new(Arc::clone(selector.service.core()))
-                .run(source, cancel.child_token()),
+            CatalogReconciler::new(Arc::clone(selection.core())).run(source, cancel.child_token()),
         );
         Self { cancel }
     }
@@ -109,18 +118,30 @@ impl Drop for TopologyAdapter {
 }
 
 fn worker_request(w: RawWorker, defaults: &RegistrationDefaults) -> WorkerRequest {
+    let metadata = w.metadata.unwrap_or_default();
     WorkerRequest {
         worker_id: w.worker_id,
-        model_name: defaults.model_name.clone(),
-        routing_group: DEFAULT_ROUTING_GROUP.to_string(),
+        model_name: metadata
+            .model_name
+            .unwrap_or_else(|| defaults.model_name.clone()),
+        routing_group: metadata
+            .routing_group
+            .unwrap_or_else(|| DEFAULT_ROUTING_GROUP.to_string()),
         endpoint: Some(w.http_endpoint),
-        block_size: Some(defaults.block_size),
+        block_size: metadata.block_size.or(Some(defaults.block_size)),
         data_parallel_start_rank: Some(0),
         data_parallel_size: Some((w.kv_events_endpoints.len() as u32).max(1)),
         kv_events_endpoints: w.kv_events_endpoints,
         replay_endpoint: w.replay_endpoint,
-        total_kv_blocks: defaults.total_kv_blocks,
-        max_num_batched_tokens: defaults.max_num_batched_tokens,
+        total_kv_blocks: metadata.total_kv_blocks.or(defaults.total_kv_blocks),
+        max_num_batched_tokens: metadata
+            .max_num_batched_tokens
+            .or(defaults.max_num_batched_tokens),
+        stable_routing_id: metadata.stable_routing_id,
+        is_eagle: metadata.is_eagle,
+        kv_transfer_domain: metadata.kv_transfer_domain,
+        router_hint_worker_type: metadata.router_hint_worker_type,
+        kv_event_source_mode: metadata.kv_event_source_mode,
         ..Default::default()
     }
 }
@@ -173,7 +194,32 @@ mod tests {
             http_endpoint: format!("http://{ip}:8000"),
             kv_events_endpoints: HashMap::from([(0, format!("tcp://{ip}:5557"))]),
             replay_endpoint: None,
+            metadata: None,
         }
+    }
+
+    #[test]
+    fn pod_metadata_overrides_pool_defaults() {
+        let mut raw = worker(7, "10.0.0.1");
+        raw.metadata = Some(crate::pod_discovery::WorkerMetadata {
+            model_name: Some("model-v2".to_string()),
+            routing_group: Some("epoch-2".to_string()),
+            block_size: Some(32),
+            total_kv_blocks: Some(2048),
+            max_num_batched_tokens: Some(16384),
+            stable_routing_id: Some("deployment-v2/replica-7".to_string()),
+            ..Default::default()
+        });
+        let request = worker_request(raw, &defaults());
+        assert_eq!(request.model_name, "model-v2");
+        assert_eq!(request.routing_group, "epoch-2");
+        assert_eq!(request.block_size, Some(32));
+        assert_eq!(request.total_kv_blocks, Some(2048));
+        assert_eq!(request.max_num_batched_tokens, Some(16384));
+        assert_eq!(
+            request.stable_routing_id.as_deref(),
+            Some("deployment-v2/replica-7")
+        );
     }
 
     #[test]

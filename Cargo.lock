@@ -2466,6 +2466,7 @@ version = "1.6.0"
 dependencies = [
  "anyhow",
  "clap",
+ "dynamo-ext-proc",
  "dynamo-kv-router",
  "dynamo-llm",
  "dynamo-runtime",
