@@ -52,10 +52,15 @@ the execution plan; implementation and validation remain pending.
 - Added one runnable binary with preprocessor, selector, and postprocessor modes,
   gRPC health services, limits, per-item errors, and deadlines where applicable.
 - Documented the ownership boundary and rebase/upgrade procedure in `README.md`.
-- Differential preprocessing tests pass: 3 passed, 0 failed. The crate and binary
-  compile against Dynamo 1.6 at `7d4c346fa0`.
+- Focused facade tests pass: preprocessing 3, selector 2, postprocessor gRPC 1;
+  6 passed and 0 failed. The crate and binary compile against Dynamo 1.6 at
+  `7d4c346fa0`.
 - Strict CODEOWNERS generation reports 100% coverage; the new crate is shared by
   frontend, router, and runtime owners.
+- Private push is currently rejected because upstream `main` references seven Git
+  LFS video objects that return 404 upstream and are absent from the private mirror.
+  GitHub's pre-receive hook rejects the inherited pointers even with local incomplete
+  push enabled. Local commits remain authoritative until the base/mirror is repaired.
 
 ## Recorded prototype comparison targets
 
@@ -77,9 +82,9 @@ and binary identities, token counts, and actual transport configuration.
 
 ## Remaining work
 
-1. Add selector lifecycle and bidirectional postprocessor transport tests.
-2. Connect an existing Dynamo backend wrapper without a replacement worker engine.
-3. Implement AGW static, AGW generic, Envoy generic, and Envoy generic with callouts.
-4. Build artifacts/manifests and deploy an isolated cluster stack.
-5. Run real-engine E2E plus the repeated 24-cell mock benchmark matrix.
-6. Investigate performance gaps, complete update rehearsal, commit, and push evidence.
+1. Connect an existing Dynamo backend wrapper without a replacement worker engine.
+2. Implement AGW static, AGW generic, Envoy generic, and Envoy generic with callouts.
+3. Build artifacts/manifests and deploy an isolated cluster stack.
+4. Run real-engine E2E plus the repeated 24-cell mock benchmark matrix.
+5. Investigate performance gaps, complete update rehearsal, and commit evidence.
+6. Push once the inherited upstream Git LFS objects/private base are available.
