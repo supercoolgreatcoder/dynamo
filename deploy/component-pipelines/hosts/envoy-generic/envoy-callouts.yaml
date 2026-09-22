@@ -42,8 +42,7 @@ static_resources:
   # a selected endpoint such as http://dynamo-worker:50051 resolve to cluster
   # `dynamo-worker`; absence fails the request and never falls back to tonic.
   clusters:
-    - &grpc_cluster
-      name: dynamo-preprocessor
+    - name: dynamo-preprocessor
       type: STRICT_DNS
       connect_timeout: 2s
       typed_extension_protocol_options:
@@ -55,15 +54,25 @@ static_resources:
         endpoints:
           - lb_endpoints:
               - endpoint: {address: {socket_address: {address: dynamo-preprocessor, port_value: 50051}}}
-    - <<: *grpc_cluster
-      name: dynamo-selector
+    - name: dynamo-selector
+      type: STRICT_DNS
+      connect_timeout: 2s
+      typed_extension_protocol_options:
+        envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+          "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+          explicit_http_config: {http2_protocol_options: {}}
       load_assignment:
         cluster_name: dynamo-selector
         endpoints:
           - lb_endpoints:
               - endpoint: {address: {socket_address: {address: dynamo-selector, port_value: 50051}}}
-    - <<: *grpc_cluster
-      name: dynamo-worker
+    - name: dynamo-worker
+      type: STRICT_DNS
+      connect_timeout: 2s
+      typed_extension_protocol_options:
+        envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+          "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+          explicit_http_config: {http2_protocol_options: {}}
       load_assignment:
         cluster_name: dynamo-worker
         endpoints:

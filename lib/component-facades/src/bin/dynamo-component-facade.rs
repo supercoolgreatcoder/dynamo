@@ -6,19 +6,36 @@ use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 use anyhow::Context;
 use clap::{Parser, Subcommand};
 use dynamo_component_facades::{
+    chat_worker::ChatWorkerFacade,
     postprocess::PostprocessorFacade,
     preprocess::PreprocessorFacade,
     proto::{
-        FILE_DESCRIPTOR_SET, postprocessor_server::PostprocessorServer,
-        preprocessor_server::PreprocessorServer, selector_server::SelectorServer,
+        FILE_DESCRIPTOR_SET, chat_worker_bridge_server::ChatWorkerBridgeServer,
+        postprocessor_server::PostprocessorServer, preprocessor_server::PreprocessorServer,
+        selector_server::SelectorServer,
     },
     selector::SelectorFacade,
+    worker::CanonicalBackendEngine,
 };
+use dynamo_ext_proc::{PodDiscovery, PodDiscoveryConfig, RegistrationDefaults, TopologyAdapter};
 use dynamo_kv_router::{
     WorkerType, config::KvRouterConfig, plugins::RouterPluginRegistry,
     services::selection::SelectionServiceBuilder,
 };
-use dynamo_llm::{model_card::ModelDeploymentCard, preprocessor::OpenAIPreprocessor};
+use dynamo_llm::{
+    model_card::ModelDeploymentCard,
+    preprocessor::{BackendOutput, OpenAIPreprocessor, PreprocessedRequest},
+    protocols::common::llm_backend::FinishReason,
+};
+use dynamo_runtime::{
+    pipeline::{
+        AsyncEngine, AsyncEngineContextProvider, Context as EngineContext, Error, ManyOut,
+        ResponseStream, SingleIn, async_trait,
+    },
+    protocols::annotated::Annotated,
+};
+use futures::stream;
+use serde::Deserialize;
 use tonic::transport::Server;
 
 #[derive(Parser)]
@@ -37,6 +54,8 @@ enum Command {
     Preprocessor(ModelArgs),
     Postprocessor(PostprocessorArgs),
     Selector(SelectorArgs),
+    /// CPU-only deterministic worker for facade/orchestrator benchmarks.
+    BenchmarkWorker(ModelArgs),
 }
 
 #[derive(clap::Args)]
@@ -77,6 +96,9 @@ struct PostprocessorArgs {
 struct SelectorArgs {
     #[arg(long, env = "DYN_COMPONENT_ROUTER_CONFIG")]
     router_config: Option<PathBuf>,
+    /// JSON file declaring one or more InferencePools to watch.
+    #[arg(long, env = "DYN_COMPONENT_DISCOVERY_CONFIG")]
+    discovery_config: Option<PathBuf>,
     #[arg(long, default_value = "aggregated")]
     worker_type: WorkerType,
     #[arg(long, default_value_t = 4)]
@@ -87,6 +109,90 @@ struct SelectorArgs {
     max_batch_bytes: usize,
     #[arg(long, default_value_t = 32)]
     max_concurrency: usize,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SelectorDiscoveryFile {
+    pools: Vec<PoolRegistration>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PoolRegistration {
+    namespace: String,
+    inference_pool_name: String,
+    model_name: String,
+    #[serde(default = "default_block_size")]
+    block_size: u32,
+    #[serde(default)]
+    total_kv_blocks: Option<u64>,
+    #[serde(default)]
+    max_num_batched_tokens: Option<u64>,
+    #[serde(default = "default_data_parallel_size")]
+    data_parallel_size: u32,
+    #[serde(default = "default_kv_event_port")]
+    kv_event_port: u16,
+    #[serde(default = "default_kv_event_port_stride")]
+    kv_event_port_stride: u16,
+    #[serde(default)]
+    replay_port: Option<u16>,
+}
+
+fn default_block_size() -> u32 {
+    16
+}
+fn default_data_parallel_size() -> u32 {
+    1
+}
+fn default_kv_event_port() -> u16 {
+    5557
+}
+fn default_kv_event_port_stride() -> u16 {
+    1
+}
+
+struct BenchmarkBackend;
+
+#[async_trait]
+impl AsyncEngine<SingleIn<PreprocessedRequest>, ManyOut<Annotated<BackendOutput>>, Error>
+    for BenchmarkBackend
+{
+    async fn generate(
+        &self,
+        request: EngineContext<PreprocessedRequest>,
+    ) -> Result<ManyOut<Annotated<BackendOutput>>, Error> {
+        let token_count = request
+            .stop_conditions
+            .max_tokens
+            .unwrap_or(1)
+            .clamp(1, 2048);
+        let context = request.context();
+        let outputs = (0..token_count).map(move |index| {
+            Annotated::from_data(BackendOutput {
+                token_ids: vec![42],
+                tokens: vec![Some("x".into())],
+                text: Some("x".into()),
+                cum_log_probs: None,
+                log_probs: None,
+                top_logprobs: None,
+                finish_reason: (index + 1 == token_count).then_some(FinishReason::Length),
+                stop_reason: None,
+                index: Some(0),
+                completion_usage: None,
+                disaggregated_params: None,
+                encoder_result: None,
+                worker_trace_link: None,
+                engine_data: None,
+                routing_data: None,
+                jailed_text: None,
+            })
+        });
+        Ok(ResponseStream::new(
+            Box::pin(stream::iter(outputs)),
+            context,
+        ))
+    }
 }
 
 fn load_preprocessor(args: &ModelArgs) -> anyhow::Result<Arc<OpenAIPreprocessor>> {
@@ -154,6 +260,29 @@ async fn main() -> anyhow::Result<()> {
                 .serve(args.listen)
                 .await?;
         }
+        Command::BenchmarkWorker(config) => {
+            let engine: CanonicalBackendEngine = Arc::new(BenchmarkBackend);
+            let service = ChatWorkerFacade::new(
+                engine,
+                load_preprocessor(&config)?,
+                config.max_batch_bytes,
+                config.max_batch_bytes,
+            )?;
+            let (reporter, health) = tonic_health::server::health_reporter();
+            reporter
+                .set_serving::<ChatWorkerBridgeServer<ChatWorkerFacade>>()
+                .await;
+            let reflection = tonic_reflection::server::Builder::configure()
+                .register_encoded_file_descriptor_set(FILE_DESCRIPTOR_SET)
+                .build_v1()
+                .context("build component reflection service")?;
+            Server::builder()
+                .add_service(health)
+                .add_service(reflection)
+                .add_service(ChatWorkerBridgeServer::new(service))
+                .serve(args.listen)
+                .await?;
+        }
         Command::Selector(config) => {
             let router_config = match config.router_config {
                 Some(path) => serde_json::from_slice::<KvRouterConfig>(
@@ -173,6 +302,39 @@ async fn main() -> anyhow::Result<()> {
                 .build()
                 .await?,
             );
+            let mut topology_adapters = Vec::new();
+            if let Some(path) = config.discovery_config.as_ref() {
+                let discovery: SelectorDiscoveryFile = serde_json::from_slice(
+                    &std::fs::read(path)
+                        .with_context(|| format!("read discovery config {}", path.display()))?,
+                )
+                .with_context(|| format!("parse discovery config {}", path.display()))?;
+                anyhow::ensure!(
+                    !discovery.pools.is_empty(),
+                    "discovery config must declare at least one pool"
+                );
+                for pool in discovery.pools {
+                    let (reflector, _ready) = PodDiscovery::spawn_with_config(PodDiscoveryConfig {
+                        namespace: pool.namespace,
+                        inference_pool_name: pool.inference_pool_name,
+                        data_parallel_size: pool.data_parallel_size,
+                        kv_event_port_stride: pool.kv_event_port_stride,
+                        kv_event_port: pool.kv_event_port,
+                        replay_port: pool.replay_port,
+                    })
+                    .await?;
+                    topology_adapters.push(TopologyAdapter::spawn_service(
+                        reflector,
+                        Arc::clone(&selection),
+                        RegistrationDefaults {
+                            model_name: pool.model_name,
+                            block_size: pool.block_size,
+                            total_kv_blocks: pool.total_kv_blocks,
+                            max_num_batched_tokens: pool.max_num_batched_tokens,
+                        },
+                    ));
+                }
+            }
             let service = SelectorFacade::new(
                 selection,
                 config.max_batch_items,

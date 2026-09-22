@@ -22,10 +22,63 @@ use std::sync::{Arc, RwLock};
 use anyhow::Result;
 use dynamo_runtime::discovery::hash_pod_name;
 use k8s_openapi::api::core::v1::Pod;
+use serde::{Deserialize, Serialize};
 use tokio::sync::watch;
 
 use crate::epp_standalone_config::EppStandaloneConfig;
 use crate::inference_pool::{PoolState, spawn_pool_watch};
+
+/// Atomic, low-churn worker metadata published by an engine/operator on its Pod.
+///
+/// Capacity values that only become known after engine startup (for example
+/// vLLM cache block count) can be patched into this one annotation. The Pod
+/// watch then republishes one coherent worker record to the canonical selector.
+pub const WORKER_METADATA_ANNOTATION: &str = "dynamo.nvidia.com/worker-metadata";
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WorkerMetadata {
+    #[serde(default = "worker_metadata_schema")]
+    pub schema_version: String,
+    pub model_name: Option<String>,
+    pub routing_group: Option<String>,
+    pub block_size: Option<u32>,
+    pub total_kv_blocks: Option<u64>,
+    pub max_num_batched_tokens: Option<u64>,
+    pub stable_routing_id: Option<String>,
+    pub is_eagle: Option<bool>,
+    pub kv_transfer_domain: Option<String>,
+    pub router_hint_worker_type: Option<String>,
+    pub kv_event_source_mode: Option<String>,
+}
+
+fn worker_metadata_schema() -> String {
+    "v1".to_string()
+}
+
+/// Runtime-independent configuration for the EPP-derived InferencePool/Pod
+/// watcher. It intentionally contains no Dynamo runtime or NATS settings.
+#[derive(Debug, Clone)]
+pub struct PodDiscoveryConfig {
+    pub namespace: String,
+    pub inference_pool_name: String,
+    pub data_parallel_size: u32,
+    pub kv_event_port_stride: u16,
+    pub kv_event_port: u16,
+    pub replay_port: Option<u16>,
+}
+
+impl From<&EppStandaloneConfig> for PodDiscoveryConfig {
+    fn from(cfg: &EppStandaloneConfig) -> Self {
+        Self {
+            namespace: cfg.namespace.clone(),
+            inference_pool_name: cfg.inference_pool_name.clone(),
+            data_parallel_size: cfg.data_parallel_size,
+            kv_event_port_stride: cfg.kv_event_port_stride,
+            kv_event_port: cfg.kv_event_port,
+            replay_port: cfg.replay_port,
+        }
+    }
+}
 
 /// A discovered, `Ready` raw inference engine worker normalized for selector registration.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -43,6 +96,8 @@ pub struct RawWorker {
     pub kv_events_endpoints: HashMap<u32, String>,
     /// Optional ZMQ REQ endpoint for live-stream gap replay.
     pub replay_endpoint: Option<String>,
+    /// Optional atomic model/capacity snapshot from the Pod annotation.
+    pub metadata: Option<WorkerMetadata>,
 }
 
 /// One indexed worker: the materialized [`RawWorker`] for selector registration
@@ -81,6 +136,11 @@ impl PodDiscovery {
     /// (so nothing is routable), and recovers when both are healthy again — this
     /// is the gRPC health SERVING signal, so it must not latch true.
     pub async fn spawn(cfg: &EppStandaloneConfig) -> Result<(Self, Arc<AtomicBool>)> {
+        Self::spawn_with_config(PodDiscoveryConfig::from(cfg)).await
+    }
+
+    /// Start discovery without constructing an EPP or Dynamo runtime.
+    pub async fn spawn_with_config(cfg: PodDiscoveryConfig) -> Result<(Self, Arc<AtomicBool>)> {
         use futures::StreamExt;
         use kube::{Api, Client, runtime::WatchStreamExt, runtime::reflector, runtime::watcher};
 
@@ -445,6 +505,32 @@ fn raw_worker_from_pod(
     let pod_name = pod.metadata.name.as_deref()?;
     let pod_ip = pod.status.as_ref()?.pod_ip.as_deref()?;
     let ip: IpAddr = pod_ip.parse().ok()?;
+    let metadata = pod
+        .metadata
+        .annotations
+        .as_ref()
+        .and_then(|annotations| annotations.get(WORKER_METADATA_ANNOTATION))
+        .and_then(
+            |value| match serde_json::from_str::<WorkerMetadata>(value) {
+                Ok(metadata) if metadata.schema_version == "v1" => Some(metadata),
+                Ok(metadata) => {
+                    tracing::warn!(
+                        pod = %pod_name,
+                        schema_version = %metadata.schema_version,
+                        "Ignoring unsupported worker metadata annotation schema"
+                    );
+                    None
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        pod = %pod_name,
+                        %error,
+                        "Ignoring invalid worker metadata annotation"
+                    );
+                    None
+                }
+            },
+        );
 
     Some(RawWorker {
         worker_id: hash_pod_name(pod_name),
@@ -453,6 +539,7 @@ fn raw_worker_from_pod(
         http_endpoint: format!("http://{}", SocketAddr::new(ip, pool.target_port)),
         kv_events_endpoints: kv_ports.endpoints(ip),
         replay_endpoint: replay_port.map(|p| format!("tcp://{}", SocketAddr::new(ip, p))),
+        metadata,
     })
 }
 
@@ -554,6 +641,37 @@ mod tests {
             HashMap::from([(0, "tcp://10.0.0.1:5557".to_string())])
         );
         assert_eq!(w.replay_endpoint.as_deref(), Some("tcp://10.0.0.1:5560"));
+    }
+
+    #[test]
+    fn model_card_annotation_is_parsed_as_one_snapshot() {
+        let mut annotated = pod(
+            "vllm-0",
+            Some("10.0.0.1"),
+            Some(true),
+            &[("app", "vllm-qwen")],
+        );
+        annotated.metadata.annotations = Some(BTreeMap::from([(
+            WORKER_METADATA_ANNOTATION.to_string(),
+            serde_json::json!({
+                "schema_version": "v1",
+                "model_name": "Qwen/Qwen3-8B",
+                "routing_group": "generation-42",
+                "block_size": 32,
+                "total_kv_blocks": 8192,
+                "max_num_batched_tokens": 32768,
+                "stable_routing_id": "qwen-42/vllm-0",
+                "future_engine_field": "ignored for forward compatibility"
+            })
+            .to_string(),
+        )]));
+        let worker = raw_worker_from_pod(&annotated, &pool(), single_rank(5557), None)
+            .expect("annotated ready Pod should map");
+        let metadata = worker.metadata.expect("metadata should parse");
+        assert_eq!(metadata.model_name.as_deref(), Some("Qwen/Qwen3-8B"));
+        assert_eq!(metadata.routing_group.as_deref(), Some("generation-42"));
+        assert_eq!(metadata.block_size, Some(32));
+        assert_eq!(metadata.total_kv_blocks, Some(8192));
     }
 
     #[test]
@@ -919,6 +1037,7 @@ mod tests {
             http_endpoint: format!("http://{endpoint}"),
             kv_events_endpoints: HashMap::from([(0, format!("tcp://{endpoint}"))]),
             replay_endpoint: None,
+            metadata: None,
         }
     }
 

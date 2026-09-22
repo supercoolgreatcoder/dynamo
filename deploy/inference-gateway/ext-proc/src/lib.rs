@@ -36,7 +36,9 @@ pub use epp_standalone_config::{
 };
 pub use inference_pool::PoolState;
 pub use picker::{Endpoint, EndpointPicker, PickResult, RequestInfo, ResponseUsage};
-pub use pod_discovery::{PodDiscovery, RawWorker};
+pub use pod_discovery::{
+    PodDiscovery, PodDiscoveryConfig, RawWorker, WORKER_METADATA_ANNOTATION, WorkerMetadata,
+};
 pub use render_http::RenderError;
 pub use runner::run;
 pub use selector::{OverlapSummary, SelectRequest, SelectResponse, Selector};

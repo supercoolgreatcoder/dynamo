@@ -1506,13 +1506,13 @@ impl<EHF: EnvoyHttpFilter> HttpFilter<EHF> for GenericFilter {
                 frame_suffix: frame_suffix(&id, created, &model),
                 outbox: outbox.clone(),
                 scheduler: scheduler.clone(),
-                id,
+                id: id.clone(),
                 created,
                 model,
             };
             // The interpreter's request shape is `{body: ...}`; the pipeline's `api:` block
             // names the operation this body belongs to.
-            let request = serde_json::json!({ "body": parsed });
+            let request = serde_json::json!({ "id": id, "body": parsed });
             // One `Transport` or the other, chosen once. `run_with_sink` takes `&dyn
             // Transport`, so this costs a vtable dispatch per call and nothing per request.
             let outcome = match host_tx.as_deref() {
