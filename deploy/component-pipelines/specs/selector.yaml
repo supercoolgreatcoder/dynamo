@@ -1,0 +1,59 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+openapi: 3.0.3
+info: {title: Dynamo canonical selector facade, version: "1.0"}
+paths:
+  /select:
+    post:
+      operationId: select
+      x-grpc: {service: dynamo.components.v1.Selector, method: Select}
+      x-grpc-json-bytes: true
+      x-batch:
+        intoField: items
+        responseField: items
+        operationId: selectBatch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [item_id, payload_json]
+              properties:
+                item_id: {type: string}
+                payload_json: {type: object}
+                deadline_unix_ms: {type: integer}
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: &result
+                type: object
+                properties:
+                  item_id: {type: string}
+                  payload_json: {type: object}
+                  error: {type: object}
+  /select_batch:
+    post:
+      operationId: selectBatch
+      x-grpc: {service: dynamo.components.v1.Selector, method: SelectBatch}
+      x-grpc-json-bytes: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [items]
+              properties:
+                items: {type: array, items: {type: object}}
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: {type: array, items: *result}

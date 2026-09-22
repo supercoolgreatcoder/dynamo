@@ -34,11 +34,16 @@ message PreparedItem {
   uint64 image_count = 11;
   uint64 video_count = 12;
   uint64 audio_count = 13;
+  // Canonical selection-service request derived from backend_request_json.
+  // Keeping this translation in the Dynamo facade prevents gateways from
+  // knowing Dynamo's routing schema.
+  bytes selector_request_json = 14;
 }
 
 message PreprocessBatchResponse { repeated PreparedItem items = 1; }
 
 service Preprocessor {
+  rpc Prepare(PreprocessItem) returns (PreparedItem);
   rpc PrepareBatch(PreprocessBatchRequest) returns (PreprocessBatchResponse);
 }
 
@@ -89,6 +94,9 @@ message ReservationEventBatchRequest { repeated ReservationEvent items = 1; }
 message ReadyRequest {}
 
 service Selector {
+  rpc Select(JsonItem) returns (JsonResult);
+  rpc SelectAndReserve(JsonItem) returns (JsonResult);
+  rpc CreateReservation(JsonItem) returns (JsonResult);
   rpc SelectBatch(JsonBatchRequest) returns (JsonBatchResponse);
   rpc SelectAndReserveBatch(JsonBatchRequest) returns (JsonBatchResponse);
   rpc CreateReservationBatch(JsonBatchRequest) returns (JsonBatchResponse);
@@ -121,6 +129,26 @@ message WorkerOutput {
 
 service WorkerBridge {
   rpc Process(stream WorkerInput) returns (stream WorkerOutput);
+}
+
+message ChatWorkerRequest {
+  string request_id = 1;
+  bytes backend_request_json = 2;
+  bytes normalized_openai_request_json = 3;
+  bool prompt_injected_reasoning = 4;
+  bool uses_tool_call_structural_tag = 5;
+  uint64 prompt_tokens = 6;
+  optional uint64 image_tokens = 7;
+  uint64 image_count = 8;
+  uint64 video_count = 9;
+  uint64 audio_count = 10;
+  int64 deadline_unix_ms = 11;
+}
+
+// Preferred worker-side boundary for gateway graphs. A Dynamo wrapper supplies
+// the backend engine and Dynamo's canonical postprocessor produces OpenAI chunks.
+service ChatWorkerBridge {
+  rpc Generate(ChatWorkerRequest) returns (stream PostprocessOutput);
 }
 
 message PostprocessOpen {

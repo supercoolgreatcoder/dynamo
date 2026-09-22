@@ -1,0 +1,45 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+openapi: 3.0.3
+info: {title: Dynamo canonical worker/postprocessor bridge, version: "1.0"}
+paths:
+  /generate:
+    post:
+      operationId: generate
+      x-streaming: true
+      x-grpc: {service: dynamo.components.v1.ChatWorkerBridge, method: Generate}
+      x-grpc-json-bytes: true
+      x-grpc-response-body: openai_chunk_json
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [request_id, backend_request_json, normalized_openai_request_json]
+              properties:
+                request_id: {type: string}
+                backend_request_json: {type: object}
+                normalized_openai_request_json: {type: object}
+                prompt_injected_reasoning: {type: boolean}
+                uses_tool_call_structural_tag: {type: boolean}
+                prompt_tokens: {type: integer}
+                image_tokens: {type: integer}
+                image_count: {type: integer}
+                video_count: {type: integer}
+                audio_count: {type: integer}
+                deadline_unix_ms: {type: integer}
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: {type: string}
+                  object: {type: string}
+                  created: {type: integer}
+                  model: {type: string}
+                  choices: {type: array}
+                  usage: {type: object}

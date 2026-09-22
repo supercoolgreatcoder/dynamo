@@ -1,0 +1,35 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+openapi: 3.0.3
+info: {title: OpenAI chat completions, version: "1.0"}
+paths:
+  /v1/chat/completions:
+    post:
+      operationId: createChatCompletion
+      x-streaming: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [model, messages]
+              properties:
+                model: {type: string}
+                messages: {type: array, items: {type: object}}
+                stream: {type: boolean}
+                max_completion_tokens: {type: integer}
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: {type: string}
+                  object: {type: string}
+                  created: {type: integer}
+                  model: {type: string}
+                  choices: {type: array}
+                  usage: {type: object}
