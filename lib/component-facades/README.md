@@ -1,0 +1,41 @@
+<!--
+SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+SPDX-License-Identifier: Apache-2.0
+-->
+
+# Dynamo component facades
+
+This crate exposes bounded gRPC transport around Dynamo's canonical preprocessing,
+selection, and response-postprocessing implementations. It does not implement model
+templates, tokenization, routing policy, reasoning parsing, tool parsing, or inference.
+
+## Ownership boundary
+
+| Facade | Canonical implementation |
+| --- | --- |
+| Preprocessor | `dynamo_llm::preprocessor::OpenAIPreprocessor` |
+| Selector | `dynamo_kv_router::services::selection::SelectionService` |
+| Postprocessor | `OpenAIPreprocessor::postprocess_chat_stream` |
+| Workers | Existing Dynamo vLLM/SGLang/TRT-LLM wrappers and sidecars |
+
+The protobuf messages are transport envelopes. Evolving Dynamo request and selector
+types cross the boundary as their canonical JSON representation, so the facade does
+not maintain a field-by-field shadow model. Stable envelope fields carry request IDs,
+deadlines, parser continuation state, per-item errors, and batching controls.
+
+The worker-side postprocessor consumes OpenAI chunks produced after Dynamo backend
+detokenization. Incremental token decoding and hidden-stop handling remain in
+`dynamo_llm::backend::Backend`, where Dynamo already requires them to run. The facade
+adds canonical reasoning/tool response processing without decoding a token twice.
+
+## Upgrade procedure
+
+1. Fetch and rebase the feature branch onto the desired `ai-dynamo/dynamo` `main`.
+2. Resolve only changes to the narrow shared methods on `OpenAIPreprocessor`.
+3. Regenerate protobuf bindings through `cargo build`; generated files are not checked in.
+4. Run `cargo test -p dynamo-component-facades` and the existing `dynamo-llm` parser tests.
+5. Build the existing backend sidecars and run the component pipeline end-to-end suite.
+6. Rerun the pinned mock and real-engine benchmark matrices before deployment promotion.
+
+All Dynamo dependencies are workspace path dependencies and share the repository lockfile.
+There is no separately versioned Dynamo fork or copied policy implementation to update.
