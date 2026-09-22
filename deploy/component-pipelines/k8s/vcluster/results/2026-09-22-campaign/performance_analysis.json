@@ -1,0 +1,31 @@
+{
+  "benchmark_series_id": "component-gateways-aiperf-0.12.0-2026-09-22",
+  "current_candidate": "split component gateway matrix",
+  "performance_question": "Compare gateway orchestration throughput and stability against the stock Dynamo frontend.",
+  "target_slos": [],
+  "comparisons": {
+    "short_rps_vs_dynamo_percent": {"agw-static":53.73,"agw-generic":-25.69,"envoy-independent":-20.02,"envoy-callouts":-22.43},
+    "isl4000_rps_vs_dynamo_percent": {"agw-static":24.99,"agw-generic":-21.12,"envoy-independent":-10.65,"envoy-callouts":-6.41},
+    "mooncake": "No comparison to Dynamo is valid because the reference and two candidates failed the stress cell."
+  },
+  "run_count": 1,
+  "series_noise_floor": null,
+  "minimum_detectable_effect": null,
+  "repeat_decision": {
+    "value": "necessary",
+    "rationale": "A series noise-floor pilot (n=3 total) is required before promotion based on modest valid-cell deltas; categorical Mooncake failures do not require repetition to establish instability.",
+    "expected_decision": "Distinguish the Envoy variants and AGW generic from run-to-run noise after fixing their stress failures."
+  },
+  "verdict": "mixed",
+  "client_visible_symptoms": [
+    "AGW generic reset 228 Mooncake requests when its pod was OOM-killed.",
+    "Envoy callouts returned 108633 empty streams after prepare-callout gRPC LocalReset.",
+    "The stock Dynamo reference accepted no successful Mooncake requests in the six-client stress cell."
+  ],
+  "missing_evidence": ["Noise floor","git-preserved per-request exports","resource-normalized CPU limits","Mooncake reruns after failure fixes"],
+  "limitations": [
+    "Mock-worker throughput characterizes gateway orchestration, not GPU token generation.",
+    "The Mooncake workload is a deliberate compressed stress replay and includes a large timestamp-zero burst.",
+    "AIPerf output-length mismatch warnings are expected with deterministic mock workers and are not GPU engine measurements."
+  ]
+}

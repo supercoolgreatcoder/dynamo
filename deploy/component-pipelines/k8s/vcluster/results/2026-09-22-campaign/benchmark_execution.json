@@ -1,0 +1,40 @@
+{
+  "benchmark_series_id": "component-gateways-aiperf-0.12.0-2026-09-22",
+  "executed_at": "2026-09-22",
+  "cluster_scope": {"context":"gateway-poc vCluster","namespace":"dynamo-components-v2","host_cluster_mutated":false},
+  "tool": {"name":"AIPerf","version":"0.12.0","image":"nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0"},
+  "endpoint_type": "chat",
+  "model": "Qwen/Qwen2.5-0.5B-Instruct",
+  "tokenizer": "builtin",
+  "streaming": true,
+  "clients_per_cell": 6,
+  "synthetic_load": {
+    "concurrency_per_client": 128,
+    "duration_seconds": 45,
+    "grace_period_seconds": 15,
+    "warmup_requests_per_client": 128,
+    "short": {"isl":100,"osl":50},
+    "isl4000": {"isl":4000,"osl":50}
+  },
+  "mooncake_load": {
+    "trace": "/nix/store/jf24i17c3ymqpcx3fl60rv3ilyr10hbc-mooncake_trace.jsonl",
+    "trace_records": 23608,
+    "schedule": "fixed",
+    "auto_offset": true,
+    "synthesis_speedup_ratio": 80,
+    "isl_block_size": 128,
+    "duration_seconds": 45,
+    "grace_period_seconds": 15
+  },
+  "isolation": {
+    "cells_serialized": true,
+    "clients_parallel_only_within_cell": true,
+    "mock_workers_separate_from_real_gpu_correctness": true,
+    "limitation": "CPU and network nodes were shared; no series noise-floor pilot was collected."
+  },
+  "raw_evidence": {
+    "location": "Kubernetes Job logs and /tmp/artifacts within the named benchmark pods",
+    "jobs_prefixes": ["bench-short-","bench-isl4000-","bench-mooncake-"],
+    "preservation_limitation": "Console summaries are normalized here; per-request pod-local artifacts were not copied into git."
+  }
+}
