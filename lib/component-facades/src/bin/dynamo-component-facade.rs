@@ -10,7 +10,7 @@ use dynamo_component_facades::{
     preprocess::PreprocessorFacade,
     proto::{
         postprocessor_server::PostprocessorServer, preprocessor_server::PreprocessorServer,
-        selector_server::SelectorServer,
+        selector_server::SelectorServer, FILE_DESCRIPTOR_SET,
     },
     selector::SelectorFacade,
 };
@@ -108,8 +108,13 @@ async fn main() -> anyhow::Result<()> {
             reporter
                 .set_serving::<PreprocessorServer<PreprocessorFacade>>()
                 .await;
+            let reflection = tonic_reflection::server::Builder::configure()
+                .register_encoded_file_descriptor_set(FILE_DESCRIPTOR_SET)
+                .build_v1()
+                .context("build component reflection service")?;
             Server::builder()
                 .add_service(health)
+                .add_service(reflection)
                 .add_service(PreprocessorServer::new(service))
                 .serve(args.listen)
                 .await?;
@@ -126,8 +131,13 @@ async fn main() -> anyhow::Result<()> {
             reporter
                 .set_serving::<PostprocessorServer<PostprocessorFacade>>()
                 .await;
+            let reflection = tonic_reflection::server::Builder::configure()
+                .register_encoded_file_descriptor_set(FILE_DESCRIPTOR_SET)
+                .build_v1()
+                .context("build component reflection service")?;
             Server::builder()
                 .add_service(health)
+                .add_service(reflection)
                 .add_service(PostprocessorServer::new(service))
                 .serve(args.listen)
                 .await?;
@@ -161,8 +171,13 @@ async fn main() -> anyhow::Result<()> {
             reporter
                 .set_serving::<SelectorServer<SelectorFacade>>()
                 .await;
+            let reflection = tonic_reflection::server::Builder::configure()
+                .register_encoded_file_descriptor_set(FILE_DESCRIPTOR_SET)
+                .build_v1()
+                .context("build component reflection service")?;
             Server::builder()
                 .add_service(health)
+                .add_service(reflection)
                 .add_service(SelectorServer::new(service))
                 .serve(args.listen)
                 .await?;

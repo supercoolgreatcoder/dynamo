@@ -196,6 +196,7 @@ prost-types = { version = "0.13.5" }
 tonic = { version = "0.13.1" }
 tonic-health = { version = "0.13.1" }
 tonic-build = { version = "0.13.1" }
+tonic-reflection = { version = "0.13.1" }
 # vllm-proto exposes 0.14 types; other generated bindings still use 0.13.
 prost-types-v14 = { package = "prost-types", version = "0.14.3" }
 tonic-v14 = { package = "tonic", version = "0.14.6" }

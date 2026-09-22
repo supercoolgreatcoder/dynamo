@@ -7,6 +7,10 @@ pub mod selector;
 
 pub mod proto {
     tonic::include_proto!("dynamo.components.v1");
+
+    /// Canonical descriptor consumed by descriptor-driven gateway variants.
+    pub const FILE_DESCRIPTOR_SET: &[u8] =
+        tonic::include_file_descriptor_set!("components_descriptor");
 }
 
 use proto::ItemError;

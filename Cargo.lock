@@ -2479,6 +2479,7 @@ dependencies = [
  "tonic 0.13.1",
  "tonic-build 0.13.1",
  "tonic-health 0.13.1",
+ "tonic-reflection",
  "tower 0.5.3",
  "tracing",
  "tracing-subscriber",
