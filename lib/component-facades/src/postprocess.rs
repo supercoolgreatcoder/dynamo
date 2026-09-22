@@ -4,10 +4,8 @@
 use std::{collections::HashMap, pin::Pin, sync::Arc};
 
 use dynamo_llm::{
-    preprocessor::OpenAIPreprocessor,
-    protocols::openai::chat_completions::{
-        NvCreateChatCompletionRequest, NvCreateChatCompletionStreamResponse,
-    },
+    preprocessor::{BackendOutput, MultimodalCounts, OpenAIPreprocessor},
+    protocols::openai::chat_completions::NvCreateChatCompletionRequest,
 };
 use dynamo_runtime::protocols::annotated::Annotated;
 use futures::{Stream, StreamExt};
@@ -78,10 +76,8 @@ impl Postprocessor for PostprocessorFacade {
         let (output_tx, output_rx) = mpsc::channel(self.output_queue_capacity);
 
         tokio::spawn(async move {
-            let mut sessions: HashMap<
-                String,
-                mpsc::Sender<Annotated<NvCreateChatCompletionStreamResponse>>,
-            > = HashMap::new();
+            let mut sessions: HashMap<String, mpsc::Sender<Annotated<BackendOutput>>> =
+                HashMap::new();
             while let Some(frame) = inbound.next().await {
                 let frame = match frame {
                     Ok(frame) => frame,
@@ -132,11 +128,31 @@ impl Postprocessor for PostprocessorFacade {
                                 }
                             };
                         let (session_tx, session_rx) = mpsc::channel(session_queue_capacity);
-                        let stream = match processor.postprocess_chat_stream(
+                        let stream = match processor.postprocess_backend_chat_stream(
                             ReceiverStream::new(session_rx),
                             &chat_request,
+                            open.request_id.clone(),
+                            match u32::try_from(open.prompt_tokens) {
+                                Ok(value) => value,
+                                Err(_) => {
+                                    send_error(
+                                        &output_tx,
+                                        &open.request_id,
+                                        "invalid_argument",
+                                        "prompt_tokens exceeds u32",
+                                    )
+                                    .await;
+                                    continue;
+                                }
+                            },
                             open.prompt_injected_reasoning,
                             open.uses_tool_call_structural_tag,
+                            MultimodalCounts {
+                                image: open.image_count as usize,
+                                video: open.video_count as usize,
+                                audio: open.audio_count as usize,
+                            },
+                            open.image_tokens.map(|value| value as usize),
                         ) {
                             Ok(stream) => stream,
                             Err(error) => {
@@ -193,7 +209,7 @@ impl Postprocessor for PostprocessorFacade {
                         });
                     }
                     Some(postprocess_input::Frame::Chunk(chunk)) => {
-                        if chunk.annotated_chunk_json.len() > max_chunk_bytes {
+                        if chunk.annotated_backend_chunk_json.len() > max_chunk_bytes {
                             send_error(
                                 &output_tx,
                                 &chunk.request_id,
@@ -214,8 +230,8 @@ impl Postprocessor for PostprocessorFacade {
                             .await;
                             continue;
                         };
-                        let response: Annotated<NvCreateChatCompletionStreamResponse> =
-                            match serde_json::from_slice(&chunk.annotated_chunk_json) {
+                        let response: Annotated<BackendOutput> =
+                            match serde_json::from_slice(&chunk.annotated_backend_chunk_json) {
                                 Ok(response) => response,
                                 Err(error) => {
                                     send_error(

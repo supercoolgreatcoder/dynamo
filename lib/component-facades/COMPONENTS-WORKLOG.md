@@ -55,12 +55,17 @@ progress against this checklist.
   it through gRPC reflection. Generic gateway variants therefore bind to the same
   contract as generated clients instead of maintaining a second schema.
 - Renamed the postprocessor input field to `annotated_chunk_json` before freezing
-  v1, making explicit that the input is Dynamo's canonical annotated chunk while
-  the output is an OpenAI response chunk.
+  v1, then tightened the boundary further: it is now
+  `annotated_backend_chunk_json`, an `Annotated<BackendOutput>`. The canonical
+  postprocessor owns response generation, usage accounting, reasoning/tool parsing,
+  and OpenAI chunk construction.
+- Added a transport-only `WorkerFacade` over a caller-supplied Dynamo backend
+  `ServiceEngine`. Existing wrappers remain responsible for generation, P/D, and
+  detokenization; the bridge provides bounded output, request identity, and cancel.
 - Documented the ownership boundary and rebase/upgrade procedure in `README.md`.
-- Focused facade tests pass: preprocessing 3, selector 2, postprocessor gRPC 1;
-  6 passed and 0 failed. The crate and binary compile against Dynamo 1.6 at
-  `7d4c346fa0`. The same six tests pass with descriptor generation and reflection.
+- Focused facade tests pass: preprocessing 3, selector 2, postprocessor gRPC 1,
+  worker bridge gRPC 1; 7 passed and 0 failed. The crate and binary compile against
+  Dynamo 1.6 at `7d4c346fa0` with descriptor generation and reflection.
 - Strict CODEOWNERS generation reports 100% coverage; the new crate is shared by
   frontend, router, and runtime owners.
 - Private push is currently rejected because upstream `main` references seven Git

@@ -9,8 +9,8 @@ use dynamo_component_facades::{
     postprocess::PostprocessorFacade,
     preprocess::PreprocessorFacade,
     proto::{
-        postprocessor_server::PostprocessorServer, preprocessor_server::PreprocessorServer,
-        selector_server::SelectorServer, FILE_DESCRIPTOR_SET,
+        FILE_DESCRIPTOR_SET, postprocessor_server::PostprocessorServer,
+        preprocessor_server::PreprocessorServer, selector_server::SelectorServer,
     },
     selector::SelectorFacade,
 };

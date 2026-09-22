@@ -1259,7 +1259,7 @@ pub struct MultimodalCounts {
 
 impl MultimodalCounts {
     /// Count `image_url` / `video_url` / `audio_url` parts (vec length per modality).
-    fn from_preprocessed(request: &PreprocessedRequest) -> Self {
+    pub fn from_preprocessed(request: &PreprocessedRequest) -> Self {
         let count = |key: &str| {
             request
                 .multi_modal_data
@@ -4946,6 +4946,50 @@ impl OpenAIPreprocessor {
                 uses_tool_call_structural_tag,
             )?,
         ))
+    }
+
+    /// Convert canonical backend output and apply the complete chat response policy.
+    ///
+    /// This is the out-of-process counterpart to the existing frontend's backward
+    /// pipeline. Transport adapters pass Dynamo's own `BackendOutput`; response
+    /// generation, usage accounting, reasoning, and tool parsing remain here.
+    #[allow(clippy::too_many_arguments)]
+    pub fn postprocess_backend_chat_stream<S>(
+        &self,
+        stream: S,
+        request: &NvCreateChatCompletionRequest,
+        request_id: String,
+        prompt_tokens: u32,
+        prompt_injected_reasoning: bool,
+        uses_tool_call_structural_tag: bool,
+        mm_counts: MultimodalCounts,
+        image_tokens: Option<usize>,
+    ) -> anyhow::Result<
+        impl Stream<Item = Annotated<NvCreateChatCompletionStreamResponse>> + Send + 'static,
+    >
+    where
+        S: Stream<Item = Annotated<BackendOutput>> + Send + 'static,
+    {
+        let mut generator = Box::new(request.response_generator(request_id.clone()));
+        generator.update_isl(prompt_tokens);
+        let context =
+            PipelineContext::with_id_and_metadata((), request_id, Default::default()).context();
+        let stream = Self::transform_postprocessor_stream_with_image_tokens(
+            stream,
+            generator,
+            context,
+            false,
+            false,
+            None,
+            mm_counts,
+            image_tokens,
+        );
+        self.postprocess_chat_stream(
+            stream,
+            request,
+            prompt_injected_reasoning,
+            uses_tool_call_structural_tag,
+        )
     }
 
     fn postprocessor_parsing_stream_with_constraint<S>(
