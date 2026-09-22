@@ -1,0 +1,543 @@
+diff --git a/source/extensions/dynamic_modules/abi/abi.h b/source/extensions/dynamic_modules/abi/abi.h
+index f6b86c09ce..ba79334979 100644
+--- a/source/extensions/dynamic_modules/abi/abi.h
++++ b/source/extensions/dynamic_modules/abi/abi.h
+@@ -1031,6 +1031,32 @@ void envoy_dynamic_module_on_http_filter_http_callout_done(
+     envoy_dynamic_module_type_envoy_http_header* headers, size_t headers_size,
+     envoy_dynamic_module_type_envoy_buffer* body_chunks, size_t body_chunks_size);
+ 
++/**
++ * envoy_dynamic_module_on_http_filter_http_callout_done_with_trailers is the same event as
++ * envoy_dynamic_module_on_http_filter_http_callout_done, plus the response TRAILERS.
++ *
++ * This is OPTIONAL. Envoy looks the symbol up by name and calls it in preference to the
++ * trailer-less variant when a module exports it; a module that does not export it is
++ * unaffected, so existing modules keep working unchanged and no ABI version bump is needed.
++ * The same optional-symbol pattern is already used for
++ * envoy_dynamic_module_on_http_filter_config_http_callout_done and friends.
++ *
++ * Trailers matter for more than completeness: gRPC reports its status in `grpc-status` in the
++ * trailers of an otherwise-200 response, so a module carrying gRPC over a unary callout cannot
++ * otherwise tell an upstream failure from an empty success. Today the only way to read them is
++ * to use the streaming callout API even for unary calls.
++ *
++ * @param trailers is a list of key-value pairs of the response trailers. May be null.
++ * @param trailers_size is the size of the trailers.
++ */
++void envoy_dynamic_module_on_http_filter_http_callout_done_with_trailers(
++    envoy_dynamic_module_type_http_filter_envoy_ptr filter_envoy_ptr,
++    envoy_dynamic_module_type_http_filter_module_ptr filter_module_ptr, uint64_t callout_id,
++    envoy_dynamic_module_type_http_callout_result result,
++    envoy_dynamic_module_type_envoy_http_header* headers, size_t headers_size,
++    envoy_dynamic_module_type_envoy_buffer* body_chunks, size_t body_chunks_size,
++    envoy_dynamic_module_type_envoy_http_header* trailers, size_t trailers_size);
++
+ /**
+  * envoy_dynamic_module_on_http_filter_http_stream_headers is called when response headers are
+  * received for a streamable HTTP callout stream.
+@@ -2700,6 +2726,34 @@ envoy_dynamic_module_callback_http_filter_http_callout(
+     envoy_dynamic_module_type_module_http_header* headers, size_t headers_size,
+     envoy_dynamic_module_type_module_buffer body, uint64_t timeout_milliseconds);
+ 
++/**
++ * envoy_dynamic_module_callback_http_filter_http_callout_with_options is
++ * envoy_dynamic_module_callback_http_filter_http_callout plus a retry policy.
++ *
++ * Additive: the original entry point is unchanged and issues callouts with no retry policy,
++ * exactly as before, so existing modules are unaffected.
++ *
++ * Retries are exposed because a callout targets a CLUSTER and therefore bypasses the route
++ * table, where retry policy normally lives. Without this a module can configure load
++ * balancing, circuit breaking, outlier detection and health checks on its upstreams -- all
++ * cluster-level, all reachable today -- and still cannot ask Envoy to retry one idempotent
++ * call. `AsyncClient::RequestOptions` already supports it; the callout path only ever set the
++ * timeout.
++ *
++ * @param retry_on is a retry condition string in a route's `retry_on` vocabulary, e.g.
++ * "connect-failure,refused-stream,unavailable". Empty disables retries.
++ * @param num_retries is the maximum number of retries; ignored when retry_on is empty.
++ * @param per_try_timeout_milliseconds bounds each attempt; 0 leaves it unset.
++ */
++envoy_dynamic_module_type_http_callout_init_result
++envoy_dynamic_module_callback_http_filter_http_callout_with_options(
++    envoy_dynamic_module_type_http_filter_envoy_ptr filter_envoy_ptr, uint64_t* callout_id_out,
++    envoy_dynamic_module_type_module_buffer cluster_name,
++    envoy_dynamic_module_type_module_http_header* headers, size_t headers_size,
++    envoy_dynamic_module_type_module_buffer body, uint64_t timeout_milliseconds,
++    envoy_dynamic_module_type_module_buffer retry_on, uint32_t num_retries,
++    uint64_t per_try_timeout_milliseconds);
++
+ /**
+  * envoy_dynamic_module_callback_http_filter_start_http_stream is called by the module to start
+  * a streamable HTTP callout to a specified cluster. Unlike the one-shot HTTP callout, this allows
+diff --git a/source/extensions/dynamic_modules/abi_impl.cc b/source/extensions/dynamic_modules/abi_impl.cc
+index e167cefca8..1e9125a863 100644
+--- a/source/extensions/dynamic_modules/abi_impl.cc
++++ b/source/extensions/dynamic_modules/abi_impl.cc
+@@ -4388,6 +4388,17 @@ envoy_dynamic_module_callback_http_filter_http_callout(
+   return envoy_dynamic_module_type_http_callout_init_result_CannotCreateRequest;
+ }
+ 
++__attribute__((weak)) envoy_dynamic_module_type_http_callout_init_result
++envoy_dynamic_module_callback_http_filter_http_callout_with_options(
++    envoy_dynamic_module_type_http_filter_envoy_ptr, uint64_t*,
++    envoy_dynamic_module_type_module_buffer, envoy_dynamic_module_type_module_http_header*, size_t,
++    envoy_dynamic_module_type_module_buffer, uint64_t, envoy_dynamic_module_type_module_buffer,
++    uint32_t, uint64_t) {
++  IS_ENVOY_BUG("envoy_dynamic_module_callback_http_filter_http_callout_with_options: not "
++               "implemented in this context");
++  return envoy_dynamic_module_type_http_callout_init_result_CannotCreateRequest;
++}
++
+ __attribute__((weak)) envoy_dynamic_module_type_http_callout_init_result
+ envoy_dynamic_module_callback_http_filter_start_http_stream(
+     envoy_dynamic_module_type_http_filter_envoy_ptr, uint64_t*,
+diff --git a/source/extensions/dynamic_modules/sdk/rust/src/http.rs b/source/extensions/dynamic_modules/sdk/rust/src/http.rs
+index b6da2ea00d..888e0f2376 100644
+--- a/source/extensions/dynamic_modules/sdk/rust/src/http.rs
++++ b/source/extensions/dynamic_modules/sdk/rust/src/http.rs
+@@ -12,6 +12,43 @@ use std::any::Any;
+ use std::ffi::c_void;
+ use std::panic::{catch_unwind, AssertUnwindSafe};
+ 
++/// Signature of the optional `..._http_callout_with_options` callback.
++type CalloutWithOptionsFn = unsafe extern "C" fn(
++  abi::envoy_dynamic_module_type_http_filter_envoy_ptr,
++  *mut u64,
++  abi::envoy_dynamic_module_type_module_buffer,
++  *mut abi::envoy_dynamic_module_type_module_http_header,
++  usize,
++  abi::envoy_dynamic_module_type_module_buffer,
++  u64,
++  abi::envoy_dynamic_module_type_module_buffer,
++  u32,
++  u64,
++) -> abi::envoy_dynamic_module_type_http_callout_init_result;
++
++extern "C" {
++  fn dlsym(handle: *mut c_void, symbol: *const std::ffi::c_char) -> *mut c_void;
++}
++
++/// Looks the callback up in the loading process, once.
++///
++/// This is the module->Envoy mirror of the idiom Envoy already uses in the other direction
++/// (`getFunctionPointer` + `if (ok())` for optional module callbacks). `RTLD_DEFAULT` is NULL
++/// on glibc, and it searches the global scope -- i.e. the Envoy binary that dlopened us.
++fn callout_with_options_fn() -> Option<CalloutWithOptionsFn> {
++  static RESOLVED: std::sync::OnceLock<Option<usize>> = std::sync::OnceLock::new();
++  let addr = *RESOLVED.get_or_init(|| {
++    let name = c"envoy_dynamic_module_callback_http_filter_http_callout_with_options";
++    let p = unsafe { dlsym(std::ptr::null_mut(), name.as_ptr()) };
++    if p.is_null() {
++      None
++    } else {
++      Some(p as usize)
++    }
++  });
++  addr.map(|a| unsafe { std::mem::transmute::<usize, CalloutWithOptionsFn>(a) })
++}
++
++/// Whether the Envoy process provides the optional callout-options ABI.
++///
++/// Modules must check this while loading a configuration that requires retries or unary
++/// gRPC trailers. This makes an Envoy/module version mismatch fail closed instead of silently
++/// dropping the requested policy.
++pub fn callout_with_options_available() -> bool {
++  callout_with_options_fn().is_some()
++}
++
+ /// The trait that represents the configuration for an Envoy Http filter configuration.
+ /// This has one to one mapping with the [`EnvoyHttpFilterConfig`] object.
+ ///
+@@ -243,6 +280,24 @@ pub trait HttpFilter<EHF: EnvoyHttpFilter> {
+   ) {
+   }
+ 
++  /// The same event, plus the response TRAILERS.
++  ///
++  /// Defaults to forwarding to [`HttpFilter::on_http_callout_done`], so a filter that does not
++  /// care is unaffected. Override it to read `grpc-status`, which gRPC reports in the trailers
++  /// of an otherwise-200 response -- without it a module carrying gRPC over a unary callout
++  /// cannot tell an upstream failure from an empty success.
++  fn on_http_callout_done_with_trailers(
++    &mut self,
++    envoy_filter: &mut EHF,
++    callout_id: u64,
++    result: abi::envoy_dynamic_module_type_http_callout_result,
++    response_headers: Option<&[(EnvoyBuffer, EnvoyBuffer)]>,
++    response_body: Option<&[EnvoyBuffer]>,
++    _response_trailers: Option<&[(EnvoyBuffer, EnvoyBuffer)]>,
++  ) {
++    self.on_http_callout_done(envoy_filter, callout_id, result, response_headers, response_body)
++  }
++
+   /// This is called when response headers are received from an HTTP stream callout.
+   ///
+   /// * `envoy_filter` can be used to interact with the underlying Envoy filter object.
+@@ -1628,6 +1683,27 @@ pub trait EnvoyHttpFilter {
+     u64, // callout handle
+   );
+ 
++  /// The same call, with a retry policy.
++  ///
++  /// `retry_on` uses a route's `retry_on` vocabulary, e.g.
++  /// `"connect-failure,refused-stream,unavailable"`; empty disables retries. Exposed because a
++  /// callout targets a CLUSTER and so bypasses the route table, where retry policy normally
++  /// lives -- without it a module can configure circuit breaking and outlier detection on its
++  /// upstreams but cannot retry one idempotent call.
++  fn send_http_callout_with_options<'a>(
++    &mut self,
++    _cluster_name: &'a str,
++    _headers: &'a [(&'a str, &'a [u8])],
++    _body: Option<&'a [u8]>,
++    _timeout_milliseconds: u64,
++    _retry_on: &'a str,
++    _num_retries: u32,
++    _per_try_timeout_milliseconds: u64,
++  ) -> (
++    abi::envoy_dynamic_module_type_http_callout_init_result,
++    u64, // callout handle
++  );
++
+   /// Start a streamable HTTP callout to the given cluster with the given headers and optional
+   /// body. Multiple concurrent streams can be created from the same filter.
+   ///
+@@ -3426,6 +3502,56 @@ impl EnvoyHttpFilter for EnvoyHttpFilterImpl {
+     (result, callout_id)
+   }
+ 
++  fn send_http_callout_with_options<'a>(
++    &mut self,
++    cluster_name: &'a str,
++    headers: &'a [(&'a str, &'a [u8])],
++    body: Option<&'a [u8]>,
++    timeout_milliseconds: u64,
++    retry_on: &'a str,
++    num_retries: u32,
++    per_try_timeout_milliseconds: u64,
++  ) -> (abi::envoy_dynamic_module_type_http_callout_init_result, u64) {
++    let body_ptr = body.map(|s| s.as_ptr()).unwrap_or(std::ptr::null());
++    let body_length = body.map(|s| s.len()).unwrap_or(0);
++    let HeaderPairSlice(headers_ptr, headers_len) = headers.into();
++    let mut callout_id: u64 = 0;
++
++    // Resolved at RUNTIME rather than linked, so that a module built against this SDK still
++    // LOADS on an Envoy that does not carry the patch.
++    //
++    // Calling the symbol directly makes it an undefined symbol in the .so, and Envoy's loader
++    // resolves every undefined symbol at `dlopen`. A module that merely *offers* retries --
++    // even one whose config leaves them off -- would then fail to start on a stock Envoy with
++    // "undefined symbol: ...http_callout_with_options". Observed, not theorised: that is
++    // exactly how the first build of this failed.
++    let Some(f) = callout_with_options_fn() else {
++      return (
++        abi::envoy_dynamic_module_type_http_callout_init_result_CannotCreateRequest,
++        callout_id,
++      );
++    };
++
++    let result = unsafe {
++      f(
++        self.raw_ptr,
++        &mut callout_id as *mut _ as *mut _,
++        str_to_module_buffer(cluster_name),
++        headers_ptr as *const _ as *mut _,
++        headers_len,
++        abi::envoy_dynamic_module_type_module_buffer {
++          ptr: body_ptr as *mut _,
++          length: body_length,
++        },
++        timeout_milliseconds,
++        str_to_module_buffer(retry_on),
++        num_retries,
++        per_try_timeout_milliseconds,
++      )
++    };
++
++    (result, callout_id)
++  }
++
+   fn start_http_stream<'a>(
+     &mut self,
+     cluster_name: &'a str,
+@@ -4636,6 +4762,62 @@ pub unsafe extern "C" fn envoy_dynamic_module_on_http_filter_http_callout_done(
+ ///
+ /// This is an FFI function called by Envoy. All pointer arguments must be valid as guaranteed
+ /// by the Envoy dynamic module ABI.
++/// # Safety
++///
++/// This is an FFI function called by Envoy. All pointer arguments must be valid as guaranteed
++/// by the Envoy dynamic module ABI.
++#[no_mangle]
++pub unsafe extern "C" fn envoy_dynamic_module_on_http_filter_http_callout_done_with_trailers(
++  envoy_ptr: abi::envoy_dynamic_module_type_http_filter_envoy_ptr,
++  filter_ptr: abi::envoy_dynamic_module_type_http_filter_module_ptr,
++  callout_id: u64,
++  result: abi::envoy_dynamic_module_type_http_callout_result,
++  headers: *const abi::envoy_dynamic_module_type_envoy_http_header,
++  headers_size: usize,
++  body_chunks: *const abi::envoy_dynamic_module_type_envoy_buffer,
++  body_chunks_size: usize,
++  trailers: *const abi::envoy_dynamic_module_type_envoy_http_header,
++  trailers_size: usize,
++) {
++  let _ = catch_unwind(AssertUnwindSafe(|| {
++    let filter = filter_ptr as *mut *mut dyn HttpFilter<EnvoyHttpFilterImpl>;
++    let filter = &mut **filter;
++    let pairs = |p: *const abi::envoy_dynamic_module_type_envoy_http_header, n: usize| {
++      if n > 0 {
++        Some(unsafe {
++          crate::ffi_helpers::slice_from_raw_or_empty(p as *const (EnvoyBuffer, EnvoyBuffer), n)
++        })
++      } else {
++        None
++      }
++    };
++    let body = if body_chunks_size > 0 {
++      Some(unsafe {
++        crate::ffi_helpers::slice_from_raw_or_empty(
++          body_chunks as *const EnvoyBuffer,
++          body_chunks_size,
++        )
++      })
++    } else {
++      None
++    };
++    filter.on_http_callout_done_with_trailers(
++      &mut EnvoyHttpFilterImpl::new(envoy_ptr),
++      callout_id,
++      result,
++      pairs(headers, headers_size),
++      body,
++      pairs(trailers, trailers_size),
++    )
++  }))
++  .map_err(|panic| {
++    crate::log_ffi_panic(
++      "envoy_dynamic_module_on_http_filter_http_callout_done_with_trailers",
++      panic,
++    );
++  });
++}
++
+ #[no_mangle]
+ pub unsafe extern "C" fn envoy_dynamic_module_on_http_filter_scheduled(
+   envoy_ptr: abi::envoy_dynamic_module_type_http_filter_envoy_ptr,
+diff --git a/source/extensions/filters/http/dynamic_modules/abi_impl.cc b/source/extensions/filters/http/dynamic_modules/abi_impl.cc
+index 52dbe3d3fd..b9d475e32b 100644
+--- a/source/extensions/filters/http/dynamic_modules/abi_impl.cc
++++ b/source/extensions/filters/http/dynamic_modules/abi_impl.cc
+@@ -2191,12 +2191,15 @@ void envoy_dynamic_module_callback_http_set_buffer_limit(
+   callbacks->setBufferLimit(limit);
+ }
+ 
++namespace {
++// Shared by both entry points so header validation and body handling cannot drift.
+ envoy_dynamic_module_type_http_callout_init_result
+-envoy_dynamic_module_callback_http_filter_http_callout(
++callout_impl(
+     envoy_dynamic_module_type_http_filter_envoy_ptr filter_envoy_ptr, uint64_t* callout_id,
+     envoy_dynamic_module_type_module_buffer cluster_name,
+     envoy_dynamic_module_type_module_http_header* headers, size_t headers_size,
+-    envoy_dynamic_module_type_module_buffer body, uint64_t timeout_milliseconds) {
++    envoy_dynamic_module_type_module_buffer body, uint64_t timeout_milliseconds,
++    absl::string_view retry_on, uint32_t num_retries, uint64_t per_try_timeout_milliseconds) {
+   auto filter = static_cast<DynamicModuleHttpFilter*>(filter_envoy_ptr);
+ 
+   // Try to get the cluster from the cluster manager for the given cluster name.
+@@ -2222,7 +2225,35 @@ envoy_dynamic_module_callback_http_filter_http_callout(
+     message->headers().setContentLength(body.length);
+   }
+   return filter->sendHttpCallout(callout_id, cluster_name_view, std::move(message),
+-                                 timeout_milliseconds);
++                                 timeout_milliseconds, retry_on, num_retries,
++                                 per_try_timeout_milliseconds);
++}
++} // namespace
++
++envoy_dynamic_module_type_http_callout_init_result
++envoy_dynamic_module_callback_http_filter_http_callout(
++    envoy_dynamic_module_type_http_filter_envoy_ptr filter_envoy_ptr, uint64_t* callout_id,
++    envoy_dynamic_module_type_module_buffer cluster_name,
++    envoy_dynamic_module_type_module_http_header* headers, size_t headers_size,
++    envoy_dynamic_module_type_module_buffer body, uint64_t timeout_milliseconds) {
++  // Unchanged behaviour: no retry policy, exactly as before this was added.
++  return callout_impl(filter_envoy_ptr, callout_id, cluster_name, headers, headers_size, body,
++                      timeout_milliseconds, {}, 0, 0);
++}
++
++envoy_dynamic_module_type_http_callout_init_result
++envoy_dynamic_module_callback_http_filter_http_callout_with_options(
++    envoy_dynamic_module_type_http_filter_envoy_ptr filter_envoy_ptr, uint64_t* callout_id,
++    envoy_dynamic_module_type_module_buffer cluster_name,
++    envoy_dynamic_module_type_module_http_header* headers, size_t headers_size,
++    envoy_dynamic_module_type_module_buffer body, uint64_t timeout_milliseconds,
++    envoy_dynamic_module_type_module_buffer retry_on, uint32_t num_retries,
++    uint64_t per_try_timeout_milliseconds) {
++  const absl::string_view retry_on_view(
++      retry_on.ptr == nullptr ? "" : static_cast<const char*>(retry_on.ptr), retry_on.length);
++  return callout_impl(filter_envoy_ptr, callout_id, cluster_name, headers, headers_size, body,
++                      timeout_milliseconds, retry_on_view, num_retries,
++                      per_try_timeout_milliseconds);
+ }
+ 
+ envoy_dynamic_module_type_http_callout_init_result
+diff --git a/source/extensions/filters/http/dynamic_modules/filter.cc b/source/extensions/filters/http/dynamic_modules/filter.cc
+index 3e9a80fbf8..190027bcfd 100644
+--- a/source/extensions/filters/http/dynamic_modules/filter.cc
++++ b/source/extensions/filters/http/dynamic_modules/filter.cc
+@@ -187,7 +187,9 @@ void DynamicModuleHttpFilter::encodeComplete() {};
+ envoy_dynamic_module_type_http_callout_init_result
+ DynamicModuleHttpFilter::sendHttpCallout(uint64_t* callout_id_out, absl::string_view cluster_name,
+                                          Http::RequestMessagePtr&& message,
+-                                         uint64_t timeout_milliseconds) {
++                                         uint64_t timeout_milliseconds,
++                                         absl::string_view retry_on, uint32_t num_retries,
++                                         uint64_t per_try_timeout_milliseconds) {
+   Upstream::ThreadLocalCluster* cluster =
+       config_->cluster_manager_.getThreadLocalCluster(cluster_name);
+   if (!cluster) {
+@@ -196,6 +198,24 @@ DynamicModuleHttpFilter::sendHttpCallout(uint64_t* callout_id_out, absl::string_
+   Http::AsyncClient::RequestOptions options;
+   options.setTimeout(std::chrono::milliseconds(timeout_milliseconds));
+ 
++  // A callout targets a cluster and so bypasses the route table, which is where retry policy
++  // normally lives. The async client accepts one directly; it was simply never set.
++  if (!retry_on.empty()) {
++    envoy::config::route::v3::RetryPolicy retry_policy;
++    retry_policy.set_retry_on(std::string(retry_on));
++    retry_policy.mutable_num_retries()->set_value(num_retries);
++    if (per_try_timeout_milliseconds > 0) {
++      retry_policy.mutable_per_try_timeout()->set_seconds(
++          static_cast<int64_t>(per_try_timeout_milliseconds / 1000));
++      retry_policy.mutable_per_try_timeout()->set_nanos(
++          static_cast<int32_t>((per_try_timeout_milliseconds % 1000) * 1000000));
++    }
++    options.setRetryPolicy(retry_policy);
++    // Retrying a request whose body has already been streamed upstream would send an empty
++    // body on the second attempt, so it must be buffered for the retry to be correct.
++    options.setBufferBodyForRetry(true);
++  }
++
+   // Prepare the callback and the ID.
+   const uint64_t callout_id = getNextCalloutId();
+   auto http_callout_callback =
+@@ -246,6 +266,32 @@ void DynamicModuleHttpFilter::HttpCalloutCallback::onSuccess(const AsyncClient::
+   });
+   Envoy::Buffer::RawSliceVector body = response->body().getRawSlices(std::nullopt);
+ 
++  // A module that exports the trailers variant gets trailers; one that does not keeps the
++  // original callback unchanged. gRPC reports its status in `grpc-status` here, on an
++  // otherwise-200 response, so without them a module cannot tell failure from empty success.
++  if (filter.config_->on_http_filter_http_callout_done_with_trailers_ != nullptr) {
++    absl::InlinedVector<envoy_dynamic_module_type_envoy_http_header, 8> trailers_vector;
++    if (response->trailers() != nullptr) {
++      trailers_vector.reserve(response->trailers()->size());
++      response->trailers()->iterate(
++          [&trailers_vector](const Http::HeaderEntry& trailer) -> Http::HeaderMap::Iterate {
++            trailers_vector.emplace_back(envoy_dynamic_module_type_envoy_http_header{
++                const_cast<char*>(trailer.key().getStringView().data()),
++                trailer.key().getStringView().size(),
++                const_cast<char*>(trailer.value().getStringView().data()),
++                trailer.value().getStringView().size()});
++            return Http::HeaderMap::Iterate::Continue;
++          });
++    }
++    filter.config_->on_http_filter_http_callout_done_with_trailers_(
++        filter.thisAsVoidPtr(), filter.in_module_filter_, callout_id,
++        envoy_dynamic_module_type_http_callout_result_Success, headers_vector.data(),
++        headers_vector.size(),
++        reinterpret_cast<envoy_dynamic_module_type_envoy_buffer*>(body.data()), body.size(),
++        trailers_vector.data(), trailers_vector.size());
++    return;
++  }
++
+   filter.config_->on_http_filter_http_callout_done_(
+       filter.thisAsVoidPtr(), filter.in_module_filter_, callout_id,
+       envoy_dynamic_module_type_http_callout_result_Success, headers_vector.data(),
+@@ -285,9 +331,15 @@ void DynamicModuleHttpFilter::HttpCalloutCallback::onFailure(
+       result = envoy_dynamic_module_type_http_callout_result_ExceedResponseBufferLimit;
+       break;
+     }
+-    filter.config_->on_http_filter_http_callout_done_(filter.thisAsVoidPtr(),
+-                                                      filter.in_module_filter_, callout_id, result,
+-                                                      nullptr, 0, nullptr, 0);
++    if (filter.config_->on_http_filter_http_callout_done_with_trailers_ != nullptr) {
++      filter.config_->on_http_filter_http_callout_done_with_trailers_(
++          filter.thisAsVoidPtr(), filter.in_module_filter_, callout_id, result, nullptr, 0,
++          nullptr, 0, nullptr, 0);
++    } else {
++      filter.config_->on_http_filter_http_callout_done_(filter.thisAsVoidPtr(),
++                                                        filter.in_module_filter_, callout_id,
++                                                        result, nullptr, 0, nullptr, 0);
++    }
+   }
+ }
+ 
+diff --git a/source/extensions/filters/http/dynamic_modules/filter.h b/source/extensions/filters/http/dynamic_modules/filter.h
+index 58ff280d44..0f1afd063e 100644
+--- a/source/extensions/filters/http/dynamic_modules/filter.h
++++ b/source/extensions/filters/http/dynamic_modules/filter.h
+@@ -216,7 +216,9 @@ public:
+    */
+   envoy_dynamic_module_type_http_callout_init_result
+   sendHttpCallout(uint64_t* callout_id_out, absl::string_view cluster_name,
+-                  Http::RequestMessagePtr&& message, uint64_t timeout_milliseconds);
++                  Http::RequestMessagePtr&& message, uint64_t timeout_milliseconds,
++                  absl::string_view retry_on = {}, uint32_t num_retries = 0,
++                  uint64_t per_try_timeout_milliseconds = 0);
+ 
+   /**
+    * Starts a streamable HTTP callout to the specified cluster with the given message.
+diff --git a/source/extensions/filters/http/dynamic_modules/filter_config.cc b/source/extensions/filters/http/dynamic_modules/filter_config.cc
+index 6934e3404e..2b7c11d81d 100644
+--- a/source/extensions/filters/http/dynamic_modules/filter_config.cc
++++ b/source/extensions/filters/http/dynamic_modules/filter_config.cc
+@@ -137,6 +137,12 @@ absl::StatusOr<DynamicModuleHttpFilterConfigSharedPtr> newDynamicModuleHttpFilte
+ 
+   auto on_http_callout_done = dynamic_module->getFunctionPointer<OnHttpFilterHttpCalloutDoneType>(
+       "envoy_dynamic_module_on_http_filter_http_callout_done");
++  // OPTIONAL, like the config-level callbacks above: a module built against an older SDK does
++  // not export this and keeps receiving the trailer-less variant, so no ABI version bump and
++  // no rebuild is required.
++  auto on_http_callout_done_with_trailers =
++      dynamic_module->getFunctionPointer<OnHttpFilterHttpCalloutDoneWithTrailersType>(
++          "envoy_dynamic_module_on_http_filter_http_callout_done_with_trailers");
+   RETURN_IF_NOT_OK_REF(on_http_callout_done.status());
+ 
+   auto on_http_stream_headers =
+@@ -233,6 +239,10 @@ absl::StatusOr<DynamicModuleHttpFilterConfigSharedPtr> newDynamicModuleHttpFilte
+   config->on_http_filter_stream_complete_ = on_filter_stream_complete.value();
+   config->on_http_filter_destroy_ = on_filter_destroy.value();
+   config->on_http_filter_http_callout_done_ = on_http_callout_done.value();
++  if (on_http_callout_done_with_trailers.ok()) {
++    config->on_http_filter_http_callout_done_with_trailers_ =
++        on_http_callout_done_with_trailers.value();
++  }
+   config->on_http_filter_http_stream_headers_ = on_http_stream_headers.value();
+   config->on_http_filter_http_stream_data_ = on_http_stream_data.value();
+   config->on_http_filter_http_stream_trailers_ = on_http_stream_trailers.value();
+diff --git a/source/extensions/filters/http/dynamic_modules/filter_config.h b/source/extensions/filters/http/dynamic_modules/filter_config.h
+index a0cb294d78..90310c4477 100644
+--- a/source/extensions/filters/http/dynamic_modules/filter_config.h
++++ b/source/extensions/filters/http/dynamic_modules/filter_config.h
+@@ -38,6 +38,8 @@ using OnHttpFilterStreamCompleteType =
+ using OnHttpFilterDestroyType = decltype(&envoy_dynamic_module_on_http_filter_destroy);
+ using OnHttpFilterHttpCalloutDoneType =
+     decltype(&envoy_dynamic_module_on_http_filter_http_callout_done);
++using OnHttpFilterHttpCalloutDoneWithTrailersType =
++    decltype(&envoy_dynamic_module_on_http_filter_http_callout_done_with_trailers);
+ using OnHttpFilterHttpStreamHeadersType =
+     decltype(&envoy_dynamic_module_on_http_filter_http_stream_headers);
+ using OnHttpFilterHttpStreamDataType =
+@@ -110,6 +112,10 @@ public:
+   OnHttpFilterStreamCompleteType on_http_filter_stream_complete_ = nullptr;
+   OnHttpFilterDestroyType on_http_filter_destroy_ = nullptr;
+   OnHttpFilterHttpCalloutDoneType on_http_filter_http_callout_done_ = nullptr;
++  // OPTIONAL: null when the module does not export it, in which case the trailer-less
++  // variant above is used. Same pattern as the config-level optional callbacks.
++  OnHttpFilterHttpCalloutDoneWithTrailersType on_http_filter_http_callout_done_with_trailers_ =
++      nullptr;
+   OnHttpFilterHttpStreamHeadersType on_http_filter_http_stream_headers_ = nullptr;
+   OnHttpFilterHttpStreamDataType on_http_filter_http_stream_data_ = nullptr;
+   OnHttpFilterHttpStreamTrailersType on_http_filter_http_stream_trailers_ = nullptr;

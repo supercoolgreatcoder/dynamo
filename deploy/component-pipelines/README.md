@@ -36,5 +36,18 @@ Upstream host pins for the adapter work are:
 - agentgateway `b14ca87d0a1670b3a59859494b06539489118630`
 - Envoy `1f921705de13c94326ba72d406fc4113ed81ab70` (`1.39.0-dev`)
 
-The host adapters and disaggregated graph are the next implementation increment; the
-shared runtime and contracts here do not by themselves claim those variants complete.
+`hosts/envoy-generic` embeds that same runtime in Envoy. `envoy-independent.yaml`
+uses the transport's own tonic channels; `envoy-callouts.yaml` sends every mapped hop
+through Envoy clusters. Streaming callouts use Envoy's stock HTTP-stream ABI. Unary
+gRPC retries and trailer-aware callouts use the pinned additive patch in
+`hosts/envoy-generic/patches`; configurations that request those features fail to load
+unless the matching Envoy ABI is present.
+
+Export the descriptor used by either host from the facade binary:
+
+```bash
+dynamo-component-facade descriptor --output components_descriptor.bin
+```
+
+The AGW adapters and disaggregated graph are the next implementation increment; the
+aggregate graph and Envoy host here do not by themselves claim those variants complete.

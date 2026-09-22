@@ -1,0 +1,45 @@
+admin: {address: {socket_address: {address: 0.0.0.0, port_value: 9901}}}
+static_resources:
+  listeners:
+    - name: inference
+      address: {socket_address: {address: 0.0.0.0, port_value: 8080}}
+      filter_chains:
+        - filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: inference
+                request_timeout: 120s
+                stream_idle_timeout: 120s
+                route_config:
+                  name: r
+                  virtual_hosts:
+                    - name: r
+                      domains: ["*"]
+                      routes:
+                        # Never reached for /v1/chat/completions: the dynamic module answers
+                        # the request itself. Present because a route is required, and it
+                        # gives anything else a defined 404 rather than a config error.
+                        - match: {prefix: /}
+                          direct_response: {status: 404, body: {inline_string: "no route"}}
+                http_filters:
+                  - name: envoy.filters.http.dynamic_modules
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.dynamic_modules.v3.DynamicModuleFilter
+                      dynamic_module_config: {name: generic_pipeline}
+                      filter_name: generic_pipeline
+                      # The SAME pipeline document and descriptor set agentgateway loads,
+                      # mounted from the same ConfigMap. If these diverged, the two hosts
+                      # would be running different orchestrations and the comparison would
+                      # measure that instead of the hosting.
+                      filter_config:
+                        "@type": type.googleapis.com/google.protobuf.StringValue
+                        value: |
+                          {"pipeline_file":"/etc/dynamo-pipeline/graphs/aggregate.yaml",
+                           "grpc_descriptor_file":"/etc/dynamo-pipeline/components_descriptor.bin",
+                           "transport_mode":"independent",
+                           "grpc_conns":4}
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+  clusters: []

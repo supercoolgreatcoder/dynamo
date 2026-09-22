@@ -1,0 +1,71 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+admin: {address: {socket_address: {address: 0.0.0.0, port_value: 9901}}}
+static_resources:
+  listeners:
+    - name: inference
+      address: {socket_address: {address: 0.0.0.0, port_value: 8080}}
+      filter_chains:
+        - filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: inference
+                request_timeout: 120s
+                stream_idle_timeout: 120s
+                route_config:
+                  name: component_pipeline
+                  virtual_hosts:
+                    - name: component_pipeline
+                      domains: ["*"]
+                      routes:
+                        - match: {prefix: /}
+                          direct_response: {status: 404, body: {inline_string: "no route"}}
+                http_filters:
+                  - name: envoy.filters.http.dynamic_modules
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.dynamic_modules.v3.DynamicModuleFilter
+                      dynamic_module_config: {name: generic_pipeline}
+                      filter_name: generic_pipeline
+                      filter_config:
+                        "@type": type.googleapis.com/google.protobuf.StringValue
+                        value: |
+                          {"pipeline_file":"/etc/dynamo-pipeline/graphs/aggregate.yaml",
+                           "grpc_descriptor_file":"/etc/dynamo-pipeline/components_descriptor.bin",
+                           "transport_mode":"envoy_callouts",
+                           "cluster_from_authority":true}
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+  # Worker clusters may instead arrive through CDS. cluster_from_authority makes
+  # a selected endpoint such as http://dynamo-worker:50051 resolve to cluster
+  # `dynamo-worker`; absence fails the request and never falls back to tonic.
+  clusters:
+    - &grpc_cluster
+      name: dynamo-preprocessor
+      type: STRICT_DNS
+      connect_timeout: 2s
+      typed_extension_protocol_options:
+        envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+          "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+          explicit_http_config: {http2_protocol_options: {}}
+      load_assignment:
+        cluster_name: dynamo-preprocessor
+        endpoints:
+          - lb_endpoints:
+              - endpoint: {address: {socket_address: {address: dynamo-preprocessor, port_value: 50051}}}
+    - <<: *grpc_cluster
+      name: dynamo-selector
+      load_assignment:
+        cluster_name: dynamo-selector
+        endpoints:
+          - lb_endpoints:
+              - endpoint: {address: {socket_address: {address: dynamo-selector, port_value: 50051}}}
+    - <<: *grpc_cluster
+      name: dynamo-worker
+      load_assignment:
+        cluster_name: dynamo-worker
+        endpoints:
+          - lb_endpoints:
+              - endpoint: {address: {socket_address: {address: dynamo-worker, port_value: 50051}}}
