@@ -193,7 +193,7 @@ impl Postprocessor for PostprocessorFacade {
                         });
                     }
                     Some(postprocess_input::Frame::Chunk(chunk)) => {
-                        if chunk.openai_chunk_json.len() > max_chunk_bytes {
+                        if chunk.annotated_chunk_json.len() > max_chunk_bytes {
                             send_error(
                                 &output_tx,
                                 &chunk.request_id,
@@ -215,7 +215,7 @@ impl Postprocessor for PostprocessorFacade {
                             continue;
                         };
                         let response: Annotated<NvCreateChatCompletionStreamResponse> =
-                            match serde_json::from_slice(&chunk.openai_chunk_json) {
+                            match serde_json::from_slice(&chunk.annotated_chunk_json) {
                                 Ok(response) => response,
                                 Err(error) => {
                                     send_error(

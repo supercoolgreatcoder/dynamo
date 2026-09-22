@@ -84,7 +84,7 @@ async fn grpc_postprocessor_stream_uses_canonical_parser_and_closes() {
         PostprocessInput {
             frame: Some(postprocess_input::Frame::Chunk(PostprocessChunk {
                 request_id: "request-1".into(),
-                openai_chunk_json: annotated_chunk_json(),
+                annotated_chunk_json: annotated_chunk_json(),
                 finished: true,
             })),
         },

@@ -101,7 +101,8 @@ message PostprocessOpen {
 }
 message PostprocessChunk {
   string request_id = 1;
-  bytes openai_chunk_json = 2;
+  // Canonical Dynamo Annotated<NvCreateChatCompletionStreamResponse> JSON.
+  bytes annotated_chunk_json = 2;
   bool finished = 3;
 }
 message PostprocessCancel { string request_id = 1; }

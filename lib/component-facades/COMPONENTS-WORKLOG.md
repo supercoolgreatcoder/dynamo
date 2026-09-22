@@ -10,12 +10,12 @@ and postprocessing, retaining existing vLLM/SGLang workers or Dynamo wrappers.
 
 Reference branch: `feat/dynamo-grpc-components`, retained at `ce04286ef7`.
 Implementation branch: `feat/dynamo-grpc-components-v2`, created directly from
-upstream `origin/main` at `7d4c346fa0` and carrying only the plan commit.
+upstream `origin/main` at `7d4c346fa0`.
 
 Detailed Sol handoff: [SOL-IMPLEMENTATION-PLAN.md](SOL-IMPLEMENTATION-PLAN.md).
 User clarified four required gateway variants: AGW static, AGW generic, Envoy
-generic, and Envoy generic with callouts (priority candidate). Current turn produces
-the execution plan; implementation and validation remain pending.
+generic, and Envoy generic with callouts (priority candidate). Implementation is in
+progress against this checklist.
 
 ## Acceptance criteria
 
@@ -51,10 +51,16 @@ the execution plan; implementation and validation remain pending.
   selector operations/lifecycle, and multiplexed streaming postprocessing.
 - Added one runnable binary with preprocessor, selector, and postprocessor modes,
   gRPC health services, limits, per-item errors, and deadlines where applicable.
+- The build now emits the canonical protobuf descriptor set and every facade serves
+  it through gRPC reflection. Generic gateway variants therefore bind to the same
+  contract as generated clients instead of maintaining a second schema.
+- Renamed the postprocessor input field to `annotated_chunk_json` before freezing
+  v1, making explicit that the input is Dynamo's canonical annotated chunk while
+  the output is an OpenAI response chunk.
 - Documented the ownership boundary and rebase/upgrade procedure in `README.md`.
 - Focused facade tests pass: preprocessing 3, selector 2, postprocessor gRPC 1;
   6 passed and 0 failed. The crate and binary compile against Dynamo 1.6 at
-  `7d4c346fa0`.
+  `7d4c346fa0`. The same six tests pass with descriptor generation and reflection.
 - Strict CODEOWNERS generation reports 100% coverage; the new crate is shared by
   frontend, router, and runtime owners.
 - Private push is currently rejected because upstream `main` references seven Git
