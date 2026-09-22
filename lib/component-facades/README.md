@@ -15,7 +15,8 @@ templates, tokenization, routing policy, reasoning parsing, tool parsing, or inf
 | --- | --- |
 | Preprocessor | `dynamo_llm::preprocessor::OpenAIPreprocessor` |
 | Selector | `dynamo_kv_router::services::selection::SelectionService` |
-| Postprocessor | `OpenAIPreprocessor::postprocess_chat_stream` |
+| Worker bridge | A caller-supplied canonical Dynamo backend `ServiceEngine` |
+| Postprocessor | `OpenAIPreprocessor::postprocess_backend_chat_stream` |
 | Workers | Existing Dynamo vLLM/SGLang/TRT-LLM wrappers and sidecars |
 
 The protobuf messages are transport envelopes. Evolving Dynamo request and selector
@@ -23,10 +24,17 @@ types cross the boundary as their canonical JSON representation, so the facade d
 not maintain a field-by-field shadow model. Stable envelope fields carry request IDs,
 deadlines, parser continuation state, per-item errors, and batching controls.
 
-The worker-side postprocessor consumes OpenAI chunks produced after Dynamo backend
-detokenization. Incremental token decoding and hidden-stop handling remain in
-`dynamo_llm::backend::Backend`, where Dynamo already requires them to run. The facade
-adds canonical reasoning/tool response processing without decoding a token twice.
+The worker bridge accepts a canonical `PreprocessedRequest` and relays the
+`Annotated<BackendOutput>` stream from a supplied Dynamo backend pipeline. It has no
+generation implementation. Incremental token decoding and hidden-stop handling remain
+in `dynamo_llm::backend::Backend`, where Dynamo already requires them to run. The
+postprocessor consumes that canonical backend stream and performs Dynamo's response
+generation, usage accounting, reasoning/tool parsing, and role normalization without
+decoding a token twice.
+
+The descriptor set emitted at build time is registered with gRPC reflection by every
+standalone facade. Descriptor-driven gateways therefore consume the exact generated
+contract rather than carrying a separately maintained protobuf model.
 
 ## Upgrade procedure
 

@@ -4,7 +4,7 @@
 use std::{collections::HashSet, sync::Arc};
 
 use dynamo_llm::{
-    preprocessor::{OpenAIPreprocessor, PreprocessRequestOptions},
+    preprocessor::{MultimodalCounts, OpenAIPreprocessor, PreprocessRequestOptions},
     protocols::openai::{GuidedToolConstraint, chat_completions::NvCreateChatCompletionRequest},
 };
 use futures::{StreamExt, stream};
@@ -95,6 +95,8 @@ impl PreprocessorFacade {
             Ok(value) => value,
             Err(err) => return error("internal", err.to_string(), false),
         };
+        let prompt_tokens = prepared.backend_request.token_ids.len() as u64;
+        let mm_counts = MultimodalCounts::from_preprocessed(&prepared.backend_request);
         PreparedItem {
             item_id,
             normalized_openai_request_json,
@@ -108,6 +110,10 @@ impl PreprocessorFacade {
                 prepared.guided_tool_constraint,
                 GuidedToolConstraint::StructuralTag
             ),
+            prompt_tokens,
+            image_count: mm_counts.image as u64,
+            video_count: mm_counts.video as u64,
+            audio_count: mm_counts.audio as u64,
         }
     }
 }

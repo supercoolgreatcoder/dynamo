@@ -4,6 +4,7 @@
 pub mod postprocess;
 pub mod preprocess;
 pub mod selector;
+pub mod worker;
 
 pub mod proto {
     tonic::include_proto!("dynamo.components.v1");

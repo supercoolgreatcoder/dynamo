@@ -30,6 +30,10 @@ message PreparedItem {
   optional uint64 image_tokens = 7;
   ItemError error = 8;
   bool uses_tool_call_structural_tag = 9;
+  uint64 prompt_tokens = 10;
+  uint64 image_count = 11;
+  uint64 video_count = 12;
+  uint64 audio_count = 13;
 }
 
 message PreprocessBatchResponse { repeated PreparedItem items = 1; }
@@ -93,16 +97,47 @@ service Selector {
   rpc Ready(ReadyRequest) returns (JsonResult);
 }
 
+// Thin streaming adapter over an existing Dynamo backend pipeline. The adapter
+// does not implement generation or detokenization; its engine is supplied by a
+// Dynamo vLLM/SGLang/TRT-LLM wrapper and emits canonical BackendOutput values.
+message WorkerOpen {
+  string request_id = 1;
+  bytes backend_request_json = 2;
+  int64 deadline_unix_ms = 3;
+}
+message WorkerCancel { string request_id = 1; }
+message WorkerInput {
+  oneof frame {
+    WorkerOpen open = 1;
+    WorkerCancel cancel = 2;
+  }
+}
+message WorkerOutput {
+  string request_id = 1;
+  bytes annotated_backend_chunk_json = 2;
+  bool finished = 3;
+  ItemError error = 4;
+}
+
+service WorkerBridge {
+  rpc Process(stream WorkerInput) returns (stream WorkerOutput);
+}
+
 message PostprocessOpen {
   string request_id = 1;
   bytes normalized_openai_request_json = 2;
   bool prompt_injected_reasoning = 3;
   bool uses_tool_call_structural_tag = 4;
+  uint64 prompt_tokens = 5;
+  optional uint64 image_tokens = 6;
+  uint64 image_count = 7;
+  uint64 video_count = 8;
+  uint64 audio_count = 9;
 }
 message PostprocessChunk {
   string request_id = 1;
-  // Canonical Dynamo Annotated<NvCreateChatCompletionStreamResponse> JSON.
-  bytes annotated_chunk_json = 2;
+  // Canonical Dynamo Annotated<BackendOutput> JSON.
+  bytes annotated_backend_chunk_json = 2;
   bool finished = 3;
 }
 message PostprocessCancel { string request_id = 1; }
