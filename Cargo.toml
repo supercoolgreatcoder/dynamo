@@ -42,6 +42,9 @@ members = [
     "lib/bindings/python/codegen",
     "deploy/inference-gateway/ext-proc",
     "deploy/inference-gateway/sidecar",
+    "deploy/component-pipelines/generic-core",
+    "deploy/component-pipelines/grpc-transport",
+    "deploy/component-pipelines/static-core",
 ]
 resolver = "3"
 
@@ -81,6 +84,9 @@ dynamo-parsers = { version = "8.1.0" }
 dynamo-parsers-v2 = { version = "0.5.3" }
 dynamo-backend-common = { path = "lib/backend-common", version = "1.6.0" }
 dynamo-component-facades = { path = "lib/component-facades", version = "1.6.0" }
+dynamo-generic-pipeline = { path = "deploy/component-pipelines/generic-core", version = "1.6.0" }
+dynamo-pipeline-grpc = { path = "deploy/component-pipelines/grpc-transport", version = "1.6.0" }
+dynamo-static-pipeline = { path = "deploy/component-pipelines/static-core", version = "1.6.0" }
 dynamo-sidecar-common = { path = "lib/sidecar/common", version = "1.6.0" }
 
 

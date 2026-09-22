@@ -633,6 +633,11 @@ shared:
   - frontend
   - router
   - runtime
+- glob: deploy/component-pipelines/
+  owners:
+  - frontend
+  - router
+  - runtime
 - glob: docs/fern/pages/use-cases/agents/
   owners:
   - docs

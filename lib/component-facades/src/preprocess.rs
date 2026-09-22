@@ -27,6 +27,33 @@ pub struct PreprocessorFacade {
 }
 
 impl PreprocessorFacade {
+    fn selector_request_json(
+        item_id: &str,
+        backend_request: &dynamo_llm::protocols::common::preprocessor::PreprocessedRequest,
+    ) -> Result<Vec<u8>, serde_json::Error> {
+        let mut value = serde_json::to_value(backend_request)?;
+        let object = value
+            .as_object_mut()
+            .expect("PreprocessedRequest serializes as an object");
+
+        if let Some(model) = object.remove("model") {
+            object.insert("model_name".to_string(), model);
+        }
+        object.insert(
+            "selection_id".to_string(),
+            serde_json::Value::String(item_id.to_string()),
+        );
+
+        // SelectionService consumes routing hints at the request root, while
+        // PreprocessedRequest keeps them grouped for backend transport.
+        if let Some(serde_json::Value::Object(routing)) = object.remove("routing") {
+            for (key, value) in routing {
+                object.entry(key).or_insert(value);
+            }
+        }
+        serde_json::to_vec(&value)
+    }
+
     pub fn new(
         processor: Arc<OpenAIPreprocessor>,
         max_batch_items: usize,
@@ -90,6 +117,11 @@ impl PreprocessorFacade {
             Ok(value) => value,
             Err(err) => return error("internal", err.to_string(), false),
         };
+        let selector_request_json =
+            match Self::selector_request_json(&item_id, &prepared.backend_request) {
+                Ok(value) => value,
+                Err(err) => return error("internal", err.to_string(), false),
+            };
         let guided_tool_constraint_json = match serde_json::to_vec(&prepared.guided_tool_constraint)
         {
             Ok(value) => value,
@@ -114,12 +146,29 @@ impl PreprocessorFacade {
             image_count: mm_counts.image as u64,
             video_count: mm_counts.video as u64,
             audio_count: mm_counts.audio as u64,
+            selector_request_json,
         }
     }
 }
 
 #[tonic::async_trait]
 impl Preprocessor for PreprocessorFacade {
+    async fn prepare(
+        &self,
+        request: Request<crate::proto::PreprocessItem>,
+    ) -> Result<Response<PreparedItem>, Status> {
+        let item = request.into_inner();
+        if item.item_id.is_empty() {
+            return Err(Status::invalid_argument("item_id is empty"));
+        }
+        if item.openai_request_json.len() > self.max_batch_bytes {
+            return Err(Status::resource_exhausted("request byte limit exceeded"));
+        }
+        Ok(Response::new(
+            Self::prepare_one(self.processor.clone(), item).await,
+        ))
+    }
+
     async fn prepare_batch(
         &self,
         request: Request<PreprocessBatchRequest>,

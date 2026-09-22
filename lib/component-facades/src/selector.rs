@@ -174,6 +174,70 @@ impl SelectorFacade {
 
 #[tonic::async_trait]
 impl Selector for SelectorFacade {
+    async fn select(
+        &self,
+        request: Request<crate::proto::JsonItem>,
+    ) -> Result<Response<JsonResult>, Status> {
+        let mut response = self
+            .process_json_batch(
+                JsonBatchRequest {
+                    items: vec![request.into_inner()],
+                },
+                |service, payload| async move {
+                    let request: SelectRequest = decode(&payload)?;
+                    encode(&service.select(request).await.map_err(FacadeFailure::from)?)
+                },
+            )
+            .await?;
+        Ok(Response::new(response.items.remove(0)))
+    }
+
+    async fn select_and_reserve(
+        &self,
+        request: Request<crate::proto::JsonItem>,
+    ) -> Result<Response<JsonResult>, Status> {
+        let mut response = self
+            .process_json_batch(
+                JsonBatchRequest {
+                    items: vec![request.into_inner()],
+                },
+                |service, payload| async move {
+                    let request: SelectAndReserveRequest = decode(&payload)?;
+                    encode(
+                        &service
+                            .select_and_reserve(request)
+                            .await
+                            .map_err(FacadeFailure::from)?,
+                    )
+                },
+            )
+            .await?;
+        Ok(Response::new(response.items.remove(0)))
+    }
+
+    async fn create_reservation(
+        &self,
+        request: Request<crate::proto::JsonItem>,
+    ) -> Result<Response<JsonResult>, Status> {
+        let mut response = self
+            .process_json_batch(
+                JsonBatchRequest {
+                    items: vec![request.into_inner()],
+                },
+                |service, payload| async move {
+                    let request: ReservationRequest = decode(&payload)?;
+                    encode(
+                        &service
+                            .create_reservation(request)
+                            .await
+                            .map_err(FacadeFailure::from)?,
+                    )
+                },
+            )
+            .await?;
+        Ok(Response::new(response.items.remove(0)))
+    }
+
     async fn select_batch(
         &self,
         request: Request<JsonBatchRequest>,

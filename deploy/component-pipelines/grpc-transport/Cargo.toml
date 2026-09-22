@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+[package]
+name = "dynamo-pipeline-grpc"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+description = "Descriptor-driven gRPC transport for the Dynamo generic gateway pipeline."
+
+[dependencies]
+dynamo-generic-pipeline = { workspace = true }
+
+async-trait = { workspace = true }
+base64 = "0.22"
+bytes = { workspace = true }
+futures = { workspace = true }
+http = "1"
+prost = "0.14"
+prost-reflect = { version = "0.16", features = ["serde"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tonic = { workspace = true }
+
+[dev-dependencies]
+dynamo-component-facades = { workspace = true }

@@ -62,6 +62,19 @@ progress against this checklist.
 - Added a transport-only `WorkerFacade` over a caller-supplied Dynamo backend
   `ServiceEngine`. Existing wrappers remain responsible for generation, P/D, and
   detokenization; the bridge provides bounded output, request identity, and cancel.
+- Added `ChatWorkerFacade`, the preferred server-streaming gateway boundary, which
+  composes that supplied engine with the canonical postprocessor. Added unary facade
+  methods beside batch methods so the generic host can fold calls using contract
+  metadata rather than custom service knowledge.
+- Added `deploy/component-pipelines/generic-core` to the Dynamo workspace. Its 88
+  domain-independence/validation/batching/streaming tests pass. Added a lean dynamic
+  gRPC transport that resolves the emitted facade descriptor; its six tests pass.
+- Added and load-time validated the canonical aggregate graph and OpenAPI binding
+  documents. It uses Dynamo facade payloads and contains no tokenizer/routing/parser
+  implementation.
+- Added a compiled typed aggregate pipeline for AGW static mode. Both typed and
+  generic paths consume the facade-provided selector request, so model/routing field
+  translation remains inside Dynamo rather than leaking into gateway adapters.
 - Documented the ownership boundary and rebase/upgrade procedure in `README.md`.
 - Focused facade tests pass: preprocessing 3, selector 2, postprocessor gRPC 1,
   worker bridge gRPC 1; 7 passed and 0 failed. The crate and binary compile against

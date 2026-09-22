@@ -36,6 +36,11 @@ The descriptor set emitted at build time is registered with gRPC reflection by e
 standalone facade. Descriptor-driven gateways therefore consume the exact generated
 contract rather than carrying a separately maintained protobuf model.
 
+For gateway graphs, `ChatWorkerFacade` composes the supplied backend engine with the
+same canonical postprocessor behind one server-streaming RPC. This is the preferred
+sidecar boundary: backend chunks never become gateway policy, and dropping the client
+stream drops the underlying Dynamo stream.
+
 ## Upgrade procedure
 
 1. Fetch and rebase the feature branch onto the desired `ai-dynamo/dynamo` `main`.
