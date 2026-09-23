@@ -1,0 +1,38 @@
+{
+  "benchmark_series_id": "mooncake-envoy-callouts-saturation-v2",
+  "metric": "aggregate request throughput",
+  "unit": "requests/second",
+  "workload": {
+    "trace": "mooncake-512-context.jsonl",
+    "sha256": "28a94e9bc1b63fdc88e5217bdd5c647a0487c08c83bdc64a814ec0840562f550",
+    "rows": 22699,
+    "duration_seconds": 45,
+    "offered_rps_per_client": 504.4222222222
+  },
+  "results": [
+    {"run": "base-c6-r2", "topology": "4p/16w", "clients": 6, "offered_rps": 3026.53, "achieved_rps": 3016.99, "completed": 136091, "errors": 0, "cancelled": 0, "client_p50_latency_ms_range": [52.93, 61.11], "client_p99_latency_ms_range": [275.81, 282.98]},
+    {"run": "base-c8-r1", "topology": "4p/16w", "clients": 8, "offered_rps": 4035.38, "achieved_rps": 3387.48, "completed": 153434, "errors": 0, "cancelled": 0, "client_p50_latency_ms_range": [268.79, 270.41], "client_p99_latency_ms_range": [621.49, 633.89]},
+    {"run": "base-c12-r1", "topology": "4p/16w", "clients": 12, "offered_rps": 6053.07, "achieved_rps": 3446.86, "completed": 156618, "errors": 0, "cancelled": 0, "client_p50_latency_ms_range": [397.84, 413.44], "client_p99_latency_ms_range": [814.40, 857.13]},
+    {"run": "base-c16-r1", "topology": "4p/16w", "clients": 16, "offered_rps": 8070.76, "achieved_rps": 3385.35, "completed": 154355, "errors": 0, "cancelled": 0, "client_p50_latency_ms_range": [568.95, 573.46], "client_p99_latency_ms_range": [1029.72, 1068.30]},
+    {"run": "p8w16-c16-r1", "topology": "8p/16w", "clients": 16, "offered_rps": 8070.76, "achieved_rps": 3474.93, "completed": 158094, "errors": 0, "cancelled": 0, "client_p50_latency_ms_range": [538.77, 563.78], "client_p99_latency_ms_range": [999.42, 1045.90]},
+    {"run": "p4w32-c16-r1", "topology": "4p/32w", "clients": 16, "offered_rps": 8070.76, "achieved_rps": 3631.49, "completed": 165402, "errors": 0, "cancelled": 0, "client_p50_latency_ms_range": [506.42, 540.29], "client_p99_latency_ms_range": [948.17, 1004.79]},
+    {"run": "p4w32-c16-r2", "topology": "4p/32w", "clients": 16, "offered_rps": 8070.76, "achieved_rps": 3464.39, "completed": 157890, "errors": 0, "cancelled": 0, "client_p50_latency_ms_range": [549.56, 562.74], "client_p99_latency_ms_range": [996.72, 1031.22]},
+    {"run": "p4w32-c12-r1", "topology": "4p/32w", "clients": 12, "offered_rps": 6053.07, "achieved_rps": 3452.86, "completed": 156607, "errors": 0, "cancelled": 0, "client_p50_latency_ms_range": [404.51, 412.56], "client_p99_latency_ms_range": [833.30, 858.85]},
+    {"run": "p8w32-c16-r1", "topology": "8p/32w", "clients": 16, "offered_rps": 8070.76, "achieved_rps": 3548.35, "completed": 161627, "errors": 0, "cancelled": 0, "client_p50_latency_ms_range": [527.31, 543.35], "client_p99_latency_ms_range": [1000.68, 1030.89]}
+  ],
+  "cross_series_client_diagnostic": {
+    "run": "base-2x-c6-r1",
+    "trace": "mooncake-512-context-2x.jsonl",
+    "trace_sha256": "96546dd000b7be6869294ea8fa08a6d53771799c0c8890b4bb9a32d7636c2c04",
+    "rows": 45398,
+    "clients": 6,
+    "offered_rps": 6053.07,
+    "achieved_rps": 3346.98,
+    "completed": 151790,
+    "errors": 0,
+    "cancelled": 0,
+    "mmap_cache_hits": 6,
+    "client_p50_latency_ms_range": [199.57, 208.11],
+    "client_p99_latency_ms_range": [506.31, 536.16]
+  }
+}
