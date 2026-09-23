@@ -196,12 +196,10 @@ fn transform_response(
 /// time. tonic's generated code uses a `ProstCodec` bound to a concrete type; this is the
 /// same contract with the descriptor supplied at construction.
 #[derive(Clone)]
-struct DynCodec {
-    response: MessageDescriptor,
-}
+struct DynCodec;
 
 struct DynEncoder;
-struct DynDecoder(MessageDescriptor);
+struct DynDecoder;
 
 impl tonic::codec::Encoder for DynEncoder {
     type Item = DynamicMessage;
@@ -220,7 +218,7 @@ impl tonic::codec::Encoder for DynEncoder {
 }
 
 impl tonic::codec::Decoder for DynDecoder {
-    type Item = DynamicMessage;
+    type Item = bytes::Bytes;
     type Error = tonic::Status;
     fn decode(
         &mut self,
@@ -228,23 +226,121 @@ impl tonic::codec::Decoder for DynDecoder {
     ) -> Result<Option<Self::Item>, Self::Error> {
         let len = src.remaining();
         let bytes = src.copy_to_bytes(len);
-        let msg = DynamicMessage::decode(self.0.clone(), bytes)
-            .map_err(|e| tonic::Status::internal(e.to_string()))?;
-        Ok(Some(msg))
+        Ok(Some(bytes))
     }
 }
 
 impl tonic::codec::Codec for DynCodec {
     type Encode = DynamicMessage;
-    type Decode = DynamicMessage;
+    type Decode = bytes::Bytes;
     type Encoder = DynEncoder;
     type Decoder = DynDecoder;
     fn encoder(&mut self) -> Self::Encoder {
         DynEncoder
     }
     fn decoder(&mut self) -> Self::Decoder {
-        DynDecoder(self.response.clone())
+        DynDecoder
     }
+}
+
+/// Extract a singular protobuf `bytes` field without materializing a reflective message.
+///
+/// Canonical worker responses declare `x-grpc-json-bytes` together with a response-body
+/// field. That field contains the complete OpenAI chunk, while the remaining envelope fields
+/// are discarded by the graph. Mooncake produces roughly 171 chunks per request, so building
+/// a `DynamicMessage`, serializing every envelope field to JSON, base64-decoding the bytes,
+/// and finally selecting one field was the dominant generic-path cost.
+///
+/// This parser handles all protobuf wire types needed to skip unrelated fields and declines
+/// groups. The caller retains the descriptor-driven fallback, so unsupported or malformed
+/// input cannot silently acquire different semantics.
+fn decode_json_bytes_response_body(
+    descriptor: &MessageDescriptor,
+    bytes: &[u8],
+    response_body: &str,
+) -> Option<Value> {
+    let field = descriptor.get_field_by_name(response_body).or_else(|| {
+        descriptor
+            .fields()
+            .find(|field| field.json_name() == response_body)
+    })?;
+    if field.is_list() || !matches!(field.kind(), Kind::Bytes) {
+        return None;
+    }
+
+    fn varint(bytes: &[u8], offset: &mut usize) -> Option<u64> {
+        let mut value = 0u64;
+        let mut shift = 0u32;
+        loop {
+            let byte = *bytes.get(*offset)?;
+            *offset += 1;
+            value |= u64::from(byte & 0x7f) << shift;
+            if byte & 0x80 == 0 {
+                return Some(value);
+            }
+            shift += 7;
+            if shift > 63 {
+                return None;
+            }
+        }
+    }
+
+    let mut offset = 0usize;
+    let mut body = None;
+    while offset < bytes.len() {
+        let key = varint(bytes, &mut offset)?;
+        let number = (key >> 3) as u32;
+        match (key & 7) as u8 {
+            0 => {
+                varint(bytes, &mut offset)?;
+            }
+            1 => offset = offset.checked_add(8)?,
+            2 => {
+                let len = usize::try_from(varint(bytes, &mut offset)?).ok()?;
+                let end = offset.checked_add(len)?;
+                let value = bytes.get(offset..end)?;
+                if number == field.number() {
+                    body = Some(value);
+                }
+                offset = end;
+            }
+            5 => offset = offset.checked_add(4)?,
+            _ => return None,
+        }
+        if offset > bytes.len() {
+            return None;
+        }
+    }
+
+    let body = body.unwrap_or_default();
+    Some(
+        serde_json::from_slice(body).unwrap_or_else(|_| {
+            Value::String(base64::engine::general_purpose::STANDARD.encode(body))
+        }),
+    )
+}
+
+fn decode_response(
+    descriptor: &MessageDescriptor,
+    bytes: &[u8],
+    decode_json_bytes: bool,
+    response_body: Option<&str>,
+) -> Result<Value, GrpcError> {
+    if decode_json_bytes {
+        if let Some(response_body) = response_body {
+            if let Some(value) = decode_json_bytes_response_body(descriptor, bytes, response_body) {
+                return Ok(value);
+            }
+        }
+    }
+    let message = DynamicMessage::decode(descriptor.clone(), bytes)
+        .map_err(|error| GrpcError::Decode(error.to_string()))?;
+    transform_response(
+        response_json(&message)?,
+        descriptor,
+        decode_json_bytes,
+        response_body,
+    )
 }
 
 /// gRPC transport over a descriptor pool.
@@ -274,16 +370,27 @@ impl ChannelPool {
 impl GrpcTransport {
     /// `descriptor_set` is a serialized `FileDescriptorSet` (`protoc --descriptor_set_out`).
     pub fn new(descriptor_set: &[u8]) -> Result<Self, GrpcError> {
+        let channels_per_endpoint = std::env::var("DYN_GRPC_CHANNELS_PER_ENDPOINT")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(1usize);
+        Self::with_connections(descriptor_set, channels_per_endpoint)
+    }
+
+    /// Build a transport with an explicit number of HTTP/2 connections per endpoint.
+    ///
+    /// Gateway hosts use this when their configuration owns connection-pool sizing;
+    /// [`Self::new`] retains the environment-variable interface for standalone hosts.
+    pub fn with_connections(
+        descriptor_set: &[u8],
+        channels_per_endpoint: usize,
+    ) -> Result<Self, GrpcError> {
         let pool = DescriptorPool::decode(descriptor_set)
             .map_err(|e| GrpcError::Decode(format!("descriptor pool: {e}")))?;
         Ok(Self {
             pool,
             channels: Arc::new(Mutex::new(HashMap::new())),
-            channels_per_endpoint: std::env::var("DYN_GRPC_CHANNELS_PER_ENDPOINT")
-                .ok()
-                .and_then(|value| value.parse().ok())
-                .unwrap_or(1usize)
-                .clamp(1, MAX_GRPC_CHANNELS_PER_ENDPOINT),
+            channels_per_endpoint: channels_per_endpoint.clamp(1, MAX_GRPC_CHANNELS_PER_ENDPOINT),
         })
     }
 
@@ -328,9 +435,7 @@ impl GrpcTransport {
         let method = self.method(&binding(request)?)?;
         let mut body = request.body.clone();
         encode_structured_bytes(&mut body, &method.input())?;
-        let text = body.to_string();
-        let mut deserializer = serde_json::Deserializer::from_str(&text);
-        let message = DynamicMessage::deserialize(method.input(), &mut deserializer)
+        let message = DynamicMessage::deserialize(method.input(), &body)
             .map_err(|error| GrpcError::Encode(error.to_string()))?;
         let mut bytes = Vec::with_capacity(message.encoded_len());
         message
@@ -343,8 +448,6 @@ impl GrpcTransport {
     /// JSON-bytes and response-body transformations.
     pub fn decode_output(&self, request: &Request, bytes: &[u8]) -> Result<Value, GrpcError> {
         let method = self.method(&binding(request)?)?;
-        let message = DynamicMessage::decode(method.output(), bytes)
-            .map_err(|error| GrpcError::Decode(error.to_string()))?;
         let decode_json_bytes = request
             .extensions
             .get("x-grpc-json-bytes")
@@ -354,12 +457,7 @@ impl GrpcTransport {
             .extensions
             .get("x-grpc-response-body")
             .and_then(Value::as_str);
-        transform_response(
-            response_json(&message)?,
-            &method.output(),
-            decode_json_bytes,
-            response_body,
-        )
+        decode_response(&method.output(), bytes, decode_json_bytes, response_body)
     }
 
     async fn channel(&self, url: &str) -> Result<tonic::transport::Channel, GrpcError> {
@@ -417,14 +515,10 @@ impl Transport for GrpcTransport {
             .map(str::to_owned);
         let mut body = req.body;
         encode_structured_bytes(&mut body, &method.input())?;
-        let body_text = body.to_string();
-        let mut de = serde_json::Deserializer::from_str(&body_text);
-        let msg = DynamicMessage::deserialize(method.input(), &mut de)
+        let msg = DynamicMessage::deserialize(method.input(), &body)
             .map_err(|e| GrpcError::Encode(e.to_string()))?;
 
-        let codec = DynCodec {
-            response: method.output(),
-        };
+        let codec = DynCodec;
         let parent = method.parent_service();
         let full = format!("/{}/{}", parent.full_name(), method.name());
         let path = http::uri::PathAndQuery::from_maybe_shared(full)
@@ -447,9 +541,8 @@ impl Transport for GrpcTransport {
             // decides the public stream shape.
             let output = method.output();
             let stream = futures::StreamExt::map(inner, move |m| {
-                m.map_err(|e| e.to_string()).and_then(|msg| {
-                    let value = response_json(&msg).map_err(|e| e.to_string())?;
-                    transform_response(value, &output, decode_json_bytes, response_body.as_deref())
+                m.map_err(|e| e.to_string()).and_then(|bytes| {
+                    decode_response(&output, &bytes, decode_json_bytes, response_body.as_deref())
                         .map_err(|e| e.to_string())
                 })
             });
@@ -462,10 +555,10 @@ impl Transport for GrpcTransport {
                 .unary(tonic::Request::new(msg), path, codec)
                 .await
                 .map_err(|e| GrpcError::Transport(e.to_string()))?;
-            let v = response_json(&resp.into_inner())?;
-            let v = transform_response(
-                v,
+            let bytes = resp.into_inner();
+            let v = decode_response(
                 &method.output(),
+                &bytes,
                 decode_json_bytes,
                 response_body.as_deref(),
             )?;
@@ -577,5 +670,60 @@ mod tests {
             encoded["openai_request_json"],
             original["openai_request_json"]
         );
+    }
+
+    #[test]
+    fn json_response_body_decodes_directly_from_protobuf_wire_bytes() {
+        let transport =
+            GrpcTransport::new(dynamo_component_facades::proto::FILE_DESCRIPTOR_SET).unwrap();
+        let expected = serde_json::json!({
+            "id": "request-1",
+            "choices": [{"index": 0, "delta": {"content": "hello"}}]
+        });
+        fn put_varint(mut value: usize, output: &mut Vec<u8>) {
+            loop {
+                if value < 0x80 {
+                    output.push(value as u8);
+                    return;
+                }
+                output.push(((value as u8) & 0x7f) | 0x80);
+                value >>= 7;
+            }
+        }
+
+        let mut wire = Vec::new();
+        let request_id = b"request-1";
+        wire.push(0x0a);
+        put_varint(request_id.len(), &mut wire);
+        wire.extend_from_slice(request_id);
+        let chunk = serde_json::to_vec(&expected).unwrap();
+        wire.push(0x12);
+        put_varint(chunk.len(), &mut wire);
+        wire.extend_from_slice(&chunk);
+
+        let mut extensions = BTreeMap::new();
+        extensions.insert(
+            "x-grpc".to_string(),
+            serde_json::json!({
+                "service": "dynamo.components.v1.ChatWorkerBridge",
+                "method": "Generate"
+            }),
+        );
+        extensions.insert("x-grpc-json-bytes".to_string(), Value::Bool(true));
+        extensions.insert(
+            "x-grpc-response-body".to_string(),
+            Value::String("openai_chunk_json".to_string()),
+        );
+        let request = Request {
+            method: "POST",
+            url: "http://worker:50051/generate".to_string(),
+            headers: Default::default(),
+            body: serde_json::json!({}),
+            streaming: true,
+            timeout_ms: None,
+            extensions: Arc::new(extensions),
+        };
+
+        assert_eq!(transport.decode_output(&request, &wire).unwrap(), expected);
     }
 }

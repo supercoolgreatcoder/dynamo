@@ -70,10 +70,11 @@ const MAX_PARKED_BYTES: usize = 4 * 1024 * 1024;
 
 /// How many upstream frames may be parked when the consumer is behind.
 ///
-/// One frame is one token, so this is ~6 complete mooncake-sized generations of slack. Large
-/// enough that an ordinary scheduling hiccup never trips it, small enough that a consumer which
-/// has genuinely stopped is caught quickly.
-const MAX_BACKLOG_FRAMES: usize = 1024;
+/// One frame is one token. This must also cover a complete long generation delivered in one
+/// Envoy callback: the callback cannot await channel capacity, so those frames are drained by
+/// the runtime after the upstream stream completes. The cap remains finite for a consumer that
+/// has genuinely stopped.
+const MAX_BACKLOG_FRAMES: usize = 8192;
 
 /// Emit `PIPESTATS` every N completed requests; 0 disables it.
 ///
@@ -512,7 +513,7 @@ fn new_http_filter_config_fn<EC: EnvoyHttpFilterConfig, EHF: EnvoyHttpFilter>(
             )
         })
         .ok()?;
-    let grpc = GrpcTransport::new(&descriptor)
+    let grpc = GrpcTransport::with_connections(&descriptor, cfg.grpc_conns)
         .map_err(|e| eprintln!("generic_pipeline: descriptor pool: {e}"))
         .ok()?;
     let http = reqwest::Client::builder()
@@ -1843,11 +1844,22 @@ impl<EHF: EnvoyHttpFilter> HttpFilter<EHF> for GenericFilter {
                 let _ = tx.send(r);
             }
             GrpcReply::Stream(tx) => {
-                // Frames were forwarded as they arrived; completion only reports a failure.
-                // Dropping the sender is what ends the consumer's stream.
-                if let Some(e) = failed {
-                    let _ = tx.try_send(Err(e));
-                }
+                // `on_http_stream_data` cannot block the Envoy worker when this bounded channel
+                // fills, so it parks frames in `backlog`. Completion used to drop that backlog:
+                // a large body delivered in one callback therefore produced a syntactically
+                // successful but truncated generation. Finish draining on the pipeline runtime;
+                // holding `tx` open keeps the consumer stream alive until every frame arrives.
+                let backlog = st.backlog;
+                self.cfg.runtime.spawn(async move {
+                    for frame in backlog {
+                        if tx.send(Ok(frame)).await.is_err() {
+                            return;
+                        }
+                    }
+                    if let Some(error) = failed {
+                        let _ = tx.send(Err(error)).await;
+                    }
+                });
             }
         }
     }
