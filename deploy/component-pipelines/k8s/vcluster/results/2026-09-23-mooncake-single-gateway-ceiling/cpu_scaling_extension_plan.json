@@ -1,0 +1,28 @@
+{
+  "plan_id": "mooncake-single-envoy-callout-cpu-scaling-extension-v1",
+  "created_at": "2026-09-23T17:42:00Z",
+  "reason": "The planned 16+16 point still increased throughput and used 23.8 of 32 allocatable gateway-node cores, so it did not establish the vertical ceiling.",
+  "fixed_topology": {
+    "envoy_gateway_replicas": 1,
+    "selector_replicas": 8,
+    "preprocessor_replicas": 8,
+    "worker_replicas": 32,
+    "grpc_channels_per_endpoint": 4
+  },
+  "thread_sequence": [
+    {"envoy_concurrency": 20, "generic_pipeline_threads": 20},
+    {"envoy_concurrency": 24, "generic_pipeline_threads": 24}
+  ],
+  "workload": {
+    "trace": "/shared/aiperf/mooncake-qwen2.5-0.5b/mooncake-512-context-2x.jsonl",
+    "trace_sha256": "96546dd000b7be6869294ea8fa08a6d53771799c0c8890b4bb9a32d7636c2c04",
+    "clients": 6,
+    "offered_rps": 6053.07,
+    "duration_seconds": 45,
+    "mmap_cache_key": "fb4c5b170186e023535c3857f0bdd454"
+  },
+  "execution_policy": {
+    "stop_rule": "Stop after two successive throughput regressions, the offered load is reached, or gateway CPU is effectively node-saturated.",
+    "validity": "Require all six clients to hit the prebuilt mmap cache; exclude runs with request-generation errors from the primary ceiling claim."
+  }
+}

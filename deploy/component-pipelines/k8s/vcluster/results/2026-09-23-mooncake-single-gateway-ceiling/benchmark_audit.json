@@ -1,0 +1,45 @@
+{
+  "status": "valid",
+  "next_action": "continue_analysis",
+  "performance_question": "Is selector or the single Envoy generic-with-callouts gateway the Mooncake bottleneck, and what is the gateway's vertical ceiling?",
+  "plans": [
+    {"path": "benchmark_plan.json", "sha256": "591a5e085d794e0b08eaa0bc58e3adfcfeb68be334eb387c4164d05f46ec7456"},
+    {"path": "cpu_scaling_plan.json", "sha256": "4163f0d4225fb31d8bdfde8e4f6794d478c40e3c2655d16d71ede44a69ecaed4"},
+    {"path": "cpu_scaling_extension_plan.json", "sha256": "d46295edd384eefd0864779a87a9ad7088ef6556bd151e1887fb606015fe69b7"},
+    {"path": "cpu_ceiling_confirmation_plan.json", "sha256": "0e22002e3b12fb822b3581dfd8d6efa87990a1de912e2cc13981bb09f7f412e3"},
+    {"path": "loadgen_validation_plan.json", "sha256": "974a6aa5aa898e9accc6f2fea3438bfb1ae7de730e32bb478245f10ab5fe2a82"}
+  ],
+  "instrument": {"planned": "AIPerf 0.12.0", "actual": "AIPerf 0.12.0", "schema": "1.4", "version_check": "exact match"},
+  "integrity_checks": {
+    "raw_exports_readable_and_nonempty": true,
+    "endpoint_model_seed_duration_match_plans": true,
+    "trace_hashes_match": true,
+    "all_clean_clients_cache_hit_and_skipped_tokenizer_composer": true,
+    "clean_cpu_runs_cache_hit_counts": {"c20t20": 12, "c24t24": 12, "c28t28": 12},
+    "clean_cpu_errors": 0,
+    "clean_cpu_cancelled_clients": 0,
+    "topology_errors": 0,
+    "topology_cancelled_clients": 0,
+    "negative_or_nonfinite_metrics_seen": false
+  },
+  "eligibility": {
+    "topology_runs": "valid and directly comparable within topology series",
+    "c12t12_exploratory": "valid and comparable to s8p8w32 under the 2x/six-client instrument",
+    "c16t16_exploratory": "invalid for promotion/ceiling claims: one AIPerf MemoryMapSerializationError",
+    "c20t20_exploratory": "invalid for promotion/ceiling claims: two AIPerf MemoryMapSerializationErrors",
+    "clean_c20_c24_c28": "valid and directly comparable within clean CPU-ceiling series"
+  },
+  "loadgen_defect": {
+    "symptom": "Rare malformed Conversation JSON reads appeared only with multiple record processors.",
+    "observed_mechanism": "AIPerf 0.12 MemoryMapDatasetClient.get_conversation calls seek(offset) followed by read(size) on one shared mmap object without synchronization.",
+    "correction": "Use one record processor per client and double client count while returning from the 2x trace to the original trace, preserving 6053.07 aggregate offered RPS.",
+    "raw_invalid_evidence_preserved": true
+  },
+  "limitations": [
+    "Only AIPerf summary exports were configured, so global request-level percentiles cannot be recomputed from raw JSONL.",
+    "The clean CPU-ceiling series changes client decomposition from the topology series; comparisons between those series are absolute context only.",
+    "Mock workers measure orchestration capacity, not GPU inference capacity.",
+    "No empirical n=3 noise-floor pilot was run; small clean-series deltas are treated cautiously."
+  ],
+  "blockers": []
+}
