@@ -1,0 +1,55 @@
+{
+  "status": "completed",
+  "benchmark_series_id": "mooncake-envoy-callouts-saturation-v2",
+  "benchmark_plan": {
+    "path": "benchmark_plan_v2.json",
+    "sha256": "078a86b0cf65345b42fd59443615fd09afc1ecf0416916bf7b84f9db8e3c684c"
+  },
+  "performance_question": "What is the maximum zero-error Mooncake trace throughput of the Envoy generic-with-callouts pipeline, and do additional AIPerf clients, Dynamo fastokens preprocessor replicas, or mock worker replicas increase it?",
+  "started_at": "2026-09-23T14:49:47Z",
+  "completed_at": "2026-09-23T15:41:47Z",
+  "kubernetes": {
+    "environment": "vcluster",
+    "context": "kubernetes-super-admin@kubernetes",
+    "namespace": "dynamo-components-v2",
+    "endpoint": "http://envoy-callouts:8080/v1/chat/completions",
+    "scope_guard": "Every deployment, Job, Pod, scale operation, and smoke test was issued through /tmp/dynamo-components-vcluster.kubeconfig. Nothing was deployed outside the vCluster.",
+    "serving_nodes": {
+      "gateway": ["cluster-0967a26d-pool-1f83edbe-mj5s4-4sr9z"],
+      "preprocessor": ["cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4", "cluster-0967a26d-pool-1f83edbe-mj5s4-trdbv"],
+      "selector_and_some_workers": ["cluster-0967a26d-pool-1f83edbe-mj5s4-bf5w2"],
+      "other_workers": ["cluster-0967a26d-pool-1f83edbe-mj5s4-79r2b", "cluster-0967a26d-pool-1f83edbe-mj5s4-nwjkn", "cluster-0967a26d-pool-1f83edbe-mj5s4-rd9cc"]
+    },
+    "aiperf_nodes": ["cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj", "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67"],
+    "isolation": "One benchmark Job at a time. AIPerf clients were separated from gateway, preprocessor, selector, and worker nodes. No other active benchmark targeted the endpoint. Metrics Server was unavailable, so CPU utilization could not be recorded.",
+    "restored_topology": {"gateway": 1, "preprocessor": 4, "selector": 1, "mock_worker": 16, "all_ready": true}
+  },
+  "aiperf": {
+    "image": "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
+    "runtime_version": "0.12.0",
+    "duration_seconds": 45,
+    "concurrency_per_client": 128,
+    "record_processors_per_client": 16,
+    "raw_artifact_root": "/shared/aiperf/results/mooncake-ceiling",
+    "raw_artifact_storage": "existing vCluster NFS",
+    "cache_key_original": "4632ec92287b39f9033acd98c8c8b55f",
+    "cache_key_2x_diagnostic": "fb4c5b170186e023535c3857f0bdd454"
+  },
+  "runs": [
+    {"job": "moonsat-base-c6-r1", "topology": "4p/16w", "clients": 6, "start": "2026-09-23T14:49:47Z", "end": null, "status": "failed", "reason": "The cache reset restarted workers and left Envoy's startup endpoint map stale; six clients correctly reported ClusterNotFound errors. Excluded and preserved as failed evidence."},
+    {"job": "moonsat-base-c6-r2", "topology": "4p/16w", "clients": 6, "start": "2026-09-23T15:02:40Z", "end": "2026-09-23T15:04:22Z", "status": "completed", "succeeded_pods": 6},
+    {"job": "moonsat-base-c8-r1", "topology": "4p/16w", "clients": 8, "start": "2026-09-23T15:06:08Z", "end": "2026-09-23T15:07:52Z", "status": "completed", "succeeded_pods": 8},
+    {"job": "moonsat-base-c12-r1", "topology": "4p/16w", "clients": 12, "start": "2026-09-23T15:09:12Z", "end": "2026-09-23T15:10:56Z", "status": "completed", "succeeded_pods": 12},
+    {"job": "moonsat-base-c16-r1", "topology": "4p/16w", "clients": 16, "start": "2026-09-23T15:12:23Z", "end": "2026-09-23T15:14:10Z", "status": "completed", "succeeded_pods": 16},
+    {"job": "moonsat-p8w16-c16-r1", "topology": "8p/16w", "clients": 16, "start": "2026-09-23T15:15:30Z", "end": "2026-09-23T15:17:16Z", "status": "completed", "succeeded_pods": 16},
+    {"job": "moonsat-p4w32-c16-r1", "topology": "4p/32w", "clients": 16, "start": "2026-09-23T15:18:51Z", "end": "2026-09-23T15:20:36Z", "status": "completed", "succeeded_pods": 16},
+    {"job": "moonsat-p8w32-c16-r1", "topology": "8p/32w", "clients": 16, "start": "2026-09-23T15:22:01Z", "end": "2026-09-23T15:23:48Z", "status": "completed", "succeeded_pods": 16},
+    {"job": "moonsat-p4w32-c12-r1", "topology": "4p/32w", "clients": 12, "start": "2026-09-23T15:25:08Z", "end": "2026-09-23T15:26:51Z", "status": "completed", "succeeded_pods": 12},
+    {"job": "moonsat-2x-cache-prep", "topology": "4p/16w", "clients": 1, "start": "2026-09-23T15:30:26Z", "end": "2026-09-23T15:32:46Z", "status": "completed", "purpose": "one-time mmap cache construction; not a measured comparison point"},
+    {"job": "moonsat-base-2x-c6-r1", "topology": "4p/16w", "clients": 6, "start": "2026-09-23T15:33:42Z", "end": "2026-09-23T15:35:28Z", "status": "completed", "succeeded_pods": 6, "series": "cross-series client-bottleneck diagnostic"},
+    {"job": "moonsat-p4w32-c16-r2", "topology": "4p/32w", "clients": 16, "start": "2026-09-23T15:37:17Z", "end": "2026-09-23T15:39:04Z", "status": "completed", "succeeded_pods": 16, "repeat_rationale": "The first 32-worker delta was within the campaign's prior approximately 6% noise band; one confirmation was needed before attributing a worker-scaling gain."}
+  ],
+  "retry_history": [
+    {"job": "moonsat-base-c6-r1", "repair": "Do not restart workers during cache resets; refresh Envoy's live worker-authority map after worker replica changes; require a successful chat smoke request before every measured Job."}
+  ]
+}

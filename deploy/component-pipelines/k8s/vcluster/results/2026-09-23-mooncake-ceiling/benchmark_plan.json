@@ -1,0 +1,74 @@
+{
+  "plan_id": "mooncake-envoy-callouts-saturation-v1",
+  "benchmark_series_id": "mooncake-envoy-callouts-saturation-v1",
+  "created_at": "2026-09-23T14:47:59Z",
+  "intent": "absolute_capacity_characterization_and_topology_comparison",
+  "performance_question": "What is the maximum zero-error Mooncake trace throughput of the Envoy generic-with-callouts pipeline, and do additional AIPerf clients, Dynamo fastokens preprocessor replicas, or mock worker replicas increase it?",
+  "target_operating_region": "The saturation knee through the highest zero-error point, bounded at 24 synchronized AIPerf clients (about 12,106 offered requests/second).",
+  "repository_revision": "30425a20e18662de7f3ea3dc6385d7cb14053dbe",
+  "reference_workload_record": {
+    "path": "../2026-09-23-claude-parity/benchmark_execution.json",
+    "sha256": "8ae5575c025fa8f42e4879c64be48aa1dd4f0b5578bbd8f9d6eac5dd9d8356f2"
+  },
+  "kubernetes": {
+    "environment": "vcluster",
+    "context": "kubernetes-super-admin@kubernetes",
+    "namespace": "dynamo-components-v2",
+    "endpoint": "http://envoy-callouts:8080/v1/chat/completions"
+  },
+  "workload": {
+    "source": "user_trace",
+    "path_in_benchmark_pod": "/shared/aiperf/mooncake-qwen2.5-0.5b/mooncake-512-context.jsonl",
+    "sha256": "28a94e9bc1b63fdc88e5217bdd5c647a0487c08c83bdc64a814ec0840562f550",
+    "bytes": 3051718,
+    "rows": 22699,
+    "timestamp_min_ms": 0,
+    "timestamp_max_ms": 45000,
+    "fields": ["hash_ids", "input_length", "output_length", "timestamp"],
+    "aiperf_dataset_type": "mooncake-trace",
+    "isl_block_size": 512,
+    "schedule": "fixed_trace_timestamps",
+    "per_client_offered_rps": 504.4222222222,
+    "duration_seconds": 45,
+    "warmup": "none; serving component caches are reset before each measured point",
+    "seed": 42
+  },
+  "load_grid": {
+    "independent_variable": "synchronized AIPerf replica count",
+    "client_replicas": [6, 8, 12, 16, 24],
+    "concurrency_per_client": 128,
+    "record_processors_per_client": 16,
+    "offered_rps": [3026.53, 4035.38, 6053.07, 8070.76, 12106.13],
+    "rationale": "Six reproduces the Claude parity point; 8, 12, and 16 refine the expected knee; 24 is a bounded high-load confirmation. Three dedicated 32-vCPU client nodes prevent the original two-node generator placement from becoming the first ceiling."
+  },
+  "candidate_topologies": [
+    {"name": "baseline", "gateway_replicas": 1, "preprocessor_replicas": 4, "selector_replicas": 1, "mock_worker_replicas": 16},
+    {"name": "preprocessor_x2", "gateway_replicas": 1, "preprocessor_replicas": 8, "selector_replicas": 1, "mock_worker_replicas": 16},
+    {"name": "worker_x2", "gateway_replicas": 1, "preprocessor_replicas": 4, "selector_replicas": 1, "mock_worker_replicas": 32},
+    {"name": "preprocessor_and_worker_x2", "gateway_replicas": 1, "preprocessor_replicas": 8, "selector_replicas": 1, "mock_worker_replicas": 32}
+  ],
+  "comparison_policy": "Run the complete baseline load grid. Compare topology variants at the smallest grid point that demonstrably saturates the baseline. Run a second point only when needed to distinguish a shifted knee from noise or failure.",
+  "cache_policy": "Cold comparable points: restart gateway, selector, preprocessor, and mock worker Deployments before each run and verify readiness plus a chat smoke request.",
+  "client": {
+    "image": "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
+    "version_policy": "Operator/reference-reproduction exception: retain the Claude campaign's AIPerf 0.12.0 pin so workload generation and accounting stay identical.",
+    "version_resolution_date": "2026-09-23",
+    "tokenization": "The prebuilt mmap cache is required and each log must report cache HIT; tokenizer plus composer are skipped during the measured run.",
+    "export_level": "summary",
+    "measurement_limit_seconds": 45,
+    "job_deadline_seconds": 240,
+    "repetitions": 1
+  },
+  "metrics": {
+    "primary": "aggregate completed requests/second",
+    "secondary": ["sent requests", "completed requests", "errors", "cancelled requests", "effective latency p50/p90/p99", "per-client achieved RPS"],
+    "optimization_direction": "maximize aggregate zero-error request throughput",
+    "slos": {"errors": 0, "cancelled": 0}
+  },
+  "limitations": [
+    "Mock workers isolate gateway/component overhead; this is not a GPU model-serving capacity result.",
+    "Serving pods have no CPU requests or limits, so the result describes this concrete vCluster node placement, not normalized per-core capacity.",
+    "AIPerf summary export preserves aggregate evidence but not full per-request records, matching the Claude reference methodology.",
+    "One run per point supports locating a broad saturation knee; small differences remain within unmeasured run-to-run noise."
+  ]
+}

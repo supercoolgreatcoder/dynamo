@@ -1,0 +1,75 @@
+{
+  "plan_id": "mooncake-envoy-callouts-saturation-v2",
+  "benchmark_series_id": "mooncake-envoy-callouts-saturation-v2",
+  "created_at": "2026-09-23T15:01:00Z",
+  "supersedes_before_valid_measurement": "benchmark_plan.json",
+  "change_reason": "The proposed third AIPerf node is cordoned with NoSchedule by the cluster autoscaler. Retain the two proven 32-vCPU AIPerf nodes and explicitly audit generator saturation.",
+  "performance_question": "What is the maximum zero-error Mooncake trace throughput of the Envoy generic-with-callouts pipeline, and do additional AIPerf clients, Dynamo fastokens preprocessor replicas, or mock worker replicas increase it?",
+  "intent": "absolute_capacity_characterization_and_topology_comparison",
+  "repository_revision": "30425a20e18662de7f3ea3dc6385d7cb14053dbe",
+  "kubernetes": {
+    "environment": "vcluster",
+    "context": "kubernetes-super-admin@kubernetes",
+    "namespace": "dynamo-components-v2",
+    "endpoint": "http://envoy-callouts:8080/v1/chat/completions",
+    "aiperf_nodes": [
+      "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+      "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67"
+    ],
+    "aiperf_node_allocatable_cpu_each": 32
+  },
+  "workload": {
+    "source": "user_trace",
+    "path": "/shared/aiperf/mooncake-qwen2.5-0.5b/mooncake-512-context.jsonl",
+    "sha256": "28a94e9bc1b63fdc88e5217bdd5c647a0487c08c83bdc64a814ec0840562f550",
+    "bytes": 3051718,
+    "rows": 22699,
+    "timestamp_range_ms": [0, 45000],
+    "fields": ["hash_ids", "input_length", "output_length", "timestamp"],
+    "dataset_type": "mooncake-trace",
+    "isl_block_size": 512,
+    "schedule": "fixed_trace_timestamps",
+    "duration_seconds": 45,
+    "per_client_offered_rps": 504.4222222222,
+    "seed": 42,
+    "client_tokenization": "disabled by a required mmap-cache HIT; logs must say tokenizer plus composer were skipped"
+  },
+  "load_grid": {
+    "aiperf_replicas": [6, 8, 12, 16, 24],
+    "offered_rps": [3026.53, 4035.38, 6053.07, 8070.76, 12106.13],
+    "concurrency_per_replica": 128,
+    "record_processors_per_replica": 16,
+    "placement": "maxSkew=1 over the two dedicated AIPerf nodes",
+    "stop_rule": "Stop escalating if client event-loop delay, incomplete sends, scheduling, or errors show that AIPerf is the active bottleneck. Such a point bounds client capacity, not server capacity."
+  },
+  "topologies": [
+    {"name": "baseline", "gateway": 1, "preprocessor": 4, "selector": 1, "worker": 16},
+    {"name": "preprocessor_x2", "gateway": 1, "preprocessor": 8, "selector": 1, "worker": 16},
+    {"name": "worker_x2", "gateway": 1, "preprocessor": 4, "selector": 1, "worker": 32},
+    {"name": "preprocessor_and_worker_x2", "gateway": 1, "preprocessor": 8, "selector": 1, "worker": 32}
+  ],
+  "execution_policy": {
+    "baseline": "Run the grid in ascending order until a clear knee plus one higher confirmation point.",
+    "topology_comparison": "At the first baseline-saturating load, measure each scaled topology once; add a second point only to resolve bottleneck attribution.",
+    "cache_reset": "Restart preprocessor, selector, and gateway only. Do not restart workers because the current Envoy callout implementation materializes selector-returned pod authorities into its startup map. Require successful post-reset smoke probes before launch.",
+    "repetitions": 1,
+    "job_deadline_seconds": 240
+  },
+  "client": {
+    "image": "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
+    "version_policy": "Reference-reproduction exception: match the Claude campaign.",
+    "export_level": "summary"
+  },
+  "metrics": {
+    "primary": "aggregate completed requests/second",
+    "integrity": ["sent", "completed", "errors", "cancelled", "mmap cache HIT on every client"],
+    "latency": ["effective latency p50", "effective latency p90", "effective latency p99"],
+    "success_condition": "zero request errors and cancellations"
+  },
+  "limitations": [
+    "Mock workers measure orchestration overhead, not GPU inference capacity.",
+    "Serving pods have no CPU limits, so results apply to this concrete vCluster placement.",
+    "Two AIPerf nodes may become the limiting resource at the upper grid; client-side evidence is required before calling a server ceiling.",
+    "Single-run points locate a broad knee but cannot classify small deltas below the campaign noise floor."
+  ]
+}

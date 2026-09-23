@@ -1,0 +1,52 @@
+{
+  "verdict": "characterized",
+  "benchmark_series_id": "mooncake-envoy-callouts-saturation-v2",
+  "performance_question": "What is the maximum zero-error Mooncake trace throughput of the Envoy generic-with-callouts pipeline, and do additional AIPerf clients, Dynamo fastokens preprocessor replicas, or mock worker replicas increase it?",
+  "answer": {
+    "baseline_measured_ceiling_rps": 3446.86,
+    "baseline_ceiling_description": "Approximately 3.4-3.45k zero-error RPS for 1 gateway, 4 preprocessors, 1 selector, and 16 mock workers.",
+    "best_single_scaled_observation_rps": 3631.49,
+    "best_confirmed_scaled_mean_rps": 3547.94,
+    "hard_ceiling_conclusion": "Under every tested replica topology with one Envoy callout gateway and one selector, throughput remains in an approximately 3.35-3.55k RPS band. The isolated 3.63k point did not reproduce and is not used as a promised ceiling."
+  },
+  "slo_evaluation": {
+    "zero_errors": "pass for every included run",
+    "zero_cancellations": "pass for every included run"
+  },
+  "aiperf_replica_curve": [
+    {"clients": 6, "offered_rps": 3026.53, "achieved_rps": 3016.99, "change_from_previous_percent": null},
+    {"clients": 8, "offered_rps": 4035.38, "achieved_rps": 3387.48, "change_from_previous_percent": 12.28},
+    {"clients": 12, "offered_rps": 6053.07, "achieved_rps": 3446.86, "change_from_previous_percent": 1.75},
+    {"clients": 16, "offered_rps": 8070.76, "achieved_rps": 3385.35, "change_from_previous_percent": -1.78}
+  ],
+  "replica_comparisons": [
+    {"change": "preprocessors 4 to 8", "load": "16 AIPerf clients", "baseline_rps": 3385.35, "candidate_rps": 3474.93, "delta_percent": 2.65, "classification": "noise_or_small; not a material ceiling increase"},
+    {"change": "workers 16 to 32", "load": "12 AIPerf clients", "baseline_rps": 3446.86, "candidate_rps": 3452.86, "delta_percent": 0.17, "classification": "noise"},
+    {"change": "workers 16 to 32", "load": "16 AIPerf clients", "baseline_rps": 3385.35, "candidate_rps_runs": [3631.49, 3464.39], "candidate_mean_rps": 3547.94, "candidate_run_spread_percent_of_mean": 4.71, "delta_to_baseline_percent": 4.80, "classification": "inconclusive/noise-band; no robust ceiling increase"},
+    {"change": "preprocessors 4 to 8 and workers 16 to 32", "load": "16 AIPerf clients", "baseline_rps": 3385.35, "candidate_rps": 3548.35, "delta_percent": 4.82, "classification": "integration point within prior campaign noise band and below the first 32-worker observation"}
+  ],
+  "client_bottleneck_check": {
+    "method": "Duplicate every original trace row once at the same timestamp, build the mmap cache once, then use six clients instead of twelve to offer the same approximately 6.05k RPS.",
+    "result_rps": 3346.98,
+    "mmap_cache_hits": 6,
+    "interpretation": "Reducing AIPerf process count did not lift throughput above the original-trace plateau, so client process replication is not the primary ceiling. This is cross-series diagnostic evidence, not a direct performance comparison."
+  },
+  "client_visible_symptoms": [
+    "Achieved throughput stops tracking offered load after eight clients.",
+    "Per-client p50 request latency rises from roughly 53-61 ms at six clients to roughly 398-413 ms at twelve and 569-573 ms at sixteen.",
+    "No request errors or cancellations occur; saturation appears as queueing/backpressure and reduced sends within the fixed 45-second schedule."
+  ],
+  "root_cause_scope": "The measurements establish a fixed-path ceiling but do not identify a single server-side component. Because worker and tokenizer replica doubling do not materially move the plateau, the remaining one-replica Envoy callout path and/or selector path is the next hypothesis, not a proven root cause.",
+  "series_noise_floor": "No formal n=3 pilot; prior campaign single-cell spread was approximately 6%.",
+  "minimum_detectable_effect": "Not formally established for this series.",
+  "repeat_decision": {
+    "status": "not_needed",
+    "rationale": "One 32-worker confirmation was already collected because its first delta was inside the known campaign spread. It reduced the apparent gain and resolved the decision: replica scaling cannot be claimed to materially raise the ceiling."
+  },
+  "limitations": [
+    "Summary exports prevent recomputing aggregate cross-client percentiles from per-request records.",
+    "Metrics Server was unavailable, so CPU saturation attribution is unmeasured.",
+    "These are mock-worker orchestration results, not real GPU model throughput.",
+    "The single gateway and selector replica counts were held fixed; their scaling remains untested."
+  ]
+}

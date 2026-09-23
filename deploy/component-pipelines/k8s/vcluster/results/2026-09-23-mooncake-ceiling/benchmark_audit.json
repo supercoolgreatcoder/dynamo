@@ -1,0 +1,46 @@
+{
+  "status": "valid",
+  "benchmark_series_id": "mooncake-envoy-callouts-saturation-v2",
+  "plan_path": "benchmark_plan_v2.json",
+  "plan_sha256": "078a86b0cf65345b42fd59443615fd09afc1ecf0416916bf7b84f9db8e3c684c",
+  "performance_question": "What is the maximum zero-error Mooncake trace throughput of the Envoy generic-with-callouts pipeline, and do additional AIPerf clients, Dynamo fastokens preprocessor replicas, or mock worker replicas increase it?",
+  "workload_identity": "mooncake-512-context/sha256-28a94e9bc1b63fdc88e5217bdd5c647a0487c08c83bdc64a814ec0840562f550",
+  "parser": "Python json module over AIPerf profile_export_aiperf.json schema 1.4",
+  "aiperf_version": "0.12.0",
+  "tool_version_check": "All comparable runs match the plan's 0.12.0 reference-reproduction pin.",
+  "expected": {
+    "phase": "profiling",
+    "duration_seconds": 45,
+    "requests_per_original_trace_client": 22699,
+    "errors": 0,
+    "cancelled": 0
+  },
+  "integrity_checks": {
+    "all_comparable_jobs_complete": true,
+    "all_expected_client_exports_present": true,
+    "all_exports_readable_and_nonempty": true,
+    "same_original_trace_hash": true,
+    "same_endpoint_model_seed_and_streaming": true,
+    "fixed_schedule_preserved": true,
+    "mmap_cache_hit_and_client_tokenization_skipped": true,
+    "zero_error_summaries": true,
+    "zero_cancelled_clients": true,
+    "one_benchmark_at_a_time": true,
+    "aiperf_nodes_separate_from_serving_nodes": true,
+    "configuration_engagement": "Replica counts were verified Ready before each run; every reset required an in-cluster chat smoke request."
+  },
+  "excluded_evidence": [
+    {"job": "moonsat-base-c6-r1", "reason": "failed endpoint-map reset; all requests failed; retained in execution ledger"},
+    {"job": "moonsat-2x-cache-prep", "reason": "cache construction, not a measured comparison"},
+    {"job": "moonsat-base-2x-c6-r1", "reason": "doubled trace rows form a separate workload series; used only as cross-series client-bottleneck evidence"}
+  ],
+  "coverage_note": "At saturated fixed-schedule points, concurrency backpressure intentionally prevents all scheduled rows from being sent inside 45 seconds. Completed counts and achieved throughput are the capacity signal, not missing-data corruption.",
+  "limitations": [
+    "AIPerf export-level summary does not retain per-request JSONL records.",
+    "Metrics Server was unavailable, so component and client CPU utilization is not recorded.",
+    "The series has no formal n=3 noise-floor pilot; the earlier campaign observed about 6% single-cell spread.",
+    "Mock workers isolate orchestration overhead and do not measure GPU inference capacity."
+  ],
+  "blockers": [],
+  "next_action": "continue_analysis"
+}
