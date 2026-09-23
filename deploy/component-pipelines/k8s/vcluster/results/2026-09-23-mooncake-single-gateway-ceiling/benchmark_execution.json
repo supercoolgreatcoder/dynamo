@@ -1,0 +1,61 @@
+{
+  "executed_at": "2026-09-23T17:18:00Z/2026-09-23T18:00:00Z",
+  "environment": {
+    "kind": "vcluster",
+    "kubeconfig": "/tmp/dynamo-components-vcluster.kubeconfig",
+    "namespace": "dynamo-components-v2",
+    "endpoint": "http://envoy-callouts:8080/v1/chat/completions",
+    "model": "Qwen/Qwen2.5-0.5B-Instruct",
+    "gateway_node": "cluster-0967a26d-pool-1f83edbe-mj5s4-4sr9z",
+    "gateway_node_allocatable_cpu": 32,
+    "gateway_cpu_limit": null,
+    "gateway_replicas": 1,
+    "grpc_channels_per_endpoint": 4
+  },
+  "instrument": {
+    "image": "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
+    "aiperf_version": "0.12.0",
+    "selection_reason": "Reference-reproduction exception matching the prior Claude campaign.",
+    "export_level": "summary",
+    "parser": "Python json module over profile_export_aiperf.json schema 1.4"
+  },
+  "workloads": {
+    "topology_and_exploratory_cpu": {
+      "trace": "/shared/aiperf/mooncake-qwen2.5-0.5b/mooncake-512-context-2x.jsonl",
+      "sha256": "96546dd000b7be6869294ea8fa08a6d53771799c0c8890b4bb9a32d7636c2c04",
+      "clients": 6,
+      "record_processors_per_client": 16,
+      "offered_rps": 6053.07,
+      "duration_seconds": 45,
+      "mmap_cache_key": "fb4c5b170186e023535c3857f0bdd454"
+    },
+    "clean_cpu_ceiling": {
+      "trace": "/shared/aiperf/mooncake-qwen2.5-0.5b/mooncake-512-context.jsonl",
+      "sha256": "28a94e9bc1b63fdc88e5217bdd5c647a0487c08c83bdc64a814ec0840562f550",
+      "clients": 12,
+      "record_processors_per_client": 1,
+      "offered_rps": 6053.07,
+      "duration_seconds": 45,
+      "semantic_equivalence": "Twelve original-trace clients preserve the same aggregate arrivals as six clients replaying the 2x trace, while avoiding concurrent seek/read on each AIPerf mmap object."
+    }
+  },
+  "runs": [
+    {"job": "gwceil-s1p4w16-r1", "series": "topology", "selector": 1, "preprocessor": 4, "worker": 16, "envoy_concurrency": 8, "pipeline_threads": 8, "status": "complete"},
+    {"job": "gwceil-s4p4w16-r1", "series": "topology", "selector": 4, "preprocessor": 4, "worker": 16, "envoy_concurrency": 8, "pipeline_threads": 8, "status": "complete"},
+    {"job": "gwceil-s8p4w16-r1", "series": "topology", "selector": 8, "preprocessor": 4, "worker": 16, "envoy_concurrency": 8, "pipeline_threads": 8, "status": "complete"},
+    {"job": "gwceil-s8p8w32-r1", "series": "topology", "selector": 8, "preprocessor": 8, "worker": 32, "envoy_concurrency": 8, "pipeline_threads": 8, "status": "complete"},
+    {"job": "gwcpu-c12t12-r1", "series": "cpu_exploratory", "selector": 8, "preprocessor": 8, "worker": 32, "envoy_concurrency": 12, "pipeline_threads": 12, "status": "complete"},
+    {"job": "gwcpu-c16t16-r1", "series": "cpu_exploratory", "envoy_concurrency": 16, "pipeline_threads": 16, "status": "complete_with_one_loadgen_error"},
+    {"job": "gwcpu-c20t20-r1", "series": "cpu_exploratory", "envoy_concurrency": 20, "pipeline_threads": 20, "status": "complete_with_two_loadgen_errors"},
+    {"job": "gwcpu-c20t20-rp1-c12-r1", "series": "cpu_clean", "envoy_concurrency": 20, "pipeline_threads": 20, "cache_hit_clients": 12, "errors": 0, "status": "complete"},
+    {"job": "gwcpu-c24t24-rp1-c12-r1", "series": "cpu_clean", "envoy_concurrency": 24, "pipeline_threads": 24, "cache_hit_clients": 12, "errors": 0, "status": "complete"},
+    {"job": "gwcpu-c28t28-rp1-c12-r1", "series": "cpu_clean", "envoy_concurrency": 28, "pipeline_threads": 28, "cache_hit_clients": 12, "errors": 0, "status": "complete"}
+  ],
+  "isolation": {
+    "concurrent_benchmarks_against_endpoint": 0,
+    "gateway_placement": "one pod pinned to a dedicated selected 32-CPU node for the series",
+    "aiperf_placement": "two CPU nodes distinct from the gateway node",
+    "limitation": "Other namespace/system occupancy was not frozen; all compared clean CPU points used the same node and topology in one serialized campaign."
+  },
+  "raw_outputs": "raw_aiperf/"
+}

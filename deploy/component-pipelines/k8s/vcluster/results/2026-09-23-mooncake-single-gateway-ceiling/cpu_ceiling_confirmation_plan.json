@@ -1,0 +1,9 @@
+{
+  "plan_id": "mooncake-single-envoy-callout-cpu-ceiling-confirmation-v1",
+  "created_at": "2026-09-23T17:55:00Z",
+  "reason": "24+24 regressed 2.3% from the clean 20+20 result while gateway CPU remained flat near 24 cores. One 28+28 point confirms whether further oversubscription continues the plateau/regression.",
+  "candidate": {"envoy_gateway_replicas": 1, "envoy_concurrency": 28, "generic_pipeline_threads": 28},
+  "fixed_topology": {"selector_replicas": 8, "preprocessor_replicas": 8, "worker_replicas": 32, "grpc_channels_per_endpoint": 4},
+  "workload": {"trace_multiplier": 1, "clients": 12, "record_processors_per_client": 1, "offered_rps": 6053.07, "duration_seconds": 45},
+  "validity": "Require 12 mmap cache hits, zero errors, and zero cancellations. Stop after this point if it does not exceed the clean 20+20 result."
+}

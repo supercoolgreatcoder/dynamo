@@ -1,0 +1,33 @@
+{
+  "verdict": "characterized",
+  "answer": "The single Envoy generic-with-callouts gateway, not the selector, is the Mooncake orchestration bottleneck in this topology. The best observed clean single-replica point is 4671.15 requests/second at 20 Envoy workers plus 20 callout pipeline threads.",
+  "performance_question": "Is selector or gateway the bottleneck, and what is the single-gateway ceiling when all other components scale?",
+  "current_candidate": "one Envoy generic-with-callouts replica, 20 worker threads, 20 generic pipeline threads, four gRPC channels per endpoint",
+  "absolute_current_metrics": {"request_throughput_rps": 4671.154611494582, "output_token_throughput_tps": 803161.7777031959, "completed_requests": 211888, "errors": 0, "cancelled_clients": 0, "average_osl": 171.9407045231443},
+  "bottleneck_evidence": [
+    "Scaling selector replicas 1 to 4 to 8 did not increase throughput; it changed 3560.91 to 3432.42 to 3315.80 RPS.",
+    "Scaling preprocessors/workers from 4/16 to 8/32 with selector fixed at 8 changed throughput only 0.64%, from 3315.80 to 3336.88 RPS.",
+    "At 8+8 gateway threads, gateway CPU was 13.13 cores versus 1.14 cores across all eight selectors.",
+    "Increasing the single gateway from 8+8 to 12+12 increased same-series throughput by 24.60%, from 3336.88 to 4157.74 RPS.",
+    "In the clean ceiling series, 24+24 and 28+28 regressed from 20+20 while gateway CPU flattened near 24-25 cores and gateway CPU/request rose."
+  ],
+  "same_series_history": [
+    {"configuration": "20+20", "rps": 4671.154611494582, "delta_vs_20_percent": 0.0, "errors": 0},
+    {"configuration": "24+24", "rps": 4565.633130449801, "delta_vs_20_percent": -2.259002105927271, "errors": 0},
+    {"configuration": "28+28", "rps": 4533.344727945628, "delta_vs_20_percent": -2.950231688110638, "errors": 0}
+  ],
+  "series_baseline": "20+20",
+  "best_prior": "20+20",
+  "repeat_decision": {
+    "value": "necessary",
+    "rationale": "A formal adopt/retire decision between 20+20 and neighboring settings requires the series noise-floor pilot (n=3 total). The current runs are sufficient to identify the component bottleneck and observed ceiling region, but not to claim that the 2-3% ordering exceeds run-to-run noise.",
+    "decision_to_resolve": "final production thread-count selection"
+  },
+  "series_noise_floor": null,
+  "minimum_detectable_effect": null,
+  "target_slos": [],
+  "client_visible_symptoms": ["Throughput plateaus above 20+20 threads while average latency and CPU/request rise."],
+  "missing_evidence": ["n=3 noise-floor pilot for the clean 20+20 finalist", "request-level raw JSONL for globally merged percentiles", "hardware performance-counter or per-thread profile inside the Envoy process"],
+  "limitations": ["Mock workers isolate gateway orchestration capacity and do not represent GPU decode limits.", "The clean ceiling series uses an equivalent aggregate arrival schedule with 12 single-processor clients; its latency values are not directly comparable to the six-client topology series.", "The exact in-process split between Envoy workers and callout Tokio workers was not separately profiled."],
+  "recommendation": "Use 20+20 as the provisional high-throughput single-replica setting. For a production default, run two additional clean 20+20 repetitions to establish the noise floor, then independently ablate Envoy concurrency and pipeline threads around 20 to reduce CPU/request."
+}

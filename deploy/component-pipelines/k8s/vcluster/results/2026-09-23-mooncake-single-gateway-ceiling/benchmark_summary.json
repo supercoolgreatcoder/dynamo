@@ -1,0 +1,26 @@
+{
+  "units": {"throughput": "requests/second", "output_throughput": "tokens/second", "latency": "milliseconds", "cpu": "cores during measured request rate"},
+  "topology_series": [
+    {"selector": 1, "preprocessor": 4, "worker": 16, "gateway_threads": "8+8", "requests": 161128, "rps": 3560.9148469454312, "output_tps": 608432.3692474974, "request_latency_avg_ms": 206.45614314840995, "ttft_avg_ms": 170.16691901514324, "osl_avg": 170.86317710143487, "errors": 0},
+    {"selector": 4, "preprocessor": 4, "worker": 16, "gateway_threads": "8+8", "requests": 155170, "rps": 3432.4184405636747, "output_tps": 584824.2887019719, "request_latency_avg_ms": 215.63675970045756, "ttft_avg_ms": 176.4478660121995, "osl_avg": 170.38257395115036, "errors": 0},
+    {"selector": 8, "preprocessor": 4, "worker": 16, "gateway_threads": "8+8", "requests": 150285, "rps": 3315.800965282965, "output_tps": 564356.1369494181, "request_latency_avg_ms": 222.5689969941245, "ttft_avg_ms": 182.56021396291047, "osl_avg": 170.2020893635426, "errors": 0},
+    {"selector": 8, "preprocessor": 8, "worker": 32, "gateway_threads": "8+8", "requests": 151011, "rps": 3336.878165142757, "output_tps": 567921.1988103568, "request_latency_avg_ms": 221.64407010527714, "ttft_avg_ms": 181.38637066658723, "osl_avg": 170.1953698737178, "errors": 0}
+  ],
+  "clean_cpu_ceiling_series": [
+    {"gateway_threads": "20+20", "clients": 12, "record_processors_per_client": 1, "requests": 211888, "rps": 4671.154611494582, "output_tps": 803161.7777031959, "request_latency_avg_ms": 298.3020576040596, "ttft_avg_ms": 251.5276592171336, "osl_avg": 171.9407045231443, "errors": 0, "cancelled_clients": 0},
+    {"gateway_threads": "24+24", "clients": 12, "record_processors_per_client": 1, "requests": 207608, "rps": 4565.633130449801, "output_tps": 784313.0801897604, "request_latency_avg_ms": 300.2205673027677, "ttft_avg_ms": 249.99345350418574, "osl_avg": 171.78645331586452, "errors": 0, "cancelled_clients": 0},
+    {"gateway_threads": "28+28", "clients": 12, "record_processors_per_client": 1, "requests": 206027, "rps": 4533.344727945628, "output_tps": 779432.1208620231, "request_latency_avg_ms": 305.8515220937401, "ttft_avg_ms": 250.73850718817434, "osl_avg": 171.93305246399743, "errors": 0, "cancelled_clients": 0}
+  ],
+  "exploratory_cpu_series": [
+    {"gateway_threads": "8+8", "rps": 3336.878165142757, "errors": 0, "eligibility": "valid"},
+    {"gateway_threads": "12+12", "rps": 4157.738021011637, "errors": 0, "eligibility": "valid"},
+    {"gateway_threads": "16+16", "rps": 4460.058315768932, "errors": 1, "eligibility": "invalid_loadgen_error"},
+    {"gateway_threads": "20+20", "rps": 4475.032682800573, "errors": 2, "eligibility": "invalid_loadgen_error"}
+  ],
+  "cpu_attribution": [
+    {"configuration": "8+8; selector/preprocessor/worker=8/8/32", "gateway_cores": 13.132487586805743, "selector_cores": 1.1359461500280534, "preprocessor_cores": 3.3710902536943075, "worker_cores": 1.9850945259451114, "gateway_cpu_usec_per_request": 3935.5610054896665},
+    {"configuration": "12+12; selector/preprocessor/worker=8/8/32", "gateway_cores": 19.361330873575366, "selector_cores": 1.4952994988445838, "preprocessor_cores": 4.556860266058927, "worker_cores": 2.411622338224012, "gateway_cpu_usec_per_request": 4656.698131467282},
+    {"configuration": "24+24 clean", "gateway_cores": 24.439237471070975, "selector_cores": 1.7785057831393611, "preprocessor_cores": 5.508974726378039, "worker_cores": 3.0070108497162473, "gateway_cpu_usec_per_request": 5352.869311394551},
+    {"configuration": "28+28 clean", "gateway_cores": 24.784049241677565, "selector_cores": 1.667130741078793, "preprocessor_cores": 5.773220969108222, "worker_cores": 2.6686156323152366, "gateway_cpu_usec_per_request": 5467.055944123828}
+  ]
+}

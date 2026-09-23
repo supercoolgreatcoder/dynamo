@@ -1,0 +1,17 @@
+{
+  "plan_id": "mooncake-single-envoy-loadgen-race-validation-v1",
+  "created_at": "2026-09-23T17:48:00Z",
+  "reason": "AIPerf 0.12 MemoryMapDatasetClient.get_conversation uses shared mmap seek/read state. With 16 record processors per client, concurrent reads can cross offsets and produce rare JSON decode errors at high load.",
+  "equivalent_offered_load": {
+    "previous": {"trace_multiplier": 2, "clients": 6, "record_processors_per_client": 16, "offered_rps": 6053.07},
+    "validation": {"trace_multiplier": 1, "clients": 12, "record_processors_per_client": 1, "offered_rps": 6053.07}
+  },
+  "invariants": [
+    "same original Mooncake rows and timestamps in aggregate",
+    "same 45 second duration, concurrency per client, endpoint, model, and seed",
+    "prebuilt mmap cache HIT on every client; tokenizer and composer skipped",
+    "one Envoy gateway replica at 20 worker threads and 20 callout pipeline threads",
+    "selector/preprocessor/worker replicas fixed at 8/8/32"
+  ],
+  "validity": "Require 12 cache hits, zero AIPerf errors, and zero cancellations."
+}
