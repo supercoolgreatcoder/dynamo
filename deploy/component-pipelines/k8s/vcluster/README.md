@@ -33,11 +33,82 @@ kubectl --kubeconfig "$KUBECONFIG" -n "$VCLUSTER_NAMESPACE" \
   logs -f component-benchmark | tee benchmark.jsonl
 ```
 
+The Mooncake campaign separates dataset preparation from load generation. Render
+`mooncake-prepare-job.yaml.tmpl` once to normalize the 512-token-block trace and
+populate AIPerf's content-addressed mmap cache on shared NFS. The preparation job
+uses a 100 ms profile only to make AIPerf publish the cache; its preparation probes
+is not benchmark data. After it completes, render `mooncake-job.yaml.tmpl` for each
+orchestrator arm. Its six clients hard-link the same prepared mmap, so they send
+the same OpenAI chat text without rebuilding approximately 700 MiB of prompts per
+client. AIPerf still resolves the pinned Qwen tokenizer identity for the cache key,
+but prompt synthesis and token-count metrics are absent from the measured client
+path (`--use-server-token-count`). Seed 42 makes both the cache key and synthesized
+text deterministic. Keep the AIPerf image, tokenizer revision, trace, and prompt
+flags identical: changing any of them deliberately produces a cache
+miss.
+
+For comparison with the retained Claude prototype, apply the two strategic-merge
+patch templates before starting an arm. They reproduce its processor and mock-worker
+budgets rather
+than merely using the same replica count: four render/tokenize pods, four Tokio
+threads and four active operations per pod, two pods on each of two 32-core nodes,
+the `fastokens` backend with fallback disabled, a 64 MiB cache per pod, 32 gateway
+connections, and a 32-item/200-us cross-request batch. Pinning the backend matters:
+Dynamo's default HuggingFace backend is correct but is not performance-comparable to
+the reference service's `dynamo_tokenizers::FastTokenizer`. The facade still invokes
+Dynamo's canonical `OpenAIPreprocessor`; the old standalone tokenizer implementation
+is a benchmark reference, not production code.
+
+```bash
+export PROCESSOR_NODE_A=node-a PROCESSOR_NODE_B=node-b
+export COMPONENT_BUNDLE=/nix/store/...-dynamo-component-pipelines
+export TOKENIZER_PATH=/nix/store/...-qwen-tokenizer
+
+envsubst '${PROCESSOR_NODE_A} ${PROCESSOR_NODE_B} ${COMPONENT_BUNDLE} ${TOKENIZER_PATH}' \
+  < deploy/component-pipelines/k8s/vcluster/claude-parity-preprocessor-patch.yaml.tmpl \
+  > /tmp/claude-parity-preprocessor-patch.yaml
+kubectl --kubeconfig "$KUBECONFIG" -n "$VCLUSTER_NAMESPACE" patch \
+  deployment dynamo-preprocessor --type=strategic \
+  --patch-file=/tmp/claude-parity-preprocessor-patch.yaml
+
+envsubst '${COMPONENT_BUNDLE}' \
+  < deploy/component-pipelines/k8s/vcluster/claude-parity-gateway-patch.yaml.tmpl \
+  > /tmp/claude-parity-gateway-patch.yaml
+kubectl --kubeconfig "$KUBECONFIG" -n "$VCLUSTER_NAMESPACE" patch \
+  deployment agw-static --type=strategic \
+  --patch-file=/tmp/claude-parity-gateway-patch.yaml
+```
+
+Set `AIPERF_NODE_A` and `AIPERF_NODE_B` when rendering `mooncake-job.yaml.tmpl`.
+The six cached-text load generators are spread 3/3 across those dedicated CPU nodes;
+without this constraint Kubernetes may place all six on one 32-core node and make the
+client the bottleneck. Keep those nodes distinct from the gateway, processor, selector,
+and mock-worker nodes. Set `BENCHMARK_START_UNIX` far enough in the future for all six
+Pods to become Running. They wait on that shared wall-clock barrier so an image pull or
+scheduler delay cannot stagger the trace and silently lower the offered load.
+Each indexed client writes its summary and `profile_export.jsonl` under
+`/shared/aiperf/results/$JOB_NAME/$JOB_COMPLETION_INDEX`; retain that directory
+with the benchmark record so the analysis is audit-grade. Restrict `envsubst` to
+the documented render-time variables so it does not consume the runtime
+`$JOB_COMPLETION_INDEX` reference.
+
+Render `claude-parity-worker-patch.yaml.tmpl` with `WORKER_NODE_A` through
+`WORKER_NODE_D` and apply it as a strategic patch to `dynamo-benchmark-worker`.
+This keeps the 16 zero-GPU mock workers evenly spread over the same four-node budget
+used by the reference campaign.
+
 The Envoy-callout arm must have a cluster name for every authority returned by the
 selector. For a static benchmark deployment, map the current worker Pod authorities
 to `dynamo-worker` in `upstream_clusters`. A production installation should publish
 those endpoints through CDS/xDS so Pod churn updates Envoy and selector discovery
 atomically; hard-coded Pod IPs are intentionally not checked into this repository.
+
+Kubernetes Services load-balance TCP connections, while gRPC multiplexes many streams
+over each HTTP/2 connection. Set `DYN_GRPC_CHANNELS_PER_ENDPOINT` on the AGW static,
+AGW generic, and independent Envoy hosts when a facade Service has multiple replicas.
+The default is one channel and the implementation clamps the value to 1–256; record the
+chosen channel and replica counts with each benchmark. This knob is unnecessary
+for Envoy callouts because Envoy owns and balances those upstream HTTP/2 connections.
 
 GPU-backed vLLM or SGLang correctness testing also remains inside the vCluster. If its
 virtual nodes do not advertise GPU resources, that test is unavailable there and must

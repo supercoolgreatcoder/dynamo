@@ -63,18 +63,18 @@ async fn facade_matches_direct_canonical_preparation() {
             .unwrap(),
         serde_json::to_value(&request).unwrap()
     );
+    let backend_request: serde_json::Value =
+        serde_json::from_slice(&actual.backend_request_json).unwrap();
+    assert!(backend_request.get("token_ids").is_none());
     assert_eq!(
-        serde_json::from_slice::<serde_json::Value>(&actual.backend_request_json).unwrap(),
-        serde_json::to_value(&direct.backend_request).unwrap()
+        actual.token_ids,
+        direct.backend_request.token_ids.as_ref().clone()
     );
     let selector_request: serde_json::Value =
         serde_json::from_slice(&actual.selector_request_json).unwrap();
     assert_eq!(selector_request["model_name"], "test-model");
     assert_eq!(selector_request["selection_id"], "a");
-    assert_eq!(
-        selector_request["token_ids"],
-        serde_json::to_value(&direct.backend_request.token_ids).unwrap()
-    );
+    assert!(selector_request.get("token_ids").is_none());
     assert!(selector_request.get("model").is_none());
     assert_eq!(actual.annotations, direct.annotations);
     assert_eq!(

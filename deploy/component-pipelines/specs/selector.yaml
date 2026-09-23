@@ -23,6 +23,8 @@ paths:
               properties:
                 item_id: {type: string}
                 payload_json: {type: object}
+                token_ids: {type: array, items: {type: integer}}
+                token_ids_le: {type: string}
                 deadline_unix_ms: {type: integer}
       responses:
         "200":

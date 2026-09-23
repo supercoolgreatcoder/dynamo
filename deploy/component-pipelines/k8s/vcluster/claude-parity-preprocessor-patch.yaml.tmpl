@@ -1,0 +1,57 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Strategic-merge patch for the refactored Dynamo facade. This reproduces the
+# processor budget used by the retained Claude tok-svc 0.2 benchmark: four pods,
+# two pods on each of two 32-core nodes, four Tokio threads, four active render +
+# tokenize operations per pod, the same fastokens encoder, and a 64 MiB prefix
+# cache per pod. Fallback is disabled so a backend mismatch fails visibly.
+spec:
+  replicas: 4
+  strategy:
+    type: Recreate
+  template:
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values: [${PROCESSOR_NODE_A}, ${PROCESSOR_NODE_B}]
+        podAntiAffinity: null
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: dynamo-preprocessor
+      containers:
+        - name: facade
+          command:
+            - ${COMPONENT_BUNDLE}/bin/dynamo-component-facade
+          args:
+            - --listen
+            - 0.0.0.0:50051
+            - preprocessor
+            - --model-path
+            - ${TOKENIZER_PATH}
+            - --max-batch-items
+            - "128"
+            - --max-batch-bytes
+            - "67108864"
+            - --max-concurrency
+            - "4"
+          env:
+            - name: RUST_LOG
+              value: warn
+            - name: TOKIO_WORKER_THREADS
+              value: "4"
+            - name: DYN_TOKENIZER_CACHE_BYTES
+              value: "67108864"
+            - name: DYN_TOKENIZER
+              value: fastokens
+            - name: DYN_TOKENIZER_FALLBACK
+              value: "0"

@@ -1,0 +1,47 @@
+{
+  "benchmark_series_id": "claude-mooncake-parity-v1",
+  "date_utc": "2026-09-23",
+  "kubernetes_scope": {
+    "environment": "vcluster",
+    "kubeconfig": "/tmp/dynamo-components-vcluster.kubeconfig",
+    "namespace": "dynamo-components-v2"
+  },
+  "workload": {
+    "dataset": "mooncake-512-context.jsonl",
+    "mmap_cache_key": "4632ec92287b39f9033acd98c8c8b55f",
+    "aiperf_image": "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
+    "endpoint_type": "chat",
+    "streaming": true,
+    "client_tokenization": false,
+    "clients": 6,
+    "concurrency_per_client": 128,
+    "duration_seconds": 45,
+    "record_processors": 16,
+    "seed": 42
+  },
+  "serving_topology": {
+    "gateway_replicas": 1,
+    "preprocessor_replicas": 4,
+    "preprocessor_tokio_threads": 4,
+    "preprocessor_max_concurrency": 4,
+    "preprocessor_tokenizer_backend": "fastokens",
+    "preprocessor_tokenizer_fallback": false,
+    "preprocessor_cache_bytes_per_replica": 67108864,
+    "selector_replicas": 1,
+    "mock_worker_replicas": 16,
+    "aiperf_nodes": 2
+  },
+  "final_bundle": {
+    "nix_store_path": "/nix/store/9c4sayvyg7fydwylhi10g0rpdvg6gzya-dynamo-component-pipelines-20260923-packed-generic",
+    "facade_sha256": "4c68b7648a3892c9ee5f92b8015ac5dd64934c39ec55d3e1298f939c7aded8a2",
+    "agentgateway_sha256": "a0b66e1531728141b1b1e841892ef69f9396cc0ddd9ecd9f1802ff7e315ba441",
+    "envoy_module_sha256": "6075dbb2b394126066da87601c72857a4952d0782f3954bcbf277c3ca6f7741f"
+  },
+  "jobs": [
+    "moonparity-agw-static-final-r13",
+    "moonparity-agw-generic-packed-r10",
+    "moonparity-envoy-generic-packed-r11",
+    "moonparity-envoy-callouts-packed-r12"
+  ],
+  "isolation": "One gateway arm active at a time; six AIPerf clients pinned 3/3 to two dedicated nodes; preprocessors pinned 2/2 to two separate nodes; 16 mock workers spread across four other nodes."
+}

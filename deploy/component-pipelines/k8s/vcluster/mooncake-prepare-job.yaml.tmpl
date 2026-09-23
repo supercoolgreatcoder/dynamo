@@ -1,0 +1,115 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Materialize the Qwen Mooncake workload exactly once. AIPerf's native,
+# content-addressed mmap cache preserves the generated text, timestamps, and
+# hash-block sharing. Benchmark jobs hard-link this immutable cache entry and
+# therefore do not synthesize the ~700 MiB conversation set in every client.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ${JOB_NAME}
+  namespace: ${VCLUSTER_NAMESPACE}
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        benchmark: mooncake-prepare
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      containers:
+        - name: prepare
+          image: nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0
+          securityContext: {runAsUser: 0}
+          env:
+            - name: AIPERF_DATASET_MMAP_CACHE_ENABLED
+              value: "true"
+            - name: AIPERF_DATASET_MMAP_CACHE_DIR
+              value: /shared/aiperf/mooncake-qwen2.5-0.5b/mmap-cache
+            - name: AIPERF_DATASET_MMAP_BASE_PATH
+              value: /shared/aiperf/mooncake-qwen2.5-0.5b/run-mmaps
+          command: [/bin/bash, -lc]
+          args:
+            - |
+              set -euo pipefail
+              export HF_HOME=/tmp/hf HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
+              cache=/tmp/hf/hub/models--Qwen--Qwen2.5-0.5B-Instruct
+              mkdir -p "$cache/snapshots" "$cache/refs"
+              ln -s /model/tokenizer "$cache/snapshots/nix"
+              printf nix > "$cache/refs/main"
+
+              dataset_dir=/shared/aiperf/mooncake-qwen2.5-0.5b
+              dataset="$dataset_dir/mooncake-512-context.jsonl"
+              mkdir -p "$dataset_dir" "$AIPERF_DATASET_MMAP_CACHE_DIR" \
+                "$AIPERF_DATASET_MMAP_BASE_PATH"
+              python - <<'PY'
+              import hashlib
+              import json
+              import os
+              from pathlib import Path
+
+              source = Path("${MOONCAKE_TRACE}")
+              dataset = Path("/shared/aiperf/mooncake-qwen2.5-0.5b/mooncake-512-context.jsonl")
+              temporary = dataset.with_suffix(".jsonl.tmp")
+              with source.open() as input_file:
+                  records = [json.loads(line) for line in input_file if line.strip()]
+              records = [
+                  record for record in records
+                  if record["input_length"] > 0
+                  and record["input_length"] + record["output_length"] <= 30000
+              ]
+              first = min(record["timestamp"] for record in records)
+              span = max(record["timestamp"] for record in records) - first
+              digest = hashlib.sha256()
+              with temporary.open("wb") as output_file:
+                  for record in sorted(records, key=lambda item: item["timestamp"]):
+                      record["timestamp"] = int((record["timestamp"] - first) * 45000 / span)
+                      hashes = record.get("hash_ids") or []
+                      if len(hashes) * 512 > record["input_length"]:
+                          record["hash_ids"] = hashes[:-1]
+                      encoded = json.dumps(record, separators=(",", ":")).encode() + b"\n"
+                      output_file.write(encoded)
+                      digest.update(encoded)
+              os.replace(temporary, dataset)
+              print(
+                  f"prepared_trace_records={len(records)} "
+                  f"sha256={digest.hexdigest()} path={dataset}",
+                  flush=True,
+              )
+              PY
+
+              # A one-request profile asks AIPerf to build and publish its native
+              # mmap cache. The request is preparation traffic, not a measurement.
+              exec aiperf profile \
+                --url "${TARGET_URL}" \
+                --model Qwen/Qwen2.5-0.5B-Instruct \
+                --tokenizer Qwen/Qwen2.5-0.5B-Instruct \
+                --endpoint-type chat --streaming --use-server-token-count \
+                --use-legacy-max-tokens \
+                --custom-dataset-type mooncake-trace \
+                --input-file "$dataset" \
+                --isl-block-size 512 \
+                --random-seed 42 \
+                --concurrency 1 --benchmark-duration 0.1 --benchmark-grace-period 0 \
+                --export-level summary --record-processors 1 \
+                --output-artifact-dir /tmp/artifacts
+          volumeMounts:
+            - name: shared-store
+              mountPath: /nix/store
+              subPath: store
+              readOnly: true
+            - name: shared-store
+              mountPath: /model/tokenizer
+              subPath: store/wjq1b3wfjpzak4yd4rmj9arwqk1gkiir-qwen-tokenizer
+              readOnly: true
+            - name: shared-store
+              mountPath: /shared
+      volumes:
+        - name: shared-store
+          nfs:
+            server: ${NIX_STORE_NFS_SERVER}
+            path: ${NIX_STORE_NFS_PATH}
+            readOnly: false

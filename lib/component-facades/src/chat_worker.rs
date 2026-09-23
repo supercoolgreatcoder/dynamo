@@ -14,6 +14,7 @@ use tonic::{Request, Response, Status};
 use crate::{
     deadline_expired, item_error,
     proto::{ChatWorkerRequest, PostprocessOutput, chat_worker_bridge_server::ChatWorkerBridge},
+    token_ids_from_wire,
     worker::CanonicalBackendEngine,
 };
 
@@ -63,13 +64,27 @@ impl ChatWorkerBridge for ChatWorkerFacade {
         let total_bytes = request
             .backend_request_json
             .len()
-            .saturating_add(request.normalized_openai_request_json.len());
+            .saturating_add(request.normalized_openai_request_json.len())
+            .saturating_add(request.token_ids.len().saturating_mul(size_of::<u32>()))
+            .saturating_add(request.token_ids_le.len());
         if total_bytes > self.max_request_bytes {
             return Err(Status::resource_exhausted("request byte limit exceeded"));
         }
-        let backend_request: PreprocessedRequest =
+        let mut backend_value: serde_json::Value =
             serde_json::from_slice(&request.backend_request_json)
                 .map_err(|error| Status::invalid_argument(error.to_string()))?;
+        let backend_object = backend_value
+            .as_object_mut()
+            .ok_or_else(|| Status::invalid_argument("backend request must be a JSON object"))?;
+        let token_ids = token_ids_from_wire(request.token_ids, &request.token_ids_le)
+            .map_err(Status::invalid_argument)?;
+        backend_object.insert(
+            "token_ids".to_string(),
+            serde_json::to_value(token_ids)
+                .map_err(|error| Status::invalid_argument(error.to_string()))?,
+        );
+        let backend_request: PreprocessedRequest = serde_json::from_value(backend_value)
+            .map_err(|error| Status::invalid_argument(error.to_string()))?;
         let chat_request: NvCreateChatCompletionRequest =
             serde_json::from_slice(&request.normalized_openai_request_json)
                 .map_err(|error| Status::invalid_argument(error.to_string()))?;

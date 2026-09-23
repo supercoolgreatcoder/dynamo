@@ -38,6 +38,18 @@ use futures::stream;
 use serde::Deserialize;
 use tonic::transport::Server;
 
+const GRPC_STREAM_WINDOW_BYTES: u32 = 8 * 1024 * 1024;
+const GRPC_CONNECTION_WINDOW_BYTES: u32 = 16 * 1024 * 1024;
+const GRPC_MAX_CONCURRENT_STREAMS: u32 = 4096;
+
+fn server_builder() -> Server {
+    Server::builder()
+        .initial_stream_window_size(Some(GRPC_STREAM_WINDOW_BYTES))
+        .initial_connection_window_size(Some(GRPC_CONNECTION_WINDOW_BYTES))
+        .max_concurrent_streams(Some(GRPC_MAX_CONCURRENT_STREAMS))
+        .tcp_nodelay(true)
+}
+
 #[derive(Parser)]
 #[command(name = "dynamo-component-facade")]
 struct Args {
@@ -230,7 +242,7 @@ async fn main() -> anyhow::Result<()> {
                 .register_encoded_file_descriptor_set(FILE_DESCRIPTOR_SET)
                 .build_v1()
                 .context("build component reflection service")?;
-            Server::builder()
+            server_builder()
                 .add_service(health)
                 .add_service(reflection)
                 .add_service(PreprocessorServer::new(service))
@@ -253,7 +265,7 @@ async fn main() -> anyhow::Result<()> {
                 .register_encoded_file_descriptor_set(FILE_DESCRIPTOR_SET)
                 .build_v1()
                 .context("build component reflection service")?;
-            Server::builder()
+            server_builder()
                 .add_service(health)
                 .add_service(reflection)
                 .add_service(PostprocessorServer::new(service))
@@ -276,7 +288,7 @@ async fn main() -> anyhow::Result<()> {
                 .register_encoded_file_descriptor_set(FILE_DESCRIPTOR_SET)
                 .build_v1()
                 .context("build component reflection service")?;
-            Server::builder()
+            server_builder()
                 .add_service(health)
                 .add_service(reflection)
                 .add_service(ChatWorkerBridgeServer::new(service))
@@ -349,7 +361,7 @@ async fn main() -> anyhow::Result<()> {
                 .register_encoded_file_descriptor_set(FILE_DESCRIPTOR_SET)
                 .build_v1()
                 .context("build component reflection service")?;
-            Server::builder()
+            server_builder()
                 .add_service(health)
                 .add_service(reflection)
                 .add_service(SelectorServer::new(service))

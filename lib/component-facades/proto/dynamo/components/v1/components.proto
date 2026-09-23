@@ -16,6 +16,9 @@ message PreprocessItem {
   bool preserve_omitted_max_tokens = 3;
   string lora_name = 4;
   int64 deadline_unix_ms = 5;
+  // Descriptor-driven gateways request an opaque carrier so their dynamic
+  // value model never materializes one JSON number per prompt token.
+  bool packed_tokens_only = 6;
 }
 
 message PreprocessBatchRequest { repeated PreprocessItem items = 1; }
@@ -38,6 +41,12 @@ message PreparedItem {
   // Keeping this translation in the Dynamo facade prevents gateways from
   // knowing Dynamo's routing schema.
   bytes selector_request_json = 14;
+  // Prompt token IDs travel as packed protobuf integers. The JSON payloads
+  // deliberately omit this large hot-path field.
+  repeated uint32 token_ids = 15;
+  // Little-endian u32 token IDs. Populated instead of token_ids when the
+  // request sets packed_tokens_only.
+  bytes token_ids_le = 16;
 }
 
 message PreprocessBatchResponse { repeated PreparedItem items = 1; }
@@ -51,6 +60,8 @@ message JsonItem {
   string item_id = 1;
   bytes payload_json = 2;
   int64 deadline_unix_ms = 3;
+  repeated uint32 token_ids = 4;
+  bytes token_ids_le = 5;
 }
 
 message JsonBatchRequest { repeated JsonItem items = 1; }
@@ -143,6 +154,8 @@ message ChatWorkerRequest {
   uint64 video_count = 9;
   uint64 audio_count = 10;
   int64 deadline_unix_ms = 11;
+  repeated uint32 token_ids = 12;
+  bytes token_ids_le = 13;
 }
 
 // Preferred worker-side boundary for gateway graphs. A Dynamo wrapper supplies

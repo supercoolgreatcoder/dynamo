@@ -65,11 +65,15 @@ async fn worker_lifecycle_and_selection_use_canonical_service() {
                 item_id: "select".into(),
                 payload_json: serde_json::to_vec(&json!({
                     "model_name": "model",
-                    "token_ids": [1, 2, 3, 4],
                     "selection_id": "request-1"
                 }))
                 .unwrap(),
                 deadline_unix_ms: 0,
+                token_ids: Vec::new(),
+                token_ids_le: [1_u32, 2, 3, 4]
+                    .into_iter()
+                    .flat_map(u32::to_le_bytes)
+                    .collect(),
             }],
         }))
         .await
@@ -92,15 +96,18 @@ async fn selector_isolates_invalid_item_and_preserves_order() {
                     item_id: "malformed".into(),
                     payload_json: b"{".to_vec(),
                     deadline_unix_ms: 0,
+                    token_ids: Vec::new(),
+                    token_ids_le: Vec::new(),
                 },
                 JsonItem {
                     item_id: "valid-but-not-ready".into(),
                     payload_json: serde_json::to_vec(&json!({
-                        "model_name": "model",
-                        "token_ids": [1, 2, 3, 4]
+                        "model_name": "model"
                     }))
                     .unwrap(),
                     deadline_unix_ms: 0,
+                    token_ids: vec![1, 2, 3, 4],
+                    token_ids_le: Vec::new(),
                 },
             ],
         }))

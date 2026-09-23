@@ -1,0 +1,22 @@
+{
+  "status": "invalid",
+  "benchmark_series_id": "claude-mooncake-parity-v1",
+  "performance_question": "Can the refactored Dynamo-component pipeline reproduce the retained Claude prototype's Mooncake gateway throughput?",
+  "workload_identity": "mooncake-512-context/cache-4632ec92287b39f9033acd98c8c8b55f",
+  "aiperf_version": "0.12.0",
+  "integrity_checks": {
+    "same_cached_dataset": true,
+    "client_tokenization_disabled": true,
+    "same_topology": true,
+    "one_arm_active_at_a_time": true,
+    "zero_request_errors": true,
+    "full_per_request_exports_preserved": false
+  },
+  "blockers": [
+    "The Jobs wrote AIPerf summary artifacts to ephemeral /tmp and did not preserve profile_export.jsonl on shared storage.",
+    "The retained Claude reference has no benchmark_audit.json in this branch.",
+    "No n=3 series noise-floor pilot exists, so the small AGW-static delta versus the context-only reference is not statistically classifiable."
+  ],
+  "next_action": "rerun_benchmark",
+  "interpretation": "The Kubernetes logs are useful prototype evidence and show zero-error throughput, but the run is not promotion-grade under repository audit rules."
+}
