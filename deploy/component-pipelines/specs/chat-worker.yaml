@@ -22,6 +22,8 @@ paths:
                 request_id: {type: string}
                 backend_request_json: {type: object}
                 normalized_openai_request_json: {type: object}
+                token_ids: {type: array, items: {type: integer}}
+                token_ids_le: {type: string}
                 prompt_injected_reasoning: {type: boolean}
                 uses_tool_call_structural_tag: {type: boolean}
                 prompt_tokens: {type: integer}

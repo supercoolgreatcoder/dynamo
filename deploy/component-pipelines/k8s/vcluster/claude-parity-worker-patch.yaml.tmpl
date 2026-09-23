@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Strategic-merge patch matching the retained Claude campaign's 16 mock workers
+# spread evenly over four 32-core CPU nodes.
+spec:
+  replicas: 16
+  template:
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: null
+        topology.unikorn-cloud.org/node-pool: cpu-pool
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values:
+                      - ${WORKER_NODE_A}
+                      - ${WORKER_NODE_B}
+                      - ${WORKER_NODE_C}
+                      - ${WORKER_NODE_D}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: dynamo-benchmark-worker

@@ -8,10 +8,11 @@ use dynamo_llm::{
     protocols::openai::{GuidedToolConstraint, chat_completions::NvCreateChatCompletionRequest},
 };
 use futures::{StreamExt, stream};
+use tokio::sync::Semaphore;
 use tonic::{Request, Response, Status};
 
 use crate::{
-    deadline_expired, item_error,
+    deadline_expired, encode_token_ids_le, item_error,
     proto::{
         PreparedItem, PreprocessBatchRequest, PreprocessBatchResponse,
         preprocessor_server::Preprocessor,
@@ -24,17 +25,35 @@ pub struct PreprocessorFacade {
     max_batch_items: usize,
     max_batch_bytes: usize,
     max_concurrency: usize,
+    concurrency: Arc<Semaphore>,
 }
 
 impl PreprocessorFacade {
-    fn selector_request_json(
+    fn request_payloads(
         item_id: &str,
         backend_request: &dynamo_llm::protocols::common::preprocessor::PreprocessedRequest,
-    ) -> Result<Vec<u8>, serde_json::Error> {
-        let mut value = serde_json::to_value(backend_request)?;
-        let object = value
-            .as_object_mut()
-            .expect("PreprocessedRequest serializes as an object");
+    ) -> Result<(Vec<u8>, Vec<u8>), serde_json::Error> {
+        // `token_ids` is Arc-backed, so this clone does not copy the prompt.
+        // Clear it before serialization instead of building a large JSON array
+        // only to remove that array from both transport envelopes.
+        let mut backend_without_tokens = backend_request.clone();
+        backend_without_tokens.token_ids = Arc::new(Vec::new());
+        let mut backend_value = serde_json::to_value(backend_without_tokens)?;
+        let backend_object = backend_value.as_object_mut().ok_or_else(|| {
+            serde_json::Error::io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "PreprocessedRequest did not serialize as an object",
+            ))
+        })?;
+        backend_object.remove("token_ids");
+
+        let mut selector_value = backend_value.clone();
+        let object = selector_value.as_object_mut().ok_or_else(|| {
+            serde_json::Error::io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "PreprocessedRequest did not serialize as an object",
+            ))
+        })?;
 
         if let Some(model) = object.remove("model") {
             object.insert("model_name".to_string(), model);
@@ -51,7 +70,10 @@ impl PreprocessorFacade {
                 object.entry(key).or_insert(value);
             }
         }
-        serde_json::to_vec(&value)
+        Ok((
+            serde_json::to_vec(&backend_value)?,
+            serde_json::to_vec(&selector_value)?,
+        ))
     }
 
     pub fn new(
@@ -68,6 +90,7 @@ impl PreprocessorFacade {
             max_batch_items,
             max_batch_bytes,
             max_concurrency,
+            concurrency: Arc::new(Semaphore::new(max_concurrency)),
         })
     }
 
@@ -113,12 +136,8 @@ impl PreprocessorFacade {
             Ok(value) => value,
             Err(err) => return error("internal", err.to_string(), false),
         };
-        let backend_request_json = match serde_json::to_vec(&prepared.backend_request) {
-            Ok(value) => value,
-            Err(err) => return error("internal", err.to_string(), false),
-        };
-        let selector_request_json =
-            match Self::selector_request_json(&item_id, &prepared.backend_request) {
+        let (backend_request_json, selector_request_json) =
+            match Self::request_payloads(&item_id, &prepared.backend_request) {
                 Ok(value) => value,
                 Err(err) => return error("internal", err.to_string(), false),
             };
@@ -127,7 +146,13 @@ impl PreprocessorFacade {
             Ok(value) => value,
             Err(err) => return error("internal", err.to_string(), false),
         };
-        let prompt_tokens = prepared.backend_request.token_ids.len() as u64;
+        let token_ids = prepared.backend_request.token_ids.as_ref().clone();
+        let prompt_tokens = token_ids.len() as u64;
+        let (token_ids, token_ids_le) = if item.packed_tokens_only {
+            (Vec::new(), encode_token_ids_le(&token_ids))
+        } else {
+            (token_ids, Vec::new())
+        };
         let mm_counts = MultimodalCounts::from_preprocessed(&prepared.backend_request);
         PreparedItem {
             item_id,
@@ -147,6 +172,8 @@ impl PreprocessorFacade {
             video_count: mm_counts.video as u64,
             audio_count: mm_counts.audio as u64,
             selector_request_json,
+            token_ids,
+            token_ids_le,
         }
     }
 }
@@ -164,6 +191,12 @@ impl Preprocessor for PreprocessorFacade {
         if item.openai_request_json.len() > self.max_batch_bytes {
             return Err(Status::resource_exhausted("request byte limit exceeded"));
         }
+        let _permit = self
+            .concurrency
+            .clone()
+            .acquire_owned()
+            .await
+            .map_err(|_| Status::unavailable("preprocessor is shutting down"))?;
         Ok(Response::new(
             Self::prepare_one(self.processor.clone(), item).await,
         ))
@@ -196,10 +229,26 @@ impl Preprocessor for PreprocessorFacade {
             ));
         }
         let processor = self.processor.clone();
+        let concurrency = self.concurrency.clone();
         let mut items = stream::iter(batch.items.into_iter().enumerate())
             .map(move |(index, item)| {
                 let processor = processor.clone();
-                async move { (index, Self::prepare_one(processor, item).await) }
+                let concurrency = concurrency.clone();
+                async move {
+                    let prepared = match concurrency.acquire_owned().await {
+                        Ok(_permit) => Self::prepare_one(processor, item).await,
+                        Err(_) => PreparedItem {
+                            item_id: item.item_id,
+                            error: Some(item_error(
+                                "unavailable",
+                                "preprocessor is shutting down",
+                                true,
+                            )),
+                            ..Default::default()
+                        },
+                    };
+                    (index, prepared)
+                }
             })
             .buffer_unordered(self.max_concurrency)
             .collect::<Vec<_>>()

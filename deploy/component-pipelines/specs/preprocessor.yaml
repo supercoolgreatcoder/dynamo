@@ -26,6 +26,7 @@ paths:
                 preserve_omitted_max_tokens: {type: boolean}
                 lora_name: {type: string}
                 deadline_unix_ms: {type: integer}
+                packed_tokens_only: {type: boolean}
       responses:
         "200":
           content:
@@ -37,6 +38,8 @@ paths:
                   normalized_openai_request_json: {type: object}
                   backend_request_json: {type: object}
                   selector_request_json: {type: object}
+                  token_ids: {type: array, items: {type: integer}}
+                  token_ids_le: {type: string}
                   annotations: {type: object}
                   prompt_injected_reasoning: {type: boolean}
                   uses_tool_call_structural_tag: {type: boolean}

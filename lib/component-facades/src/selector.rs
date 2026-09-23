@@ -17,6 +17,7 @@ use crate::{
         JsonBatchRequest, JsonBatchResponse, JsonResult, ReadyRequest,
         ReservationEventBatchRequest, WorkerMutationBatchRequest, selector_server::Selector,
     },
+    token_ids_from_wire,
 };
 
 #[derive(Debug)]
@@ -86,7 +87,12 @@ impl SelectorFacade {
         if batch
             .items
             .iter()
-            .map(|item| item.payload_json.len())
+            .map(|item| {
+                item.payload_json
+                    .len()
+                    .saturating_add(item.token_ids.len().saturating_mul(size_of::<u32>()))
+                    .saturating_add(item.token_ids_le.len())
+            })
             .sum::<usize>()
             > self.max_batch_bytes
         {
@@ -111,7 +117,7 @@ impl SelectorFacade {
         operation: F,
     ) -> Result<JsonBatchResponse, Status>
     where
-        F: Fn(Arc<SelectionService>, Vec<u8>) -> Fut + Clone + Send + Sync + 'static,
+        F: Fn(Arc<SelectionService>, Vec<u8>, Vec<u32>) -> Fut + Clone + Send + Sync + 'static,
         Fut: Future<Output = Result<Vec<u8>, FacadeFailure>> + Send,
     {
         self.validate_json_batch(&batch)?;
@@ -128,7 +134,14 @@ impl SelectorFacade {
                             retryable: true,
                         })
                     } else {
-                        operation(service, item.payload_json).await
+                        match token_ids_from_wire(item.token_ids, &item.token_ids_le) {
+                            Ok(token_ids) => operation(service, item.payload_json, token_ids).await,
+                            Err(message) => Err(FacadeFailure {
+                                kind: "invalid_argument".to_string(),
+                                message: message.to_string(),
+                                retryable: false,
+                            }),
+                        }
                     };
                     let result = match result {
                         Ok(payload_json) => JsonResult {
@@ -183,8 +196,9 @@ impl Selector for SelectorFacade {
                 JsonBatchRequest {
                     items: vec![request.into_inner()],
                 },
-                |service, payload| async move {
-                    let request: SelectRequest = decode(&payload)?;
+                |service, payload, token_ids| async move {
+                    let mut request: SelectRequest = decode(&payload)?;
+                    request.prompt.token_ids = Some(token_ids);
                     encode(&service.select(request).await.map_err(FacadeFailure::from)?)
                 },
             )
@@ -201,8 +215,9 @@ impl Selector for SelectorFacade {
                 JsonBatchRequest {
                     items: vec![request.into_inner()],
                 },
-                |service, payload| async move {
-                    let request: SelectAndReserveRequest = decode(&payload)?;
+                |service, payload, token_ids| async move {
+                    let mut request: SelectAndReserveRequest = decode(&payload)?;
+                    request.prompt.token_ids = Some(token_ids);
                     encode(
                         &service
                             .select_and_reserve(request)
@@ -224,8 +239,9 @@ impl Selector for SelectorFacade {
                 JsonBatchRequest {
                     items: vec![request.into_inner()],
                 },
-                |service, payload| async move {
-                    let request: ReservationRequest = decode(&payload)?;
+                |service, payload, token_ids| async move {
+                    let mut request: ReservationRequest = decode(&payload)?;
+                    request.prompt.token_ids = Some(token_ids);
                     encode(
                         &service
                             .create_reservation(request)
@@ -243,10 +259,14 @@ impl Selector for SelectorFacade {
         request: Request<JsonBatchRequest>,
     ) -> Result<Response<JsonBatchResponse>, Status> {
         let response = self
-            .process_json_batch(request.into_inner(), |service, payload| async move {
-                let request: SelectRequest = decode(&payload)?;
-                encode(&service.select(request).await.map_err(FacadeFailure::from)?)
-            })
+            .process_json_batch(
+                request.into_inner(),
+                |service, payload, token_ids| async move {
+                    let mut request: SelectRequest = decode(&payload)?;
+                    request.prompt.token_ids = Some(token_ids);
+                    encode(&service.select(request).await.map_err(FacadeFailure::from)?)
+                },
+            )
             .await?;
         Ok(Response::new(response))
     }
@@ -256,15 +276,19 @@ impl Selector for SelectorFacade {
         request: Request<JsonBatchRequest>,
     ) -> Result<Response<JsonBatchResponse>, Status> {
         let response = self
-            .process_json_batch(request.into_inner(), |service, payload| async move {
-                let request: SelectAndReserveRequest = decode(&payload)?;
-                encode(
-                    &service
-                        .select_and_reserve(request)
-                        .await
-                        .map_err(FacadeFailure::from)?,
-                )
-            })
+            .process_json_batch(
+                request.into_inner(),
+                |service, payload, token_ids| async move {
+                    let mut request: SelectAndReserveRequest = decode(&payload)?;
+                    request.prompt.token_ids = Some(token_ids);
+                    encode(
+                        &service
+                            .select_and_reserve(request)
+                            .await
+                            .map_err(FacadeFailure::from)?,
+                    )
+                },
+            )
             .await?;
         Ok(Response::new(response))
     }
@@ -274,15 +298,19 @@ impl Selector for SelectorFacade {
         request: Request<JsonBatchRequest>,
     ) -> Result<Response<JsonBatchResponse>, Status> {
         let response = self
-            .process_json_batch(request.into_inner(), |service, payload| async move {
-                let request: ReservationRequest = decode(&payload)?;
-                encode(
-                    &service
-                        .create_reservation(request)
-                        .await
-                        .map_err(FacadeFailure::from)?,
-                )
-            })
+            .process_json_batch(
+                request.into_inner(),
+                |service, payload, token_ids| async move {
+                    let mut request: ReservationRequest = decode(&payload)?;
+                    request.prompt.token_ids = Some(token_ids);
+                    encode(
+                        &service
+                            .create_reservation(request)
+                            .await
+                            .map_err(FacadeFailure::from)?,
+                    )
+                },
+            )
             .await?;
         Ok(Response::new(response))
     }

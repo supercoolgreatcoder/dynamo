@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Strategic-merge patch for the refactored AGW static arm. The retained Claude
+# reference used 32 service connections and folded up to 32 render/tokenize calls
+# after a 200 microsecond linger.
+spec:
+  template:
+    spec:
+      containers:
+        - name: gateway
+          command:
+            - ${COMPONENT_BUNDLE}/bin/agentgateway
+          env:
+            - name: DYN_GRPC_CHANNELS_PER_ENDPOINT
+              value: "32"
+            - name: DYN_PREPROCESS_BATCH_MAX
+              value: "32"
+            - name: DYN_PREPROCESS_BATCH_LINGER_US
+              value: "200"

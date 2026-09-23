@@ -1,0 +1,44 @@
+{
+  "benchmark_series_id": "claude-mooncake-parity-v1",
+  "metric": "aggregate request throughput",
+  "unit": "requests/second",
+  "results": [
+    {
+      "arm": "agw-static",
+      "job": "moonparity-agw-static-final-r13",
+      "client_rps": [503.96, 503.96, 503.97, 503.98, 503.56, 503.97],
+      "aggregate_rps": 3023.40,
+      "completed": 136074,
+      "errors": 0
+    },
+    {
+      "arm": "agw-generic",
+      "job": "moonparity-agw-generic-packed-r10",
+      "client_rps": [289.12, 285.89, 286.38, 286.01, 285.94, 284.45],
+      "aggregate_rps": 1717.79,
+      "completed": 77808,
+      "errors": 0
+    },
+    {
+      "arm": "envoy-generic",
+      "job": "moonparity-envoy-generic-packed-r11",
+      "client_rps": [266.76, 267.04, 267.07, 266.91, 266.76, 266.69],
+      "aggregate_rps": 1601.23,
+      "completed": 72716,
+      "errors": 0
+    },
+    {
+      "arm": "envoy-generic-callouts",
+      "job": "moonparity-envoy-callouts-packed-r12",
+      "client_rps": [347.87, 349.44, 381.82, 349.80, 347.81, 349.05],
+      "aggregate_rps": 2125.79,
+      "completed": 96246,
+      "errors": 0
+    }
+  ],
+  "context_only_reference": {
+    "name": "retained Claude prototype",
+    "aggregate_rps_approx": 3016,
+    "comparison_note": "Same topology and methodology were reconstructed, but the reference lacks an audit artifact in this branch."
+  }
+}

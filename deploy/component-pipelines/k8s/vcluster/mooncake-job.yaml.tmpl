@@ -1,0 +1,107 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Six isolated AIPerf replicas reproduce the final Claude-session Mooncake
+# methodology. Run mooncake-prepare-job.yaml.tmpl once first. Every replica
+# hard-links the resulting content-addressed mmap cache, avoiding repeated
+# tokenizer-driven synthesis of the ~700 MiB conversation set.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ${JOB_NAME}
+  namespace: ${VCLUSTER_NAMESPACE}
+spec:
+  completions: 6
+  parallelism: 6
+  completionMode: Indexed
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        benchmark: mooncake-corrected
+        arm: ${ARM_NAME}
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      nodeSelector:
+        topology.unikorn-cloud.org/node-pool: cpu-pool
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values: [${AIPERF_NODE_A}, ${AIPERF_NODE_B}]
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              benchmark: mooncake-corrected
+              arm: ${ARM_NAME}
+      containers:
+        - name: benchmark
+          image: nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0
+          securityContext: {runAsUser: 0}
+          env:
+            - name: BENCHMARK_START_UNIX
+              value: "${BENCHMARK_START_UNIX}"
+            - name: JOB_COMPLETION_INDEX
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.annotations['batch.kubernetes.io/job-completion-index']
+            - name: AIPERF_DATASET_MMAP_CACHE_ENABLED
+              value: "true"
+            - name: AIPERF_DATASET_MMAP_CACHE_DIR
+              value: /shared/aiperf/mooncake-qwen2.5-0.5b/mmap-cache
+            - name: AIPERF_DATASET_MMAP_BASE_PATH
+              value: /shared/aiperf/mooncake-qwen2.5-0.5b/run-mmaps
+          command: [/bin/bash, -lc]
+          args:
+            - |
+              set -euo pipefail
+              while [ "$(date +%s)" -lt "$BENCHMARK_START_UNIX" ]; do sleep 0.2; done
+              export HF_HOME=/tmp/hf HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
+              cache=/tmp/hf/hub/models--Qwen--Qwen2.5-0.5B-Instruct
+              mkdir -p "$cache/snapshots" "$cache/refs"
+              ln -s /model/tokenizer "$cache/snapshots/nix"
+              printf nix > "$cache/refs/main"
+
+              dataset=/shared/aiperf/mooncake-qwen2.5-0.5b/mooncake-512-context.jsonl
+              test -s "$dataset"
+              artifacts=/shared/aiperf/results/${JOB_NAME}/$JOB_COMPLETION_INDEX
+              mkdir -p "$artifacts"
+              exec aiperf profile \
+                --url "${TARGET_URL}" \
+                --model Qwen/Qwen2.5-0.5B-Instruct \
+                --tokenizer Qwen/Qwen2.5-0.5B-Instruct \
+                --endpoint-type chat --streaming --use-server-token-count \
+                --use-legacy-max-tokens \
+                --custom-dataset-type mooncake-trace \
+                --input-file "$dataset" \
+                --isl-block-size 512 \
+                --random-seed 42 \
+                --concurrency 128 --benchmark-duration 45 \
+                --export-level summary --profile-export-level records \
+                --record-processors 16 \
+                --output-artifact-dir "$artifacts"
+          volumeMounts:
+            - name: nix-store
+              mountPath: /nix/store
+              subPath: store
+              readOnly: true
+            - name: nix-store
+              mountPath: /model/tokenizer
+              subPath: store/wjq1b3wfjpzak4yd4rmj9arwqk1gkiir-qwen-tokenizer
+              readOnly: true
+            - name: nix-store
+              mountPath: /shared
+      volumes:
+        - name: nix-store
+          nfs:
+            server: ${NIX_STORE_NFS_SERVER}
+            path: ${NIX_STORE_NFS_PATH}
+            readOnly: false

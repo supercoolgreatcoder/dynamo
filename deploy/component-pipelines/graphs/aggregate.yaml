@@ -26,10 +26,12 @@ steps:
         preserve_omitted_max_tokens: false
         lora_name: ""
         deadline_unix_ms: 0
+        packed_tokens_only: true
       output:
         normalized_request: "$.response.normalized_openai_request_json"
         backend_request: "$.response.backend_request_json"
         selector_request: "$.response.selector_request_json"
+        token_ids_le: "$.response.token_ids_le"
       batch: {maxSize: 32, lingerUs: 100}
   - id: select
     call:
@@ -39,6 +41,7 @@ steps:
       input:
         item_id: "$.request.id"
         payload_json: "$.vars.selector_request"
+        token_ids_le: "$.vars.token_ids_le"
         deadline_unix_ms: 0
       output:
         worker_endpoint: "$.response.payload_json.endpoint"
@@ -52,6 +55,7 @@ steps:
         request_id: "$.request.id"
         backend_request_json: "$.vars.backend_request"
         normalized_openai_request_json: "$.vars.normalized_request"
+        token_ids_le: "$.vars.token_ids_le"
         deadline_unix_ms: 0
       stream: {}
       respond: true

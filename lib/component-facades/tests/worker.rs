@@ -154,9 +154,14 @@ async fn chat_worker_emits_the_canonical_openai_chunk_without_an_annotation_enve
     let mut output = client
         .generate(ChatWorkerRequest {
             request_id: "request-2".into(),
-            backend_request_json: serde_json::to_vec(&backend_request()).unwrap(),
+            backend_request_json: {
+                let mut value = serde_json::to_value(backend_request()).unwrap();
+                value.as_object_mut().unwrap().remove("token_ids");
+                serde_json::to_vec(&value).unwrap()
+            },
             normalized_openai_request_json: serde_json::to_vec(&normalized).unwrap(),
             prompt_tokens: 3,
+            token_ids: vec![1, 2, 3],
             ..Default::default()
         })
         .await

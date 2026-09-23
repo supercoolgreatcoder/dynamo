@@ -36,8 +36,13 @@ use prost_reflect::{
 };
 use serde_json::Value;
 use std::collections::HashMap;
-use std::sync::Arc;
-use tokio::sync::Mutex;
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicUsize, Ordering},
+};
+const GRPC_STREAM_WINDOW_BYTES: u32 = 8 * 1024 * 1024;
+const GRPC_CONNECTION_WINDOW_BYTES: u32 = 16 * 1024 * 1024;
+const MAX_GRPC_CHANNELS_PER_ENDPOINT: usize = 256;
 
 #[derive(Debug, thiserror::Error)]
 pub enum GrpcError {
@@ -250,7 +255,20 @@ impl tonic::codec::Codec for DynCodec {
 /// selector hop and the detokenizer sidecar), so it is worth stating rather than assuming.
 pub struct GrpcTransport {
     pool: DescriptorPool,
-    channels: Arc<Mutex<HashMap<String, tonic::transport::Channel>>>,
+    channels: Arc<Mutex<HashMap<String, Arc<ChannelPool>>>>,
+    channels_per_endpoint: usize,
+}
+
+struct ChannelPool {
+    channels: Vec<tonic::transport::Channel>,
+    next: AtomicUsize,
+}
+
+impl ChannelPool {
+    fn next(&self) -> tonic::transport::Channel {
+        let index = self.next.fetch_add(1, Ordering::Relaxed) % self.channels.len();
+        self.channels[index].clone()
+    }
 }
 
 impl GrpcTransport {
@@ -261,6 +279,11 @@ impl GrpcTransport {
         Ok(Self {
             pool,
             channels: Arc::new(Mutex::new(HashMap::new())),
+            channels_per_endpoint: std::env::var("DYN_GRPC_CHANNELS_PER_ENDPOINT")
+                .ok()
+                .and_then(|value| value.parse().ok())
+                .unwrap_or(1usize)
+                .clamp(1, MAX_GRPC_CHANNELS_PER_ENDPOINT),
         })
     }
 
@@ -340,18 +363,25 @@ impl GrpcTransport {
     }
 
     async fn channel(&self, url: &str) -> Result<tonic::transport::Channel, GrpcError> {
-        if let Some(c) = self.channels.lock().await.get(url) {
-            return Ok(c.clone());
+        let mut pools = self.channels.lock().map_err(|error| {
+            GrpcError::Transport(format!("channel pool lock poisoned: {error}"))
+        })?;
+        if let Some(pool) = pools.get(url) {
+            return Ok(pool.next());
         }
         let ep = tonic::transport::Endpoint::from_shared(url.to_string())
             .map_err(|e| GrpcError::Transport(e.to_string()))?
-            .tcp_nodelay(true);
-        let ch = ep.connect_lazy();
-        self.channels
-            .lock()
-            .await
-            .insert(url.to_string(), ch.clone());
-        Ok(ch)
+            .tcp_nodelay(true)
+            .initial_stream_window_size(Some(GRPC_STREAM_WINDOW_BYTES))
+            .initial_connection_window_size(Some(GRPC_CONNECTION_WINDOW_BYTES));
+        let pool = Arc::new(ChannelPool {
+            channels: (0..self.channels_per_endpoint)
+                .map(|_| ep.clone().connect_lazy())
+                .collect(),
+            next: AtomicUsize::new(0),
+        });
+        pools.insert(url.to_string(), pool.clone());
+        Ok(pool.next())
     }
 }
 

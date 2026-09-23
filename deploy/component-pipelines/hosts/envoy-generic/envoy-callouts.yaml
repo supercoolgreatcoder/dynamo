@@ -48,7 +48,11 @@ static_resources:
       typed_extension_protocol_options:
         envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
           "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
-          explicit_http_config: {http2_protocol_options: {}}
+          explicit_http_config:
+            http2_protocol_options:
+              initial_stream_window_size: 8388608
+              initial_connection_window_size: 16777216
+              max_concurrent_streams: 4096
       load_assignment:
         cluster_name: dynamo-preprocessor
         endpoints:
@@ -60,7 +64,11 @@ static_resources:
       typed_extension_protocol_options:
         envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
           "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
-          explicit_http_config: {http2_protocol_options: {}}
+          explicit_http_config:
+            http2_protocol_options:
+              initial_stream_window_size: 8388608
+              initial_connection_window_size: 16777216
+              max_concurrent_streams: 4096
       load_assignment:
         cluster_name: dynamo-selector
         endpoints:
@@ -72,7 +80,11 @@ static_resources:
       typed_extension_protocol_options:
         envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
           "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
-          explicit_http_config: {http2_protocol_options: {}}
+          explicit_http_config:
+            http2_protocol_options:
+              initial_stream_window_size: 8388608
+              initial_connection_window_size: 16777216
+              max_concurrent_streams: 4096
       load_assignment:
         cluster_name: dynamo-worker
         endpoints:
