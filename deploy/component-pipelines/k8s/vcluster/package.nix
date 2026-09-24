@@ -3,6 +3,7 @@
 
 { facadePath
 , agentgatewayPath
+, envoyPath
 , envoyModulePath
 , version ? "dev"
 }:
@@ -22,6 +23,7 @@ pkgs.runCommand "dynamo-component-pipelines-${version}" {
   mkdir -p $out/bin $out/lib
   cp ${facadePath} $out/bin/dynamo-component-facade
   cp ${agentgatewayPath} $out/bin/agentgateway
+  cp ${envoyPath} $out/bin/envoy-static
   cp ${envoyModulePath} $out/lib/libgeneric_pipeline.so
   chmod +w $out/bin/* $out/lib/*
   for binary in $out/bin/*; do
