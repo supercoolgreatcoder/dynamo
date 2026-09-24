@@ -122,5 +122,22 @@ never copied into the container image. Nix packages `nvcc` separately from the m
 CUDA toolkit, so `CPATH`, `CPLUS_INCLUDE_PATH`, and `NVCC_PREPEND_FLAGS` explicitly point
 at `/cuda/include` for runtime JIT compilation.
 
-The audited AIPerf campaign and real-engine correctness evidence are under
-`results/2026-09-22-campaign/`.
+The retained evidence is organized as follows:
+
+- `results/2026-09-22-campaign/` contains the first audited short, ISL4000, and
+  Mooncake campaign plus real-engine correctness evidence.
+- `results/2026-09-23-claude-parity/` records the four-orchestrator Mooncake
+  reconstruction against the preserved Claude prototype.
+- `results/2026-09-23-callout-parity.md` records the corrected short, ISL4000,
+  and Mooncake Envoy-callout parity runs, including frozen-dataset hashes and the
+  exact persistent-volume artifact locations.
+- `results/2026-09-23-mooncake-ceiling/` contains the initial Mooncake saturation
+  analysis.
+- `results/2026-09-23-mooncake-single-gateway-ceiling/` contains the plans,
+  normalized analyses, and 78 raw AIPerf exports used to isolate the ceiling of
+  one Envoy-callout gateway while scaling the other components.
+
+The repository intentionally retains normalized and raw benchmark evidence, but not
+machine-local `result` symlinks or Nix store closures. Rebuild those closures with
+`package.nix`; a `/nix/store/...` symlink from the machine that performed the run is
+not portable evidence.
