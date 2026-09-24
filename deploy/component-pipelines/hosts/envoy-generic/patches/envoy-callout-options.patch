@@ -93,10 +93,10 @@ index e167cefca8..1e9125a863 100644
  envoy_dynamic_module_callback_http_filter_start_http_stream(
      envoy_dynamic_module_type_http_filter_envoy_ptr, uint64_t*,
 diff --git a/source/extensions/dynamic_modules/sdk/rust/src/http.rs b/source/extensions/dynamic_modules/sdk/rust/src/http.rs
-index b6da2ea00d..888e0f2376 100644
+index b6da2ea00d..f2c425dd66 100644
 --- a/source/extensions/dynamic_modules/sdk/rust/src/http.rs
 +++ b/source/extensions/dynamic_modules/sdk/rust/src/http.rs
-@@ -12,6 +12,43 @@ use std::any::Any;
+@@ -12,6 +12,52 @@ use std::any::Any;
  use std::ffi::c_void;
  use std::panic::{catch_unwind, AssertUnwindSafe};
  
@@ -149,7 +149,7 @@ index b6da2ea00d..888e0f2376 100644
  /// The trait that represents the configuration for an Envoy Http filter configuration.
  /// This has one to one mapping with the [`EnvoyHttpFilterConfig`] object.
  ///
-@@ -243,6 +280,24 @@ pub trait HttpFilter<EHF: EnvoyHttpFilter> {
+@@ -243,6 +289,24 @@ pub trait HttpFilter<EHF: EnvoyHttpFilter> {
    ) {
    }
  
@@ -174,7 +174,7 @@ index b6da2ea00d..888e0f2376 100644
    /// This is called when response headers are received from an HTTP stream callout.
    ///
    /// * `envoy_filter` can be used to interact with the underlying Envoy filter object.
-@@ -1628,6 +1683,27 @@ pub trait EnvoyHttpFilter {
+@@ -1628,6 +1692,27 @@ pub trait EnvoyHttpFilter {
      u64, // callout handle
    );
  
@@ -202,7 +202,7 @@ index b6da2ea00d..888e0f2376 100644
    /// Start a streamable HTTP callout to the given cluster with the given headers and optional
    /// body. Multiple concurrent streams can be created from the same filter.
    ///
-@@ -3426,6 +3502,56 @@ impl EnvoyHttpFilter for EnvoyHttpFilterImpl {
+@@ -3426,6 +3511,57 @@ impl EnvoyHttpFilter for EnvoyHttpFilterImpl {
      (result, callout_id)
    }
  
@@ -260,7 +260,7 @@ index b6da2ea00d..888e0f2376 100644
    fn start_http_stream<'a>(
      &mut self,
      cluster_name: &'a str,
-@@ -4636,6 +4762,62 @@ pub unsafe extern "C" fn envoy_dynamic_module_on_http_filter_http_callout_done(
+@@ -4636,6 +4772,62 @@ pub unsafe extern "C" fn envoy_dynamic_module_on_http_filter_http_callout_done(
  ///
  /// This is an FFI function called by Envoy. All pointer arguments must be valid as guaranteed
  /// by the Envoy dynamic module ABI.
