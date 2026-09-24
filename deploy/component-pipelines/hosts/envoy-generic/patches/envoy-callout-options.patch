@@ -231,7 +231,7 @@ index b6da2ea00d..f2c425dd66 100644
 +    // exactly how the first build of this failed.
 +    let Some(f) = callout_with_options_fn() else {
 +      return (
-+        abi::envoy_dynamic_module_type_http_callout_init_result_CannotCreateRequest,
++        abi::envoy_dynamic_module_type_http_callout_init_result::CannotCreateRequest,
 +        callout_id,
 +      );
 +    };
