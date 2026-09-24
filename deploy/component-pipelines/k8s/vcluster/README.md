@@ -9,8 +9,10 @@ These assets keep the prototype deployment and all benchmark load inside a vClus
 Use the vCluster kubeconfig explicitly for every command; do not apply these resources
 to the host-cluster context.
 
-`package.nix` assembles the thin Dynamo facade, patched Agentgateway host, and Envoy
-dynamic module into one relocatable Nix-store output. The selector itself uses the
+`package.nix` assembles the thin Dynamo facade, patched Agentgateway host, patched
+Envoy executable, and Envoy dynamic module into one relocatable Nix-store output.
+The source build commands and upstream pins are in
+`deploy/component-pipelines/README.md`. The selector itself uses the
 vCluster Kubernetes API to watch `InferencePool` objects and annotated worker Pods.
 It does not connect to the Dynamo runtime.
 
