@@ -52,12 +52,15 @@ case "$workload" in short|isl4000|mooncake) ;; *) echo "invalid WORKLOAD" >&2; e
 # Alternating orders reduce systematic warm/cold bias across clean repeats.
 # r20 is retained as a diagnostic pass: a separate real-model AGW was then
 # present on an AIPerf node. r21-r23 run after that fixture is scaled to zero.
+# r24 replaces Mooncake r22 after its callout client reported four AIPerf
+# MemoryMapSerializationError/ServiceError failures; r22 is never counted.
 case "$trial" in
   r20) arms=(envoy-generic agw-generic envoy-callouts agw-static) ;;
   r21) arms=(agw-static envoy-callouts agw-generic envoy-generic) ;;
   r22) arms=(envoy-callouts envoy-generic agw-static agw-generic) ;;
   r23) arms=(agw-generic agw-static envoy-generic envoy-callouts) ;;
-  *) echo "this frozen recheck reserves r20-r23 only" >&2; exit 2 ;;
+  r24) arms=(envoy-callouts envoy-generic agw-static agw-generic) ;;
+  *) echo "this frozen recheck reserves r20-r24 only" >&2; exit 2 ;;
 esac
 
 service_for_arm() {
