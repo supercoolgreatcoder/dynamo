@@ -39,6 +39,7 @@
     }
   ],
   "decision": "The one clean point establishes a 6043.92 RPS lower bound at this offered rate. The actual gateway ceiling is unmeasured. Two other attempts are retained but excluded from the clean series because AIPerf itself failed to deserialize cached conversations.",
+  "load_generator_diagnosis": "Pinned AIPerf 0.12.0 MemoryMapDatasetClient.get_conversation uses data_mmap.seek(offset) followed by data_mmap.read(size) on a shared mmap object; concurrent calls can interleave. The same class already uses cursor-free slicing in get_payload_bytes. This source inspection does not retroactively validate the errored attempts.",
   "limits": [
     "No per-request export or request-ID completeness proof at AIPerf summary export level.",
     "This build and the historical reference were not interleaved, so the 29.39% higher clean point is not causally attributable.",
