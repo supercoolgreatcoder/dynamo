@@ -227,6 +227,7 @@ JOB_NAMES=$(printf '%s\n' "${jobs[@]##*/}" | paste -sd, -) \
   bash deploy/component-pipelines/k8s/vcluster/capture-nix-mocker-execution.sh
 SERIES_ID=nix-component-pipeline-accf6af-2026-09-25 \
   bash deploy/component-pipelines/k8s/vcluster/summarize-nix-mocker-results.sh
+bash deploy/component-pipelines/k8s/vcluster/capture-nix-mocker-topology.sh
 ```
 
 Run from the Dynamo repository root, with `COMPONENT_BUNDLE` set to the Nix
@@ -241,6 +242,10 @@ Pod placement, bundle path, and excluded runs in the result record. Report
 the median of three aggregate Job RPS values, not a mean of client RPS
 values. The source script `capture-nix-mocker-execution.sh` captures Job
 commands and placement; `summarize-nix-mocker-results.sh` normalizes exports.
+`capture-nix-mocker-topology.sh` saves the 25 applied, secret-free Kubernetes
+resources as an installable JSON List. Rebuild/stage the referenced Nix
+closures and prepared datasets before applying that snapshot in a fresh
+vCluster; refresh the Envoy-callout worker map after its Pod IPs change.
 The [earlier 846821 recheck](results/2026-09-25-facade-846821-recheck/README.md)
 is the comparison series. Mooncake's approximately 3,026 RPS offered rate
 is not a saturation ceiling.

@@ -9,6 +9,11 @@ set -euo pipefail
 : "${VCLUSTER_EXPECTED_SERVER:?set the expected vCluster API server URL}"
 : "${VCLUSTER_NAMESPACE:?set the vCluster namespace}"
 : "${RESULT_DIR:?set the local result directory}"
+execution_file=${EXECUTION_FILE:-benchmark_execution.json}
+[[ $execution_file =~ ^[a-z0-9][a-z0-9_.-]*\.json$ ]] || {
+  echo "EXECUTION_FILE must be a JSON basename" >&2
+  exit 2
+}
 test -f "$VCLUSTER_KUBECONFIG"
 test -d "$RESULT_DIR"
 actual_server=$(kubectl --kubeconfig "$VCLUSTER_KUBECONFIG" config view --minify -o jsonpath='{.clusters[0].cluster.server}')
@@ -16,7 +21,7 @@ if [ "$actual_server" != "$VCLUSTER_EXPECTED_SERVER" ]; then
   echo "kubeconfig server $actual_server does not match expected vCluster server" >&2
   exit 2
 fi
-out="$RESULT_DIR/benchmark_execution.json"
+out="$RESULT_DIR/$execution_file"
 if [ -e "$out" ]; then
   echo "refusing to overwrite existing execution ledger $out" >&2
   exit 2
