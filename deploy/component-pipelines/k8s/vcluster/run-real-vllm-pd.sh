@@ -109,6 +109,8 @@ for role in prefill decode; do
     | .spec.template.spec.containers |= map(
         if .name == "engine" then
           .args += ["--kv-transfer-config",$kv_config]
+          | .env = ((.env // []) + [{name:"VLLM_NIXL_SIDE_CHANNEL_HOST",
+              valueFrom:{fieldRef:{fieldPath:"status.podIP"}}}])
         elif .name == "facade" then
           .command[0]=($facade+"/bin/dynamo-component-facade")
           | .args += ["--disaggregation-mode",$role]
