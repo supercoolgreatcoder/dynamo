@@ -1,0 +1,62 @@
+{
+  "plan_id": "accf6af-mooncake-single-gateway-capacity-v1",
+  "benchmark_series_id": "accf6af-mooncake-capacity-2026-09-25",
+  "performance_question": "At the historical clean 12-client Mooncake offered rate, can one Envoy generic-with-callouts gateway built from the accf6af Dynamo Nix bundle reproduce the prior 20+20-thread 4,671.15 RPS result when selector, preprocessor, and mock-worker replicas are scaled beyond the gateway?",
+  "intent": "absolute_characterization_with_historical_reference",
+  "required_reference": "results/2026-09-23-mooncake-single-gateway-ceiling/benchmark_summary.json: cpu_clean 20+20",
+  "comparison_limit": "The historical reference and this new-bundle point are not interleaved; report the historical value as context, not a causal gain or loss.",
+  "workload_source": "user_trace_reproduction",
+  "user_workload_path": null,
+  "user_workload_note": "This gateway-only mocker campaign predates and is outside the DGD recipe-optimization workload contract; its frozen trace and this plan are the run contract.",
+  "trace": {
+    "container_path": "/shared/aiperf/mooncake-qwen2.5-0.5b/mooncake-512-context.jsonl",
+    "sha256": "28a94e9bc1b63fdc88e5217bdd5c647a0487c08c83bdc64a814ec0840562f550",
+    "rows": 22699,
+    "source": "same pre-synthesized Mooncake 512-token-block trace as the six-client parity campaign",
+    "replay_policy": "each of 12 clients replays the unchanged trace once, doubling aggregate arrivals without mutating content or per-client timestamps",
+    "mmap_cache": "require HIT on every client; no measured-phase tokenizer or composer work"
+  },
+  "load": {
+    "mode": "fixed_schedule",
+    "clients": 12,
+    "concurrency_per_client": 128,
+    "record_processors_per_client": 1,
+    "duration_seconds": 45,
+    "grace_period_seconds": 30,
+    "start_barrier_seconds": 120,
+    "offered_rps_nominal": 6053.066666666667,
+    "warmup": "none, matching the historical clean ceiling point",
+    "seed": 42,
+    "repetitions": 1,
+    "maximum_job_seconds": 900
+  },
+  "target": {
+    "vcluster_api_server": "https://gateway-poc.mkhadkevich-dev:443",
+    "namespace": "dynamo-components-v2",
+    "endpoint": "http://envoy-callouts:8080/v1/chat/completions",
+    "endpoint_type": "chat",
+    "streaming": true,
+    "model": "Qwen/Qwen2.5-0.5B-Instruct",
+    "tokenizer": "wjq1b3wfjpzak4yd4rmj9arwqk1gkiir-qwen-tokenizer",
+    "gateway_replicas": 1,
+    "gateway_envoy_workers": 20,
+    "gateway_pipeline_threads": 20,
+    "selector_replicas": 8,
+    "preprocessor_replicas": 8,
+    "synthetic_worker_replicas": 32,
+    "gpu_count": 0,
+    "bundle_store_path": "/nix/store/d9n60x9aylvjvj9j56654640xshsai1x-dynamo-component-pipelines-accf6af699"
+  },
+  "instrument": {
+    "image": "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
+    "version": "0.12.0",
+    "version_selection": "reference-reproduction exception: match the historical clean Mooncake ceiling point's pinned AIPerf 0.12.0",
+    "version_resolution_date": "2026-09-25",
+    "export_level": "summary",
+    "parser": "AIPerf profile_export_aiperf.json; request-level JSONL unavailable at this export level"
+  },
+  "metrics": ["successful_request_throughput_rps", "request_latency_ms", "ttft_ms", "output_tokens_per_second", "request_errors", "cancelled_clients", "completed_fraction"],
+  "slos": null,
+  "evidence_limit": "Summary-level exports support achieved-throughput characterization but not independent request-ID or tail-SLO audit; no production-GPU or promotion claim is permitted.",
+  "run_policy": "Preflight vCluster-only placement, bundle identity, and component readiness. Serialize all benchmark Jobs; preserve failed attempts under unique names. After the first clean point, decide whether a 3-run noise-floor pilot or another capacity point has information value before spending more benchmark time."
+}

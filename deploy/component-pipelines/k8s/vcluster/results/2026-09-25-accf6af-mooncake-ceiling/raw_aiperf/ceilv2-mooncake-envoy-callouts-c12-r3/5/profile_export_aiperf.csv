@@ -1,0 +1,78 @@
+Metric,avg,min,max,sum,p1,p5,p10,p25,p50,p75,p90,p95,p99,std
+Active Decode Throughput (tokens/sec),159633.29,0.00,3921823.54,,,,,,90144.93,,399744.88,534219.71,852487.40,184667.91
+Active Decode Throughput Per User (tokens/sec/user),104995.97,0.00,3921823.54,,,,,,58383.27,,259781.60,358215.71,578307.32,122725.96
+Active Prefill Throughput (tokens/sec),0.00,0.00,0.00,,,,,,0.00,,0.00,0.00,0.00,0.00
+Active Prefill Throughput Per User (tokens/sec/user),0.00,0.00,0.00,,,,,,0.00,,0.00,0.00,0.00,0.00
+Active Total Throughput (tokens/sec),69563.94,0.00,1889453.15,,,,,,0.00,,224777.84,331007.42,600589.70,129327.20
+Decode Duration (error-adjusted) (ms),,0.00,,,0.00,0.00,0.00,0.00,0.00,0.85,4.20,7.00,14.95,
+Inter Token Latency (error-adjusted) (ms),,0.00,,,0.00,0.00,0.00,0.00,0.00,0.00,0.01,0.02,0.04,
+Request Latency (error-adjusted) (ms),,5.19,,,9.47,12.43,14.35,18.20,23.99,32.16,43.28,52.11,76.84,
+Time to First Token (error-adjusted) (ms),,5.19,,,9.24,12.08,13.88,17.54,22.85,30.47,41.00,49.69,73.95,
+Credit-to-Start Latency (ms),9.58,0.89,307.82,217154.96,1.27,1.63,2.05,3.27,5.79,10.93,19.72,28.84,63.20,12.90
+Decode Duration (ms),1.26,0.00,90.47,28595.64,0.00,0.00,0.00,0.00,0.00,0.85,4.20,6.99,14.92,3.42
+E2E Output Token Throughput (tokens/sec/user),6602.39,7.03,96008.35,149728902.75,55.00,91.62,120.11,287.01,1461.16,11252.17,19773.73,24971.97,37048.88,9125.25
+Effective Concurrency,13.71,0.00,45.00,,,,,,14.00,,24.00,27.00,33.00,8.03
+Effective Decode Concurrency,0.66,0.00,9.00,,,,,,0.00,,2.00,3.00,4.00,1.01
+Effective Decode Throughput (tokens/sec),65105.38,0.00,3921823.54,,,,,,0.00,,220037.68,360824.28,672313.17,141642.71
+Effective Decode Throughput Per User (tokens/sec/user),42821.59,0.00,3921823.54,,,,,,0.00,,138147.92,230761.64,458869.85,93835.81
+Effective Latency (CO-aware) (ms),36.78,7.38,437.97,834129.47,13.19,16.82,19.14,24.07,31.87,43.62,58.37,72.08,112.96,20.49
+Effective Prefill Concurrency,13.05,0.00,44.00,,,,,,13.00,,23.00,26.00,32.00,7.95
+Effective Prefill Throughput (tokens/sec),0.00,0.00,0.00,,,,,,0.00,,0.00,0.00,0.00,0.00
+Effective Prefill Throughput Per User (tokens/sec/user),0.00,0.00,0.00,,,,,,0.00,,0.00,0.00,0.00,0.00
+Effective Total Throughput (tokens/sec),65813.17,0.00,1889453.15,,,,,,0.00,,216894.35,321975.79,588524.86,126769.72
+HTTP Blocked (ms),0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+HTTP Chunks Received,1.77,1.00,27.00,40126.00,1.00,1.00,1.00,1.00,1.00,2.00,3.00,5.00,8.00,1.47
+HTTP Chunks Sent,1.00,1.00,1.00,22678.00,1.00,1.00,1.00,1.00,1.00,1.00,1.00,1.00,1.00,0.00
+HTTP Connecting (ms),0.04,0.00,83.48,1018.89,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,1.25
+HTTP Connection Overhead (ms),0.06,0.00,126.95,1321.25,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,1.69
+HTTP Connection Reused (ratio),1.00,0.00,1.00,22608.00,1.00,1.00,1.00,1.00,1.00,1.00,1.00,1.00,1.00,0.06
+HTTP Data Received (KB),41.07,0.51,476.84,931333.65,0.98,0.98,0.98,0.98,6.94,80.81,118.46,140.18,202.15,54.77
+HTTP Data Sent (KB),29.36,3.77,127.48,665937.55,4.01,4.38,7.54,13.88,26.62,30.87,57.54,78.71,113.35,21.71
+HTTP DNS Lookup (ms),0.01,0.00,45.59,302.35,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.57
+HTTP Duration (excl. conn) (ms),27.00,5.06,212.91,612299.06,9.37,12.33,14.24,18.06,23.85,32.01,43.10,51.83,76.25,13.69
+HTTP Receiving (ms),1.31,0.00,90.47,29644.53,0.00,0.00,0.00,0.00,0.00,0.97,4.30,7.05,14.96,3.44
+HTTP Sending (ms),0.51,0.07,83.81,11633.83,0.13,0.17,0.19,0.21,0.24,0.28,0.58,1.73,5.90,1.65
+HTTP Total Time (ms),27.06,5.06,226.48,613620.31,9.37,12.33,14.24,18.06,23.85,32.02,43.13,51.90,77.19,13.99
+HTTP Waiting (TTFB) (ms),25.18,4.83,212.79,571020.69,8.79,11.58,13.38,16.97,22.20,29.69,40.09,48.48,71.99,12.84
+Input Sequence Length (tokens),0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+Inter Chunk Latency (ms),0.01,0.00,73.97,28595.64,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.23
+Inter Token Latency (ms),0.00,0.00,1.24,79.23,0.00,0.00,0.00,0.00,0.00,0.00,0.01,0.02,0.04,0.02
+OSL Mismatch Diff % (%),0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+Output Sequence Length (tokens),171.21,1.00,2000.00,3882684.00,3.00,3.00,3.00,3.00,28.00,338.00,496.00,587.15,847.23,229.86
+Output Token Count (tokens),171.21,1.00,2000.00,3882684.00,3.00,3.00,3.00,3.00,28.00,338.00,496.00,587.15,847.23,229.86
+Output Token Throughput Per User (tokens/sec/user),210918.06,804.43,1517361.58,1493088918.45,14102.47,32423.16,47278.91,81359.11,154535.00,296512.84,450387.74,553085.17,799163.56,175178.42
+Prefill Throughput Per User (tokens/sec/user),0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+Request Latency (ms),27.16,5.19,212.97,615890.50,9.47,12.43,14.35,18.19,23.99,32.16,43.28,52.09,76.74,13.74
+Time to First Output Token (ms),25.90,5.19,212.97,587294.85,9.24,12.08,13.88,17.54,22.85,30.47,40.99,49.68,73.87,13.09
+Time to First Token (ms),25.90,5.19,212.97,587294.85,9.24,12.08,13.88,17.54,22.85,30.47,40.99,49.68,73.87,13.09
+Time to Second Token (ms),0.00,0.00,2.43,15.77,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.03
+Tokens In Flight (tokens),183.42,0.00,3152.00,,,,,,0.00,,619.00,877.00,1480.00,324.05
+Usage Completion Tokens (tokens),171.21,1.00,2000.00,3882684.00,3.00,3.00,3.00,3.00,28.00,338.00,496.00,587.15,847.23,229.86
+Usage Prompt Tokens (tokens),0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
+Usage Total Tokens (tokens),171.21,1.00,2000.00,3882684.00,3.00,3.00,3.00,3.00,28.00,338.00,496.00,587.15,847.23,229.86
+
+Metric,Value
+Benchmark Duration (sec),44.95
+Completed Requests (Success + Error),22679.00
+Context Overflow Count,0.00
+Error Request Count,1.00
+Input Token Throughput (tokens/sec),0.00
+OSL Mismatch Count,0.00
+Output Token Throughput (tokens/sec),86253.46
+Replay Schedule Degraded,0.00
+Replay Schedule Lag p50 (ms),7.02
+Replay Schedule Lag p90 (ms),23.20
+Replay Schedule Lag p99 (ms),67.12
+Request Count,22678.00
+Request Error Rate (%),0.00
+Request Throughput (requests/sec),503.79
+Total Input Sequence Length (tokens),0.00
+Total Output Sequence Length (tokens),3882684.00
+Total Output Tokens (tokens),3882684.00
+Total Token Throughput (tokens/sec),86253.46
+Total Usage Completion Tokens (tokens),3882684.00
+Total Usage Prompt Tokens (tokens),0.00
+Total Usage Total Tokens (tokens),3882684.00
+
+
+Endpoint,GPU_Index,GPU_Name,GPU_UUID,Platform,Metric,avg,min,max,sum,p1,p5,p10,p25,p50,p75,p90,p95,p99,std

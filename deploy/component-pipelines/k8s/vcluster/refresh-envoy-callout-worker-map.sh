@@ -14,14 +14,25 @@ fi
 vcluster_kubeconfig=$1
 namespace=$2
 test -s "$vcluster_kubeconfig"
+: "${VCLUSTER_EXPECTED_SERVER:?set the exact vCluster API server}"
+actual_server=$(kubectl --kubeconfig "$vcluster_kubeconfig" config view --minify -o jsonpath='{.clusters[0].cluster.server}')
+if [ "$actual_server" != "$VCLUSTER_EXPECTED_SERVER" ]; then
+  echo "refusing non-vCluster API: $actual_server" >&2
+  exit 2
+fi
+expected_workers=${EXPECTED_WORKERS:-16}
+[[ "$expected_workers" =~ ^[1-9][0-9]*$ ]] || {
+  echo "EXPECTED_WORKERS must be a positive integer" >&2
+  exit 2
+}
 
 pods=$(kubectl --kubeconfig "$vcluster_kubeconfig" -n "$namespace" \
   get pods -l app=dynamo-benchmark-worker -o json)
 ready_count=$(jq '[.items[] | select(.metadata.deletionTimestamp == null) |
   select(.status.phase == "Running") |
   select(any(.status.conditions[]?; .type == "Ready" and .status == "True"))] | length' <<<"$pods")
-if [ "$ready_count" -ne 16 ]; then
-  echo "expected 16 ready mock workers, found $ready_count; refusing to update callout map" >&2
+if [ "$ready_count" -ne "$expected_workers" ]; then
+  echo "expected $expected_workers ready mock workers, found $ready_count; refusing to update callout map" >&2
   exit 1
 fi
 

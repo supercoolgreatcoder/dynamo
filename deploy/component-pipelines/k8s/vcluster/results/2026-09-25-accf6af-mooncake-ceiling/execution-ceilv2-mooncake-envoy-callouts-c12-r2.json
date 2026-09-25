@@ -1,0 +1,217 @@
+{
+  "vcluster_api_server": "https://gateway-poc.mkhadkevich-dev:443",
+  "job": {
+    "name": "ceilv2-mooncake-envoy-callouts-c12-r2",
+    "uid": "f1b35a25-d3fa-4960-9b37-205daeb59cf7",
+    "created_at": "2026-09-25T16:39:53Z",
+    "completed_at": "2026-09-25T16:43:15Z",
+    "succeeded": 12,
+    "failed": 0,
+    "spec": {
+      "affinity": {
+        "nodeAffinity": {
+          "requiredDuringSchedulingIgnoredDuringExecution": {
+            "nodeSelectorTerms": [
+              {
+                "matchExpressions": [
+                  {
+                    "key": "kubernetes.io/hostname",
+                    "operator": "In",
+                    "values": [
+                      "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+                      "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj"
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "automountServiceAccountToken": false,
+      "containers": [
+        {
+          "args": [
+            "set -euo pipefail\nwhile [ \"$(date +%s)\" -lt \"1790354513\" ]; do sleep 0.2; done\nexport HF_HOME=/tmp/hf HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1\ncache=/tmp/hf/hub/models--Qwen--Qwen2.5-0.5B-Instruct\nmkdir -p \"$cache/snapshots\" \"$cache/refs\"\nln -s /model/tokenizer \"$cache/snapshots/nix\"\nprintf nix > \"$cache/refs/main\"\n\ndataset=/shared/aiperf/mooncake-qwen2.5-0.5b/mooncake-512-context.jsonl\ntest -s \"$dataset\"\nartifacts=/shared/aiperf/results/ceilv2-mooncake-envoy-callouts-c12-r2/$JOB_COMPLETION_INDEX\nmkdir -p \"$artifacts\"\nexec aiperf profile \\\n  --url \"http://envoy-callouts:8080/v1/chat/completions\" \\\n  --model Qwen/Qwen2.5-0.5B-Instruct \\\n  --tokenizer Qwen/Qwen2.5-0.5B-Instruct \\\n  --endpoint-type chat --streaming --use-server-token-count \\\n  --use-legacy-max-tokens \\\n  --custom-dataset-type mooncake-trace \\\n  --input-file \"$dataset\" \\\n  --isl-block-size 512 \\\n  --random-seed 42 \\\n  --concurrency 128 --benchmark-duration 45 \\\n  --export-level summary \\\n  --record-processors 1 \\\n  --output-artifact-dir \"$artifacts\"\n"
+          ],
+          "command": [
+            "/bin/bash",
+            "-lc"
+          ],
+          "env": [
+            {
+              "name": "BENCHMARK_START_UNIX",
+              "value": "1790354513"
+            },
+            {
+              "name": "JOB_COMPLETION_INDEX",
+              "valueFrom": {
+                "fieldRef": {
+                  "apiVersion": "v1",
+                  "fieldPath": "metadata.annotations['batch.kubernetes.io/job-completion-index']"
+                }
+              }
+            },
+            {
+              "name": "AIPERF_DATASET_MMAP_CACHE_ENABLED",
+              "value": "true"
+            },
+            {
+              "name": "AIPERF_DATASET_MMAP_CACHE_DIR",
+              "value": "/shared/aiperf/mooncake-qwen2.5-0.5b/mmap-cache"
+            },
+            {
+              "name": "AIPERF_DATASET_MMAP_BASE_PATH",
+              "value": "/shared/aiperf/mooncake-qwen2.5-0.5b/run-mmaps"
+            }
+          ],
+          "image": "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
+          "imagePullPolicy": "IfNotPresent",
+          "name": "benchmark",
+          "resources": {},
+          "securityContext": {
+            "runAsUser": 0
+          },
+          "terminationMessagePath": "/dev/termination-log",
+          "terminationMessagePolicy": "File",
+          "volumeMounts": [
+            {
+              "mountPath": "/nix/store",
+              "name": "nix-store",
+              "readOnly": true,
+              "subPath": "store"
+            },
+            {
+              "mountPath": "/model/tokenizer",
+              "name": "nix-store",
+              "readOnly": true,
+              "subPath": "store/wjq1b3wfjpzak4yd4rmj9arwqk1gkiir-qwen-tokenizer"
+            },
+            {
+              "mountPath": "/shared",
+              "name": "nix-store"
+            }
+          ]
+        }
+      ],
+      "dnsPolicy": "ClusterFirst",
+      "nodeSelector": {
+        "topology.unikorn-cloud.org/node-pool": "cpu-pool"
+      },
+      "restartPolicy": "Never",
+      "schedulerName": "default-scheduler",
+      "securityContext": {},
+      "terminationGracePeriodSeconds": 30,
+      "topologySpreadConstraints": [
+        {
+          "labelSelector": {
+            "matchLabels": {
+              "arm": "envoy-callouts",
+              "benchmark": "mooncake-capacity"
+            }
+          },
+          "maxSkew": 1,
+          "topologyKey": "kubernetes.io/hostname",
+          "whenUnsatisfiable": "DoNotSchedule"
+        }
+      ],
+      "volumes": [
+        {
+          "name": "nix-store",
+          "nfs": {
+            "path": "/unikorn-identity-03cfadd31877-551/pvc-19aeb650-5f77-45c4-8b8b-0a3b88542f39",
+            "server": "192.168.0.220"
+          }
+        }
+      ]
+    },
+    "completions": 12,
+    "parallelism": 12
+  },
+  "pods": [
+    {
+      "name": "ceilv2-mooncake-envoy-callouts-c12-r2-0-kzlrh",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+      "phase": "Succeeded",
+      "started_at": "2026-09-25T16:39:54Z",
+      "finished_at": "2026-09-25T16:43:12Z"
+    },
+    {
+      "name": "ceilv2-mooncake-envoy-callouts-c12-r2-1-8rcc9",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+      "phase": "Succeeded",
+      "started_at": "2026-09-25T16:39:54Z",
+      "finished_at": "2026-09-25T16:43:11Z"
+    },
+    {
+      "name": "ceilv2-mooncake-envoy-callouts-c12-r2-10-ftqnp",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded",
+      "started_at": "2026-09-25T16:39:54Z",
+      "finished_at": "2026-09-25T16:43:03Z"
+    },
+    {
+      "name": "ceilv2-mooncake-envoy-callouts-c12-r2-11-c7nm7",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+      "phase": "Succeeded",
+      "started_at": "2026-09-25T16:39:54Z",
+      "finished_at": "2026-09-25T16:43:13Z"
+    },
+    {
+      "name": "ceilv2-mooncake-envoy-callouts-c12-r2-2-wh5ml",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded",
+      "started_at": "2026-09-25T16:39:54Z",
+      "finished_at": "2026-09-25T16:43:05Z"
+    },
+    {
+      "name": "ceilv2-mooncake-envoy-callouts-c12-r2-3-5g8tt",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded",
+      "started_at": "2026-09-25T16:39:54Z",
+      "finished_at": "2026-09-25T16:43:02Z"
+    },
+    {
+      "name": "ceilv2-mooncake-envoy-callouts-c12-r2-4-mnlx6",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+      "phase": "Succeeded",
+      "started_at": "2026-09-25T16:39:54Z",
+      "finished_at": "2026-09-25T16:43:11Z"
+    },
+    {
+      "name": "ceilv2-mooncake-envoy-callouts-c12-r2-5-qvjhp",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded",
+      "started_at": "2026-09-25T16:39:54Z",
+      "finished_at": "2026-09-25T16:43:05Z"
+    },
+    {
+      "name": "ceilv2-mooncake-envoy-callouts-c12-r2-6-mmlth",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded",
+      "started_at": "2026-09-25T16:39:54Z",
+      "finished_at": "2026-09-25T16:43:03Z"
+    },
+    {
+      "name": "ceilv2-mooncake-envoy-callouts-c12-r2-7-9g5wl",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded",
+      "started_at": "2026-09-25T16:39:54Z",
+      "finished_at": "2026-09-25T16:43:02Z"
+    },
+    {
+      "name": "ceilv2-mooncake-envoy-callouts-c12-r2-8-6jwvx",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+      "phase": "Succeeded",
+      "started_at": "2026-09-25T16:39:54Z",
+      "finished_at": "2026-09-25T16:43:11Z"
+    },
+    {
+      "name": "ceilv2-mooncake-envoy-callouts-c12-r2-9-qftnk",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+      "phase": "Succeeded",
+      "started_at": "2026-09-25T16:39:54Z",
+      "finished_at": "2026-09-25T16:43:11Z"
+    }
+  ]
+}

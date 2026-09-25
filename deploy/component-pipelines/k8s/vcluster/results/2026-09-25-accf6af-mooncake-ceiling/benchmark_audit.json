@@ -1,0 +1,48 @@
+{
+  "series_id": "accf6af-mooncake-capacity-2026-09-25",
+  "evidence_scope": "summary-level mocker throughput characterization; not a request-ID, tail-SLO, or GPU production audit",
+  "plan_sha256": "0d88eea5e51bb20ebc4dc62d6aa09e7b0dd75e122c344ffd5b52ca19d6948ad9",
+  "trace_sha256": "28a94e9bc1b63fdc88e5217bdd5c647a0487c08c83bdc64a814ec0840562f550",
+  "offered_rps_nominal": 6053.066666666667,
+  "attempts": [
+    {
+      "job": "ceilv2-mooncake-envoy-callouts-c12-r1",
+      "classification": "eligible_summary_only",
+      "successful_rps": 6043.916103984378,
+      "output_tokens_per_second": 1034721.2158827403,
+      "aiperf_errors": 0,
+      "cancelled_clients": 0,
+      "completed_clients": 12,
+      "cache_hit_clients": 12
+    },
+    {
+      "job": "ceilv2-mooncake-envoy-callouts-c12-r2",
+      "classification": "ineligible_load_generator_error",
+      "successful_rps": 6043.8519189932595,
+      "output_tokens_per_second": 1034719.7389150001,
+      "aiperf_errors": 2,
+      "error_type": "MemoryMapSerializationError",
+      "cancelled_clients": 0,
+      "completed_clients": 12,
+      "cache_hit_clients": 12
+    },
+    {
+      "job": "ceilv2-mooncake-envoy-callouts-c12-r3",
+      "classification": "ineligible_load_generator_error",
+      "successful_rps": 6043.368684765894,
+      "output_tokens_per_second": 1034625.3739667594,
+      "aiperf_errors": 1,
+      "error_type": "MemoryMapSerializationError",
+      "cancelled_clients": 0,
+      "completed_clients": 12,
+      "cache_hit_clients": 12
+    }
+  ],
+  "decision": "The one clean point establishes a 6043.92 RPS lower bound at this offered rate. The actual gateway ceiling is unmeasured. Two other attempts are retained but excluded from the clean series because AIPerf itself failed to deserialize cached conversations.",
+  "limits": [
+    "No per-request export or request-ID completeness proof at AIPerf summary export level.",
+    "This build and the historical reference were not interleaved, so the 29.39% higher clean point is not causally attributable.",
+    "Server-reported input token counts are zero; prompt-token accounting and output-content parity are not independently established by these exports.",
+    "No user-specified SLO or GPU worker in this mocker campaign."
+  ]
+}
