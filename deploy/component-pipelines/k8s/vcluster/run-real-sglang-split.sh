@@ -55,7 +55,7 @@ staged_gateway="/shared/nix/store/${GATEWAY_BUNDLE_PATH#/nix/store/}/bin/agentga
   exec dynamo-component-store-stager -- test -x "$staged_gateway"
 
 manifest="$(dirname "$0")/real-sglang-split.yaml.tmpl"
-substitutions='${FACADE_STORE_PATH} ${SGLANG_WORKER_ENV_PATH} ${NIX_STORE_NFS_SERVER} ${NIX_STORE_NFS_PATH} ${MODEL_NFS_SERVER} ${MODEL_NFS_PATH}'
+substitutions='${VCLUSTER_NAMESPACE} ${FACADE_STORE_PATH} ${SGLANG_WORKER_ENV_PATH} ${NIX_STORE_NFS_SERVER} ${NIX_STORE_NFS_PATH} ${MODEL_NFS_SERVER} ${MODEL_NFS_PATH}'
 "$envsubst_bin" "$substitutions" < "$manifest" |
   "$kubectl_bin" --kubeconfig "$VCLUSTER_KUBECONFIG" -n "$VCLUSTER_NAMESPACE" \
     apply --dry-run=server -f - >/dev/null

@@ -17,6 +17,7 @@ use dynamo_component_facades::{
     },
     selector::SelectorFacade,
     worker::CanonicalBackendEngine,
+    worker_metadata::{PodPublicationTarget, publish_engine_metadata},
 };
 use dynamo_ext_proc::{PodDiscovery, PodDiscoveryConfig, RegistrationDefaults, TopologyAdapter};
 use dynamo_kv_router::{
@@ -115,6 +116,13 @@ struct PostprocessorArgs {
 struct SidecarWorkerArgs {
     #[command(flatten)]
     model: ModelArgs,
+    /// Downward-API identity for publishing runtime metadata to this Pod.
+    #[arg(long, env = "DYN_COMPONENT_POD_NAME")]
+    pod_name: Option<String>,
+    #[arg(long, env = "DYN_COMPONENT_POD_NAMESPACE")]
+    pod_namespace: Option<String>,
+    #[arg(long, env = "DYN_COMPONENT_POD_UID")]
+    pod_uid: Option<String>,
     /// Native Dynamo sidecar options, supplied after `--`.
     #[arg(last = true, allow_hyphen_values = true)]
     sidecar_args: Vec<String>,
@@ -255,6 +263,19 @@ async fn serve_real_worker(
     config: SidecarWorkerArgs,
     listen: SocketAddr,
 ) -> anyhow::Result<()> {
+    let publication_target = match (
+        config.pod_name.as_ref(),
+        config.pod_namespace.as_ref(),
+        config.pod_uid.as_ref(),
+    ) {
+        (None, None, None) => None,
+        (Some(name), Some(namespace), Some(uid)) => Some(PodPublicationTarget {
+            name: name.clone(),
+            namespace: namespace.clone(),
+            uid: uid.clone(),
+        }),
+        _ => anyhow::bail!("set all three Pod publication fields (name, namespace, UID) or none"),
+    };
     let model_card = ModelDeploymentCard::load_from_disk(
         &config.model.model_path,
         config.model.chat_template.as_deref(),
@@ -269,13 +290,21 @@ async fn serve_real_worker(
     let pipeline = real_worker_pipeline(engine.clone(), &model_card)?;
     // Native sidecar engines discover their runtime metadata and connect to
     // the engine here. The gRPC health service becomes Ready only afterward.
-    if let Err(error) = engine.start(0).await {
+    let startup = async {
+        let engine_config = engine.start(0).await?;
+        if let Some(target) = publication_target.as_ref() {
+            publish_engine_metadata(target, &engine_config).await?;
+        }
+        Ok::<_, anyhow::Error>(())
+    }
+    .await;
+    if let Err(error) = startup {
         // The backend-common lifecycle contract also requires cleanup after
         // a partial start; do not leave an engine connection behind.
         if let Err(cleanup_error) = engine.cleanup().await {
             tracing::warn!(%cleanup_error, "native sidecar cleanup after failed start failed");
         }
-        return Err(error.into());
+        return Err(error);
     }
     let result = async {
         let service = ChatWorkerFacade::new(

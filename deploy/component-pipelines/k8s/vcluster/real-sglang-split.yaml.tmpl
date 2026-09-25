@@ -3,6 +3,33 @@
 
 # Apply only with an explicitly validated vCluster kubeconfig. The model
 # snapshot is a read-only NFS cache shared by the engine and Dynamo facade.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: real-worker-metadata
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: real-worker-metadata
+rules:
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [get, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: real-worker-metadata
+subjects:
+  - kind: ServiceAccount
+    name: real-worker-metadata
+    namespace: ${VCLUSTER_NAMESPACE}
+roleRef:
+  kind: Role
+  name: real-worker-metadata
+  apiGroup: rbac.authorization.k8s.io
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -20,6 +47,7 @@ spec:
         # publishes the actual SGLang values; no invented KV budget.
         dynamo.nvidia.com/worker-metadata: '{"schema_version":"v1","model_name":"Qwen/Qwen3-0.6B"}'
     spec:
+      serviceAccountName: real-worker-metadata
       terminationGracePeriodSeconds: 60
       nodeSelector:
         topology.unikorn-cloud.org/node-pool: B200
@@ -104,6 +132,12 @@ spec:
           env:
             - {name: DYN_TOKENIZER, value: fastokens}
             - {name: DYN_TOKENIZER_FALLBACK, value: "false"}
+            - name: DYN_COMPONENT_POD_NAME
+              valueFrom: {fieldRef: {fieldPath: metadata.name}}
+            - name: DYN_COMPONENT_POD_NAMESPACE
+              valueFrom: {fieldRef: {fieldPath: metadata.namespace}}
+            - name: DYN_COMPONENT_POD_UID
+              valueFrom: {fieldRef: {fieldPath: metadata.uid}}
           ports: [{name: grpc, containerPort: 50051}]
           readinessProbe:
             grpc: {port: 50051}

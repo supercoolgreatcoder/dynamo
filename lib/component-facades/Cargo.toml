@@ -26,6 +26,8 @@ dynamo-sglang-sidecar = { path = "../sidecar/sglang" }
 anyhow = { workspace = true }
 clap = { version = "4", features = ["derive", "env"] }
 futures = { workspace = true }
+k8s-openapi = { workspace = true }
+kube = { workspace = true }
 prost = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
