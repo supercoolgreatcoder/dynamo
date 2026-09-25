@@ -1,0 +1,178 @@
+{
+  "job": {
+    "name": "ceilv1-short-envoy-direct-c18-r1-prepared",
+    "uid": "1d6ca244-b7d9-4af2-8d71-d91af3d7ee56",
+    "created_at": "2026-09-25T06:18:48Z",
+    "completed_at": "2026-09-25T06:21:57Z",
+    "succeeded": 18,
+    "image": "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
+    "command": [
+      "/bin/bash",
+      "-lc"
+    ],
+    "args": [
+      "set -euo pipefail\nwhile [ \"$(date +%s)\" -lt \"1790317248\" ]; do sleep 0.2; done\nexport HF_HOME=/tmp/hf HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1\ncache=/tmp/hf/hub/models--Qwen--Qwen2.5-0.5B-Instruct\nmkdir -p \"$cache/snapshots\" \"$cache/refs\"\nln -s /model/tokenizer \"$cache/snapshots/nix\"\nprintf nix > \"$cache/refs/main\"\ndataset=/shared/aiperf/static-qwen2.5-0.5b/short-claude-sonnet-raw.jsonl\ntest -s \"$dataset\"\nexec aiperf profile --url \"http://envoy-independent:8080/v1/chat/completions\" \\\n  --model Qwen/Qwen2.5-0.5B-Instruct \\\n  --tokenizer Qwen/Qwen2.5-0.5B-Instruct \\\n  --endpoint-type chat --streaming --use-server-token-count \\\n  --use-legacy-max-tokens --custom-dataset-type raw_payload \\\n  --input-file \"$dataset\" --random-seed 42 \\\n  --concurrency 128 --benchmark-duration 45 \\\n  --export-level summary --record-processors 16 \\\n  --output-artifact-dir /shared/aiperf/results/ceilv1-short-envoy-direct-c18-r1-prepared/$(JOB_COMPLETION_INDEX)"
+    ],
+    "completions": 18,
+    "parallelism": 18,
+    "node_affinity": {
+      "requiredDuringSchedulingIgnoredDuringExecution": {
+        "nodeSelectorTerms": [
+          {
+            "matchExpressions": [
+              {
+                "key": "kubernetes.io/hostname",
+                "operator": "In",
+                "values": [
+                  "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+                  "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+                  "cluster-0967a26d-pool-1f83edbe-mj5s4-rd9cc"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "topology_spread": [
+      {
+        "labelSelector": {
+          "matchLabels": {
+            "benchmark-run": "ceilv1-short-envoy-direct-c18-r1-prepared"
+          }
+        },
+        "maxSkew": 1,
+        "topologyKey": "kubernetes.io/hostname",
+        "whenUnsatisfiable": "DoNotSchedule"
+      }
+    ]
+  },
+  "pods": [
+    {
+      "name": "ceilv1-short-envoy-direct-c18-r1-prepared-0-qlbjw",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+      "phase": "Succeeded",
+      "started_at": "2026-09-25T06:18:48Z",
+      "finished_at": "2026-09-25T06:21:53Z"
+    },
+    {
+      "name": "ceilv1-short-envoy-direct-c18-r1-prepared-1-xspt4",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded",
+      "started_at": "2026-09-25T06:18:49Z",
+      "finished_at": "2026-09-25T06:21:54Z"
+    },
+    {
+      "name": "ceilv1-short-envoy-direct-c18-r1-prepared-10-57tfl",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+      "phase": "Succeeded",
+      "started_at": "2026-09-25T06:18:49Z",
+      "finished_at": "2026-09-25T06:21:54Z"
+    },
+    {
+      "name": "ceilv1-short-envoy-direct-c18-r1-prepared-11-7d4qr",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded",
+      "started_at": "2026-09-25T06:18:49Z",
+      "finished_at": "2026-09-25T06:21:54Z"
+    },
+    {
+      "name": "ceilv1-short-envoy-direct-c18-r1-prepared-12-lr6lw",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-rd9cc",
+      "phase": "Succeeded",
+      "started_at": "2026-09-25T06:18:49Z",
+      "finished_at": "2026-09-25T06:21:52Z"
+    },
+    {
+      "name": "ceilv1-short-envoy-direct-c18-r1-prepared-13-pfx4f",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+      "phase": "Succeeded",
+      "started_at": "2026-09-25T06:18:49Z",
+      "finished_at": "2026-09-25T06:21:51Z"
+    },
+    {
+      "name": "ceilv1-short-envoy-direct-c18-r1-prepared-14-k6mg8",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+      "phase": "Succeeded",
+      "started_at": "2026-09-25T06:18:49Z",
+      "finished_at": "2026-09-25T06:21:53Z"
+    },
+    {
+      "name": "ceilv1-short-envoy-direct-c18-r1-prepared-15-ll25d",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+      "phase": "Succeeded",
+      "started_at": "2026-09-25T06:18:49Z",
+      "finished_at": "2026-09-25T06:21:53Z"
+    },
+    {
+      "name": "ceilv1-short-envoy-direct-c18-r1-prepared-16-9cggr",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded",
+      "started_at": "2026-09-25T06:18:49Z",
+      "finished_at": "2026-09-25T06:21:54Z"
+    },
+    {
+      "name": "ceilv1-short-envoy-direct-c18-r1-prepared-17-bf6pt",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-rd9cc",
+      "phase": "Succeeded",
+      "started_at": "2026-09-25T06:18:49Z",
+      "finished_at": "2026-09-25T06:21:54Z"
+    },
+    {
+      "name": "ceilv1-short-envoy-direct-c18-r1-prepared-2-8lnjr",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded",
+      "started_at": "2026-09-25T06:18:49Z",
+      "finished_at": "2026-09-25T06:21:54Z"
+    },
+    {
+      "name": "ceilv1-short-envoy-direct-c18-r1-prepared-3-56zf7",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded",
+      "started_at": "2026-09-25T06:18:49Z",
+      "finished_at": "2026-09-25T06:21:54Z"
+    },
+    {
+      "name": "ceilv1-short-envoy-direct-c18-r1-prepared-4-pjsx7",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-rd9cc",
+      "phase": "Succeeded",
+      "started_at": "2026-09-25T06:18:49Z",
+      "finished_at": "2026-09-25T06:21:54Z"
+    },
+    {
+      "name": "ceilv1-short-envoy-direct-c18-r1-prepared-5-tmt2l",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-rd9cc",
+      "phase": "Succeeded",
+      "started_at": "2026-09-25T06:18:49Z",
+      "finished_at": "2026-09-25T06:21:54Z"
+    },
+    {
+      "name": "ceilv1-short-envoy-direct-c18-r1-prepared-6-s5dtk",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+      "phase": "Succeeded",
+      "started_at": "2026-09-25T06:18:49Z",
+      "finished_at": "2026-09-25T06:21:53Z"
+    },
+    {
+      "name": "ceilv1-short-envoy-direct-c18-r1-prepared-7-6zt2s",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-rd9cc",
+      "phase": "Succeeded",
+      "started_at": "2026-09-25T06:18:49Z",
+      "finished_at": "2026-09-25T06:21:54Z"
+    },
+    {
+      "name": "ceilv1-short-envoy-direct-c18-r1-prepared-8-hs2mv",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-rd9cc",
+      "phase": "Succeeded",
+      "started_at": "2026-09-25T06:18:49Z",
+      "finished_at": "2026-09-25T06:21:54Z"
+    },
+    {
+      "name": "ceilv1-short-envoy-direct-c18-r1-prepared-9-gsbtp",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded",
+      "started_at": "2026-09-25T06:18:49Z",
+      "finished_at": "2026-09-25T06:21:54Z"
+    }
+  ]
+}
