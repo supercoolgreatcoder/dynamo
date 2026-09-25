@@ -13,10 +13,10 @@ use dynamo_component_facades::{
     proto::{
         FILE_DESCRIPTOR_SET, chat_worker_bridge_server::ChatWorkerBridgeServer,
         postprocessor_server::PostprocessorServer, preprocessor_server::PreprocessorServer,
-        selector_server::SelectorServer,
+        selector_server::SelectorServer, worker_bridge_server::WorkerBridgeServer,
     },
     selector::SelectorFacade,
-    worker::CanonicalBackendEngine,
+    worker::{CanonicalBackendEngine, WorkerFacade},
     worker_metadata::{PodPublicationTarget, publish_engine_metadata},
 };
 use dynamo_ext_proc::{PodDiscovery, PodDiscoveryConfig, RegistrationDefaults, TopologyAdapter};
@@ -72,9 +72,9 @@ enum Command {
     Selector(SelectorArgs),
     /// CPU-only deterministic worker for facade/orchestrator benchmarks.
     BenchmarkWorker(ModelArgs),
-    /// Aggregate vLLM worker facade using Dynamo's native sidecar engine.
+    /// vLLM worker facade using Dynamo's native sidecar engine.
     VllmWorker(SidecarWorkerArgs),
-    /// Aggregate SGLang worker facade using Dynamo's native sidecar engine.
+    /// SGLang worker facade using Dynamo's native sidecar engine.
     SglangWorker(SidecarWorkerArgs),
 }
 
@@ -241,6 +241,7 @@ fn load_preprocessor(args: &ModelArgs) -> anyhow::Result<Arc<OpenAIPreprocessor>
 fn real_worker_pipeline(
     engine: Arc<dyn LLMEngine>,
     model_card: &ModelDeploymentCard,
+    mode: DisaggregationMode,
 ) -> anyhow::Result<CanonicalBackendEngine> {
     // This is Dynamo's normal worker adapter and Backend detokenizer. Only
     // their transport boundary changes; no engine or token policy is copied.
@@ -249,7 +250,7 @@ fn real_worker_pipeline(
         ServiceFrontend::<SingleIn<PreprocessedRequest>, ManyOut<Annotated<BackendOutput>>>::new();
     let backend = Backend::from_tokenizer(tokenizer).into_operator();
     let inner: ServiceEngine<SingleIn<PreprocessedRequest>, ManyOut<Annotated<LLMEngineOutput>>> =
-        Arc::new(EngineAdapter::new(engine, DisaggregationMode::Aggregated));
+        Arc::new(EngineAdapter::new(engine, mode));
     let inner = ServiceBackend::from_engine(inner);
     Ok(frontend
         .link(backend.forward_edge())?
@@ -262,6 +263,7 @@ async fn serve_real_worker(
     engine: Arc<dyn LLMEngine>,
     config: SidecarWorkerArgs,
     listen: SocketAddr,
+    mode: DisaggregationMode,
 ) -> anyhow::Result<()> {
     let publication_target = match (
         config.pod_name.as_ref(),
@@ -287,7 +289,7 @@ async fn serve_real_worker(
         )
     })?;
     let processor = OpenAIPreprocessor::new(model_card.clone())?;
-    let pipeline = real_worker_pipeline(engine.clone(), &model_card)?;
+    let pipeline = real_worker_pipeline(engine.clone(), &model_card, mode)?;
     // Native sidecar engines discover their runtime metadata and connect to
     // the engine here. The gRPC health service becomes Ready only afterward.
     let startup = async {
@@ -308,14 +310,24 @@ async fn serve_real_worker(
     }
     let result = async {
         let service = ChatWorkerFacade::new(
-            pipeline,
+            pipeline.clone(),
             processor,
+            config.model.max_batch_bytes,
+            config.model.max_batch_bytes,
+        )?;
+        let raw_service = WorkerFacade::new(
+            pipeline,
+            config.model.max_concurrency,
+            1024,
             config.model.max_batch_bytes,
             config.model.max_batch_bytes,
         )?;
         let (reporter, health) = tonic_health::server::health_reporter();
         reporter
             .set_serving::<ChatWorkerBridgeServer<ChatWorkerFacade>>()
+            .await;
+        reporter
+            .set_serving::<WorkerBridgeServer<WorkerFacade>>()
             .await;
         let reflection = tonic_reflection::server::Builder::configure()
             .register_encoded_file_descriptor_set(FILE_DESCRIPTOR_SET)
@@ -325,6 +337,7 @@ async fn serve_real_worker(
             .add_service(health)
             .add_service(reflection)
             .add_service(ChatWorkerBridgeServer::new(service))
+            .add_service(WorkerBridgeServer::new(raw_service))
             .serve_with_shutdown(listen, shutdown_signal())
             .await?;
         Ok::<_, anyhow::Error>(())
@@ -437,11 +450,13 @@ async fn main() -> anyhow::Result<()> {
                 dynamo_vllm_sidecar::VllmSidecarEngine::try_from_args(argv)
             })
             .await??;
-            anyhow::ensure!(
-                sidecar_config.disaggregation_mode == DisaggregationMode::Aggregated,
-                "vLLM gRPC facade currently supports only aggregated workers"
-            );
-            serve_real_worker(Arc::new(engine), config, args.listen).await?;
+            serve_real_worker(
+                Arc::new(engine),
+                config,
+                args.listen,
+                sidecar_config.disaggregation_mode,
+            )
+            .await?;
         }
         Command::SglangWorker(config) => {
             let mut argv = vec!["dynamo-sglang-sidecar".to_string()];
@@ -450,11 +465,13 @@ async fn main() -> anyhow::Result<()> {
                 dynamo_sglang_sidecar::SglangSidecarEngine::try_from_args(argv)
             })
             .await??;
-            anyhow::ensure!(
-                sidecar_config.disaggregation_mode == DisaggregationMode::Aggregated,
-                "SGLang gRPC facade currently supports only aggregated workers"
-            );
-            serve_real_worker(Arc::new(engine), config, args.listen).await?;
+            serve_real_worker(
+                Arc::new(engine),
+                config,
+                args.listen,
+                sidecar_config.disaggregation_mode,
+            )
+            .await?;
         }
         Command::Selector(config) => {
             let router_config = match config.router_config {

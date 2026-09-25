@@ -31,6 +31,15 @@ worker-side composition of a supplied Dynamo backend engine plus Dynamo's canoni
 postprocessor. The gateway does not render prompts, compute KV policy, decode tokens,
 or parse reasoning/tools.
 
+`graphs/disaggregated.yaml` is an initial vLLM-style two-role graph. It
+drains the prefill worker's canonical raw stream without emitting its handoff
+to the HTTP caller, selects a decode worker, and forwards the opaque handoff
+through a gRPC envelope field that the facade maps into Dynamo's request.
+Its prefill endpoint is currently a Kubernetes Service, not a KV-aware
+prefill selector. It does not yet implement SGLang's early bootstrap handoff,
+where decode must begin before the prefill stream completes. Do not treat
+the graph unit test or CPU mocker smoke as a real-GPU P/D proof.
+
 Upstream host pins for the adapter work are:
 
 - agentgateway `b14ca87d0a1670b3a59859494b06539489118630`

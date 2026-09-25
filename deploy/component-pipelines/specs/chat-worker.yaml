@@ -24,6 +24,7 @@ paths:
                 normalized_openai_request_json: {type: object}
                 token_ids: {type: array, items: {type: integer}}
                 token_ids_le: {type: string}
+                prefill_result_json: {type: object}
                 prompt_injected_reasoning: {type: boolean}
                 uses_tool_call_structural_tag: {type: boolean}
                 prompt_tokens: {type: integer}
@@ -45,3 +46,34 @@ paths:
                   model: {type: string}
                   choices: {type: array}
                   usage: {type: object}
+  /generate-raw:
+    post:
+      operationId: generateRaw
+      x-streaming: true
+      x-grpc: {service: dynamo.components.v1.ChatWorkerBridge, method: GenerateRaw}
+      x-grpc-json-bytes: true
+      x-grpc-response-body: annotated_backend_chunk_json
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [request_id, backend_request_json]
+              properties:
+                request_id: {type: string}
+                backend_request_json: {type: object}
+                token_ids_le: {type: string}
+                deadline_unix_ms: {type: integer}
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      disaggregated_params: {type: object}
+                  handoffs: {type: array, items: {type: object}}

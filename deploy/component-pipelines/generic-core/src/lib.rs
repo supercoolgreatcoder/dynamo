@@ -602,6 +602,169 @@ paths:
     }
 
     #[tokio::test]
+    async fn an_internal_stream_can_collect_without_emitting_to_the_client() {
+        let t = Streamer {
+            items: Mutex::new(vec![
+                json!({"data": {"disaggregated_params": {"engine": "prefill"}}}),
+                json!(""), // terminal gRPC envelope has no JSON payload
+            ]),
+        };
+        let sink = Collect::default();
+        let mut s = specs();
+        s.insert(
+            "worker.yaml".into(),
+            Document::from_yaml(
+                r#"
+paths:
+  /generate:
+    post:
+      operationId: generate
+      x-streaming: true
+      requestBody:
+        content: {application/json: {schema: {type: object, required: [tokenIds],
+          properties: {tokenIds: {type: array}}}}}
+      responses:
+        "200":
+          content: {application/json: {schema: {type: object,
+            properties: {handoffs: {type: array}, frames: {type: integer}}}}}
+"#,
+            )
+            .unwrap(),
+        );
+        let cfg = STREAM_PIPELINE.replace(
+            "emitWhen: {path: \"$.item.text\", exists: true}",
+            "emitToClient: false\n        emitWhen: {path: \"$.item.data.disaggregated_params\", exists: true}",
+        ).replace(
+            "delta: \"$.item.text\"",
+            "delta: \"$.item.data.disaggregated_params\"",
+        );
+        let p = Prepared::new(Pipeline::from_yaml(&cfg).unwrap(), &s).unwrap();
+        let response = p
+            .run_with_sink(&t, json!({"body": {}}), &sink)
+            .await
+            .unwrap();
+        assert!(sink.got.lock().unwrap().is_empty());
+        assert_eq!(response, Some(json!({"frames": 1})));
+    }
+
+    #[test]
+    fn disaggregated_dynamo_graph_matches_its_component_contracts() {
+        let pipeline =
+            Pipeline::from_yaml(include_str!("../../graphs/disaggregated.yaml")).unwrap();
+        let specs = [
+            (
+                "../specs/openai-chat.yaml",
+                include_str!("../../specs/openai-chat.yaml"),
+            ),
+            (
+                "../specs/preprocessor.yaml",
+                include_str!("../../specs/preprocessor.yaml"),
+            ),
+            (
+                "../specs/selector.yaml",
+                include_str!("../../specs/selector.yaml"),
+            ),
+            (
+                "../specs/chat-worker.yaml",
+                include_str!("../../specs/chat-worker.yaml"),
+            ),
+        ]
+        .into_iter()
+        .map(|(name, yaml)| (name.to_string(), Document::from_yaml(yaml).unwrap()))
+        .collect();
+        Prepared::new(pipeline, &specs).unwrap();
+    }
+
+    #[tokio::test]
+    async fn disaggregated_graph_passes_handoff_to_decode_without_exposing_prefill() {
+        #[derive(Default)]
+        struct PdTransport {
+            calls: Mutex<Vec<Request>>,
+        }
+
+        #[async_trait::async_trait]
+        impl Transport for PdTransport {
+            async fn call(
+                &self,
+                request: Request,
+            ) -> Result<Reply, Box<dyn std::error::Error + Send + Sync>> {
+                let url = request.url.clone();
+                self.calls.lock().unwrap().push(request);
+                if url.contains("dynamo-preprocessor") {
+                    return Ok(Reply::ok(json!({"items": [{
+                        "normalized_openai_request_json": {"model": "test"},
+                        "backend_request_json": {"model": "test"},
+                        "selector_request_json": {"model": "test"},
+                        "token_ids_le": "AQAAAA=="
+                    }]})));
+                }
+                if url.contains("dynamo-prefill") {
+                    return Ok(Reply::stream(Box::pin(futures::stream::iter([
+                        Ok(json!({"data": {"disaggregated_params": {"engine": "opaque"}}})),
+                        Ok(json!("")),
+                    ]))));
+                }
+                if url.contains("dynamo-selector") {
+                    return Ok(Reply::ok(json!({
+                        "payload_json": {"endpoint": "http://decode-worker:50051"}
+                    })));
+                }
+                if url.contains("decode-worker") {
+                    return Ok(Reply::stream(Box::pin(futures::stream::iter([Ok(
+                        json!({"choices": [{"delta": {"content": "ok"}}]}),
+                    )]))));
+                }
+                Err(format!("unexpected call to {url}").into())
+            }
+        }
+
+        let pipeline =
+            Pipeline::from_yaml(include_str!("../../graphs/disaggregated.yaml")).unwrap();
+        let specs = [
+            (
+                "../specs/openai-chat.yaml",
+                include_str!("../../specs/openai-chat.yaml"),
+            ),
+            (
+                "../specs/preprocessor.yaml",
+                include_str!("../../specs/preprocessor.yaml"),
+            ),
+            (
+                "../specs/selector.yaml",
+                include_str!("../../specs/selector.yaml"),
+            ),
+            (
+                "../specs/chat-worker.yaml",
+                include_str!("../../specs/chat-worker.yaml"),
+            ),
+        ]
+        .into_iter()
+        .map(|(name, yaml)| (name.to_string(), Document::from_yaml(yaml).unwrap()))
+        .collect();
+        let prepared = Prepared::new(pipeline, &specs).unwrap();
+        let transport = PdTransport::default();
+        let sink = Collect::default();
+        prepared
+            .run_with_sink(
+                &transport,
+                json!({"id": "pd-1", "body": {"model": "test", "messages": [{"role": "user", "content": "hello"}]}}),
+                &sink,
+            )
+            .await
+            .unwrap();
+        let calls = transport.calls.lock().unwrap();
+        assert_eq!(calls.len(), 4);
+        assert_eq!(
+            calls[3].body["prefill_result_json"],
+            json!({"engine": "opaque"})
+        );
+        assert_eq!(
+            *sink.got.lock().unwrap(),
+            vec![json!({"choices": [{"delta": {"content": "ok"}}]})]
+        );
+    }
+
+    #[tokio::test]
     async fn for_each_fans_a_call_out_over_a_runtime_collection() {
         const P: &str = r#"
 api: {openapi: api.yaml, operationId: createChatCompletion}

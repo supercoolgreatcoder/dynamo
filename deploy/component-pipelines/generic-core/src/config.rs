@@ -202,6 +202,11 @@ pub struct StreamPolicy {
     /// Per-item projection. The item is addressable as `$.item`. Empty forwards verbatim.
     #[serde(default)]
     pub emit: BTreeMap<String, Expr>,
+    /// Whether accepted items are forwarded to the public sink. An internal
+    /// streaming step can collect a summary for later steps without exposing
+    /// its intermediate protocol to the caller.
+    #[serde(default = "default_true")]
+    pub emit_to_client: bool,
     /// Skip items where this predicate does not hold -- e.g. a chunk carrying no text.
     #[serde(default)]
     pub emit_when: Option<When>,
@@ -214,6 +219,10 @@ pub struct StreamPolicy {
     /// Re-issue the call and continue the stream when it fails PART WAY THROUGH.
     #[serde(default)]
     pub resume: Option<ResumePolicy>,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 /// Continue a broken stream on a new upstream, carrying what was already delivered.

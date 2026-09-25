@@ -32,7 +32,10 @@ use futures::{StreamExt, stream};
 use tokio_stream::wrappers::{ReceiverStream, TcpListenerStream};
 use tonic::{Request, transport::Server};
 
-struct FakeCanonicalBackend;
+struct FakeCanonicalBackend {
+    handoff: bool,
+    expected_prefill: Option<serde_json::Value>,
+}
 
 #[async_trait]
 impl AsyncEngine<SingleIn<PreprocessedRequest>, ManyOut<Annotated<BackendOutput>>, Error>
@@ -42,6 +45,14 @@ impl AsyncEngine<SingleIn<PreprocessedRequest>, ManyOut<Annotated<BackendOutput>
         &self,
         request: Context<PreprocessedRequest>,
     ) -> Result<ManyOut<Annotated<BackendOutput>>, Error> {
+        assert_eq!(request.token_ids.as_ref().as_slice(), &[1, 2, 3]);
+        assert_eq!(
+            request
+                .prefill_result
+                .as_ref()
+                .map(|result| &result.disaggregated_params),
+            self.expected_prefill.as_ref()
+        );
         let context = request.context();
         let output = BackendOutput {
             token_ids: vec![42],
@@ -54,7 +65,9 @@ impl AsyncEngine<SingleIn<PreprocessedRequest>, ManyOut<Annotated<BackendOutput>
             stop_reason: None,
             index: Some(0),
             completion_usage: None,
-            disaggregated_params: None,
+            disaggregated_params: self
+                .handoff
+                .then(|| serde_json::json!({"opaque_kv": "kept"})),
             worker_trace_link: None,
             engine_data: None,
             encoder_result: None,
@@ -90,7 +103,10 @@ fn processor() -> Arc<OpenAIPreprocessor> {
 async fn grpc_worker_bridge_relays_a_canonical_dynamo_engine() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
-    let engine: CanonicalBackendEngine = Arc::new(FakeCanonicalBackend);
+    let engine: CanonicalBackendEngine = Arc::new(FakeCanonicalBackend {
+        handoff: false,
+        expected_prefill: None,
+    });
     let service = WorkerFacade::new(engine, 8, 8, 1024 * 1024, 1024 * 1024).unwrap();
     let server = tokio::spawn(async move {
         Server::builder()
@@ -108,8 +124,17 @@ async fn grpc_worker_bridge_relays_a_canonical_dynamo_engine() {
         .send(WorkerInput {
             frame: Some(worker_input::Frame::Open(WorkerOpen {
                 request_id: "request-1".into(),
-                backend_request_json: serde_json::to_vec(&backend_request()).unwrap(),
+                backend_request_json: {
+                    let mut value = serde_json::to_value(backend_request()).unwrap();
+                    value.as_object_mut().unwrap().remove("token_ids");
+                    serde_json::to_vec(&value).unwrap()
+                },
+                token_ids_le: [1_u32, 2, 3]
+                    .into_iter()
+                    .flat_map(u32::to_le_bytes)
+                    .collect(),
                 deadline_unix_ms: 0,
+                ..Default::default()
             })),
         })
         .await
@@ -133,7 +158,10 @@ async fn grpc_worker_bridge_relays_a_canonical_dynamo_engine() {
 async fn chat_worker_emits_the_canonical_openai_chunk_without_an_annotation_envelope() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
-    let engine: CanonicalBackendEngine = Arc::new(FakeCanonicalBackend);
+    let engine: CanonicalBackendEngine = Arc::new(FakeCanonicalBackend {
+        handoff: false,
+        expected_prefill: None,
+    });
     let service = ChatWorkerFacade::new(engine, processor(), 1024 * 1024, 1024 * 1024).unwrap();
     let server = tokio::spawn(async move {
         Server::builder()
@@ -171,5 +199,96 @@ async fn chat_worker_emits_the_canonical_openai_chunk_without_an_annotation_enve
     let value: serde_json::Value = serde_json::from_slice(&chunk.openai_chunk_json).unwrap();
     assert!(value.get("data").is_none());
     assert_eq!(value["choices"][0]["delta"]["content"], "hello");
+    server.abort();
+}
+
+#[tokio::test]
+async fn chat_worker_raw_stream_retains_opaque_prefill_handoff() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let engine: CanonicalBackendEngine = Arc::new(FakeCanonicalBackend {
+        handoff: true,
+        expected_prefill: None,
+    });
+    let service = ChatWorkerFacade::new(engine, processor(), 1024 * 1024, 1024 * 1024).unwrap();
+    let server = tokio::spawn(async move {
+        Server::builder()
+            .add_service(ChatWorkerBridgeServer::new(service))
+            .serve_with_incoming(TcpListenerStream::new(listener))
+            .await
+            .unwrap();
+    });
+    let mut client = ChatWorkerBridgeClient::connect(format!("http://{address}"))
+        .await
+        .unwrap();
+    let mut output = client
+        .generate_raw(ChatWorkerRequest {
+            request_id: "prefill-1".into(),
+            backend_request_json: {
+                let mut value = serde_json::to_value(backend_request()).unwrap();
+                value.as_object_mut().unwrap().remove("token_ids");
+                serde_json::to_vec(&value).unwrap()
+            },
+            token_ids_le: [1_u32, 2, 3]
+                .into_iter()
+                .flat_map(u32::to_le_bytes)
+                .collect(),
+            ..Default::default()
+        })
+        .await
+        .unwrap()
+        .into_inner();
+    let chunk = output.next().await.unwrap().unwrap();
+    let relayed: Annotated<BackendOutput> =
+        serde_json::from_slice(&chunk.annotated_backend_chunk_json).unwrap();
+    assert_eq!(
+        relayed.data.unwrap().disaggregated_params,
+        Some(serde_json::json!({"opaque_kv": "kept"}))
+    );
+    assert!(output.next().await.unwrap().unwrap().finished);
+    server.abort();
+}
+
+#[tokio::test]
+async fn decode_facade_injects_an_opaque_prefill_result_into_dynamo_request() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let handoff = serde_json::json!({"engine_owned": [11, 12]});
+    let engine: CanonicalBackendEngine = Arc::new(FakeCanonicalBackend {
+        handoff: false,
+        expected_prefill: Some(handoff.clone()),
+    });
+    let service = ChatWorkerFacade::new(engine, processor(), 1024 * 1024, 1024 * 1024).unwrap();
+    let server = tokio::spawn(async move {
+        Server::builder()
+            .add_service(ChatWorkerBridgeServer::new(service))
+            .serve_with_incoming(TcpListenerStream::new(listener))
+            .await
+            .unwrap();
+    });
+    let normalized = serde_json::json!({
+        "model": "test-model",
+        "messages": [{"role": "user", "content": "hello"}],
+        "stream": true
+    });
+    let mut backend = serde_json::to_value(backend_request()).unwrap();
+    backend.as_object_mut().unwrap().remove("token_ids");
+    let mut client = ChatWorkerBridgeClient::connect(format!("http://{address}"))
+        .await
+        .unwrap();
+    let mut output = client
+        .generate(ChatWorkerRequest {
+            request_id: "decode-1".into(),
+            backend_request_json: serde_json::to_vec(&backend).unwrap(),
+            normalized_openai_request_json: serde_json::to_vec(&normalized).unwrap(),
+            prefill_result_json: serde_json::to_vec(&handoff).unwrap(),
+            token_ids: vec![1, 2, 3],
+            prompt_tokens: 3,
+            ..Default::default()
+        })
+        .await
+        .unwrap()
+        .into_inner();
+    assert!(output.next().await.unwrap().unwrap().error.is_none());
     server.abort();
 }

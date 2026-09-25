@@ -123,6 +123,10 @@ message WorkerOpen {
   string request_id = 1;
   bytes backend_request_json = 2;
   int64 deadline_unix_ms = 3;
+  // The preprocessor omits token IDs from backend_request_json; carry them
+  // separately so raw prefill does not expand large prompts into JSON arrays.
+  repeated uint32 token_ids = 4;
+  bytes token_ids_le = 5;
 }
 message WorkerCancel { string request_id = 1; }
 message WorkerInput {
@@ -156,12 +160,19 @@ message ChatWorkerRequest {
   int64 deadline_unix_ms = 11;
   repeated uint32 token_ids = 12;
   bytes token_ids_le = 13;
+  // Opaque Dynamo prefill disaggregated_params JSON. The facade wraps this in
+  // PreprocessedRequest.prefill_result for a decode worker; gateway graphs do
+  // not need to serialize Dynamo's backend request type.
+  bytes prefill_result_json = 14;
 }
 
 // Preferred worker-side boundary for gateway graphs. A Dynamo wrapper supplies
 // the backend engine and Dynamo's canonical postprocessor produces OpenAI chunks.
 service ChatWorkerBridge {
   rpc Generate(ChatWorkerRequest) returns (stream PostprocessOutput);
+  // Same Dynamo backend request, but retain canonical annotated backend
+  // output so a prefill handoff is not turned into an OpenAI text chunk.
+  rpc GenerateRaw(ChatWorkerRequest) returns (stream WorkerOutput);
 }
 
 message PostprocessOpen {
