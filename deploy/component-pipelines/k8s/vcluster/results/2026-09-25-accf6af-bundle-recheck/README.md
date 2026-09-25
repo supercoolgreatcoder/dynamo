@@ -17,7 +17,7 @@ inside the vCluster at `https://gateway-poc.mkhadkevich-dev:443`, namespace
 passed after capture. Envoy callout worker addresses are dynamic Pod IPs and
 must be refreshed after replaying that topology.
 
-## Short: completed three-run series
+## Three-workload, three-run matrix
 
 The four arms ran in three interleaved rotations `r28`–`r30`, one gateway
 replica at a time. Each Job had six AIPerf 0.12.0 clients, three on each of
@@ -27,7 +27,7 @@ the two dedicated client nodes, concurrency 128 per client, a common
 facade workers were unchanged between arms. Clients replayed the frozen raw
 short payloads without synthesizing or tokenizing prompts during measurement.
 
-| Gateway | New median RPS | Three-run range | Prior facade median RPS |
+| Gateway | New short median RPS | Three-run range | Prior facade median RPS |
 |---|---:|---:|---:|
 | AGW static | 12,339.69 | 12,252.67–12,418.55 | 11,783.14 |
 | AGW generic | 12,396.61 | 11,881.83–12,433.04 | 11,733.00 |
@@ -54,7 +54,44 @@ AIPerf used server token counts and did no measured-phase tokenization.
 The parent [vCluster guide](../../README.md) records the exact build,
 staging, rollout, environment variables, Job names, and summary commands.
 
-ISL4000 and Mooncake reruns on this exact bundle remain pending; their
-earlier validated matrix is not relabeled as a new-bundle result. The
-real-vLLM P/D correctness smoke is [recorded separately](../2026-09-25-real-vllm-pd/README.md)
-and is not a mocker throughput number.
+The identical Nix bundle also completed three rotations each for ISL4000 and
+Mooncake. Every one of the 36 Jobs had six successful AIPerf clients, no
+reported request errors or cancellations, and six retained Pod placements on
+the same two client nodes. The exact Job commands and placements are in
+[`benchmark_execution.json`](benchmark_execution.json); all 36 normalized
+per-Job values and medians are in
+[`benchmark_summary.json`](benchmark_summary.json).
+
+| Gateway | ISL4000 median RPS | Three-run range | Prior facade median RPS |
+|---|---:|---:|---:|
+| AGW static | 8,930.00 | 8,791.37–9,463.95 | 8,902.99 |
+| AGW generic | 10,707.87 | 10,627.69–10,725.11 | 10,592.59 |
+| Envoy generic/direct | 10,550.35 | 10,483.96–10,730.96 | 10,518.55 |
+| Envoy generic/callouts | **11,768.32** | 11,266.46–11,788.90 | 11,379.44 |
+
+ISL4000 uses AIPerf's concurrency-driven phase, not a fixed request schedule.
+AGW static's highest run is visibly above its other two; the range is retained
+and the median is used rather than silently discarding it. The prior medians
+are historical context, not a causal old/new A/B, because the two campaigns
+were not interleaved with each other.
+
+| Gateway | Mooncake median RPS | Three-run range | Prior facade median RPS |
+|---|---:|---:|---:|
+| AGW static | 3,023.55 | 3,023.15–3,023.80 | 3,023.76 |
+| AGW generic | 3,023.34 | 3,023.31–3,023.40 | 3,023.52 |
+| Envoy generic/direct | 3,023.62 | 3,021.72–3,024.03 | 3,023.40 |
+| Envoy generic/callouts | 3,023.68 | 3,023.67–3,023.86 | 3,023.67 |
+
+Mooncake replays a fixed schedule of 22,699 requests per client over 45 seconds:
+six clients offer at most about 3,026.53 requests/second. All four gateways
+reproduce the prior offered-rate result; this **does not establish a 3,000-RPS
+single-gateway saturation ceiling**. A higher-offered-load campaign must be
+a separate benchmark series. The retained AIPerf exports are summary-level,
+not per-request JSONL, so request-ID completeness, exact per-request
+ISL/OSL, and custom tail percentiles are not independently auditable here.
+These values are descriptive achieved-throughput evidence, not a
+promotion-grade latency or SLO verdict.
+
+The real-vLLM P/D correctness smoke is
+[recorded separately](../2026-09-25-real-vllm-pd/README.md) and is not a
+mocker throughput number.
