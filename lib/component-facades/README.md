@@ -15,7 +15,7 @@ templates, tokenization, routing policy, reasoning parsing, tool parsing, or inf
 | --- | --- |
 | Preprocessor | `dynamo_llm::preprocessor::OpenAIPreprocessor` |
 | Selector | `dynamo_kv_router::services::selection::SelectionService` |
-| Worker bridge | A caller-supplied canonical Dynamo backend `ServiceEngine` |
+| Worker bridge | A caller-supplied canonical Dynamo backend `ServiceEngine`; the executable can compose Dynamo's native vLLM or SGLang sidecar engine |
 | Postprocessor | `OpenAIPreprocessor::postprocess_backend_chat_stream` |
 | Workers | Existing Dynamo vLLM/SGLang/TRT-LLM wrappers and sidecars |
 
@@ -40,6 +40,33 @@ For gateway graphs, `ChatWorkerFacade` composes the supplied backend engine with
 same canonical postprocessor behind one server-streaming RPC. This is the preferred
 sidecar boundary: backend chunks never become gateway policy, and dropping the client
 stream drops the underlying Dynamo stream.
+
+## Native worker-side gRPC facade
+
+For an aggregated vLLM or SGLang engine exposing its native gRPC service, the
+executable can build the worker bridge directly from Dynamo's own sidecar
+engine, `dynamo_backend_common::EngineAdapter`, and
+`dynamo_llm::backend::Backend`. For example, colocate the process with a
+native vLLM gRPC server and run:
+
+```bash
+dynamo-component-facade --listen 0.0.0.0:50052 vllm-worker \
+  --model-path /model -- --grpc-endpoint 127.0.0.1:50051
+```
+
+Use `sglang-worker` for SGLang. The native sidecar arguments after `--` are
+parsed by the corresponding Dynamo sidecar crate, including its gRPC connection
+and startup-timeout options. The worker-side gRPC health service becomes
+serving only after engine discovery and startup succeed. No Dynamo distributed
+runtime is started by this facade; Kubernetes owns worker lifecycle and the
+selector discovers the serving Pod through its InferencePool.
+
+This mode currently accepts **aggregated** workers only. It does not install
+Dynamo runtime endpoint registration, KV-event publishers, dynamic LoRA
+discovery, or the prefill/decode lifecycle; those capabilities still require
+the stock Dynamo worker until their runtime-less equivalents are validated.
+Do not infer real-engine or disaggregated correctness from the synthetic
+`benchmark-worker` measurements.
 
 ## Upgrade procedure
 

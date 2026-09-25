@@ -133,14 +133,19 @@ impl Drop for CancelMonitorGuard {
     }
 }
 
-pub(crate) struct EngineAdapter {
+/// Reuses the worker's canonical request, cancellation, and output adaptation
+/// when an existing `LLMEngine` is hosted behind a different ingress.
+///
+/// The embedding host must call `LLMEngine::start` and `cleanup`; the normal
+/// [`crate::Worker`] owns those lifecycle steps for Dynamo-runtime workers.
+pub struct EngineAdapter {
     engine: Arc<dyn LLMEngine>,
     mode: DisaggregationMode,
     first_token_source: Option<FirstTokenSource>,
 }
 
 impl EngineAdapter {
-    pub(crate) fn new(engine: Arc<dyn LLMEngine>, mode: DisaggregationMode) -> Self {
+    pub fn new(engine: Arc<dyn LLMEngine>, mode: DisaggregationMode) -> Self {
         Self {
             engine,
             mode,

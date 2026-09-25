@@ -15,10 +15,13 @@ description = "Batched gRPC facades over canonical Dynamo preprocessing, selecti
 ignored = ["prost"]
 
 [dependencies]
+dynamo-backend-common = { workspace = true }
 dynamo-kv-router = { workspace = true, features = ["standalone-selection"] }
 dynamo-llm = { path = "../llm", default-features = false }
 dynamo-runtime = { workspace = true }
 dynamo-ext-proc = { path = "../../deploy/inference-gateway/ext-proc" }
+dynamo-vllm-sidecar = { path = "../sidecar/vllm" }
+dynamo-sglang-sidecar = { path = "../sidecar/sglang" }
 
 anyhow = { workspace = true }
 clap = { version = "4", features = ["derive", "env"] }
