@@ -73,3 +73,31 @@ caused its launching shell to fail before collection. The independent
 [`collect-nix-mocker-ceiling.sh`](../../collect-nix-mocker-ceiling.sh) runner
 recovered its unchanged Job, Pod placement, and AIPerf exports from the
 vCluster store. No measurement was rerun or reconstructed.
+
+## Gateway-thread and client-isolation probes
+
+With the original worker placement, raising only the gateway's Tokio runtime
+threads from 8 to 12 produced **13,475.21 requests/s**, 137.56 ms mean latency,
+and zero errors at 18 clients. The live module log confirmed `4 grpc conns,
+12 runtime threads`; Envoy remained at six workers. The result lies inside
+the original 8-thread, 18-client range (13,353.78–13,840.63 requests/s), so
+there is no detected benefit from this one run. The gateway was restored to
+eight threads afterward.
+
+The original third client node also hosted three synthetic workers. To test
+that isolation concern, the worker Deployment's node affinity was temporarily
+restricted to three other CPU nodes. After its rollout settled, exactly 16
+Ready workers remained, with none on the third client node. All other serving
+replicas and gateway settings stayed at baseline. Two valid 18-client runs
+gave **12,995.96** and **13,102.46 requests/s** (151.11 and 150.05 ms mean
+latency), both error-free. Removing worker/client co-location did not lift the
+measured throughput; this is a separate placement series and should not be
+presented as a same-topology gain/loss against the earlier runs.
+
+On that isolated placement, changing only Envoy `--concurrency` from six to
+12 workers gave **12,835.87 requests/s**, 153.91 ms mean latency, zero errors.
+This is not evidence of a higher ceiling. It is one run and only 1.6% below
+the two-run six-worker average, so the small difference is inconclusive.
+Envoy workers and mock-worker node affinity were restored to their original
+values afterward. Each probe has its own retained Job/Pod placement JSON and
+raw AIPerf JSON/CSV exports; the five initial sweep Jobs remain unchanged.
