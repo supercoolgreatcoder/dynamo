@@ -48,8 +48,26 @@ nix-store -qR "$COMPONENT_BUNDLE" | sed 's#^/nix/store/##' |
     exec -i dynamo-component-store-stager -- tar -C /shared/nix/store -xf -
 ```
 
-After replacing the mock-worker Pods, refresh the static Envoy-callout authority map
-before restarting that gateway:
+For the existing mocker-parity topology, roll the staged bundle through all
+split-pipeline Deployments with the guarded vCluster-only helper:
+
+```bash
+export VCLUSTER_KUBECONFIG="$KUBECONFIG"
+export VCLUSTER_EXPECTED_SERVER=https://your-vcluster-api.example:443
+bash deploy/component-pipelines/k8s/vcluster/rollout-nix-bundle.sh \
+  "$COMPONENT_BUNDLE"
+```
+
+The helper requires an exact vCluster API-server match, no active benchmark
+Jobs, all staged artifacts, and the expected gateway replica topology. It
+rolls worker, preprocessor, selector, and Envoy direct in order, updates the
+inactive AGW/callout arms, and refreshes the benchmark-only Envoy-callout
+worker map after worker Pod churn. The full-bundle smoke and frozen-workload
+evidence is under
+[`results/2026-09-25-full-bundle-parity/`](results/2026-09-25-full-bundle-parity/).
+
+If replacing mock-worker Pods without the rollout helper, refresh the static
+Envoy-callout authority map before restarting that gateway:
 
 ```bash
 bash deploy/component-pipelines/k8s/vcluster/refresh-envoy-callout-worker-map.sh \
