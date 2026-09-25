@@ -9,8 +9,8 @@ set -euo pipefail
 shopt -s nullglob
 
 if [ "$#" -lt 2 ] || [ "$#" -gt 3 ] || ! [[ "$1" =~ ^[0-9]+$ ]] ||
-  ! [[ "$2" =~ ^r[1-9][0-9]*$ ]] || ! [[ "${3:-base}" =~ ^(base|selector4|preprocessor8|gateway12|isolated|envoy12)$ ]]; then
-  echo "usage: $0 CLIENTS rN [base|selector4|preprocessor8|gateway12|isolated|envoy12]" >&2
+  ! [[ "$2" =~ ^r[1-9][0-9]*$ ]] || ! [[ "${3:-base}" =~ ^(base|selector4|preprocessor8|gateway12|isolated|envoy12|profile)$ ]]; then
+  echo "usage: $0 CLIENTS rN [base|selector4|preprocessor8|gateway12|isolated|envoy12|profile]" >&2
   exit 2
 fi
 clients=$1
@@ -84,11 +84,15 @@ fi
     exit 2
   }
 "${kubectl_vc[@]}" get deployment envoy-independent -o json |
-  jq -e --arg threads "$gateway_threads" --arg workers "$envoy_workers" '
+  jq -e --arg threads "$gateway_threads" --arg workers "$envoy_workers" --arg variant "$variant" '
     (.spec.replicas == 1) and (.status.readyReplicas == 1) and
     (.spec.template.spec.containers[0].args[3] == $workers) and
     any(.spec.template.spec.containers[].env[]?;
-      .name == "GENERIC_PIPELINE_THREADS" and .value == $threads)
+      .name == "GENERIC_PIPELINE_THREADS" and .value == $threads) and
+    (if $variant == "profile" then
+       any(.spec.template.spec.containers[].env[]?;
+         .name == "GENERIC_PIPELINE_PROFILE_SECS" and .value == "180")
+     else true end)
   ' >/dev/null || {
     echo "envoy-independent must be 1/1 Ready with $gateway_threads Tokio threads and $envoy_workers Envoy workers" >&2
     exit 2
