@@ -101,3 +101,28 @@ the two-run six-worker average, so the small difference is inconclusive.
 Envoy workers and mock-worker node affinity were restored to their original
 values afterward. Each probe has its own retained Job/Pod placement JSON and
 raw AIPerf JSON/CSV exports; the five initial sweep Jobs remain unchanged.
+
+## Baseline short-workload CPU profile
+
+The unmodified eight-Tokio/six-Envoy-worker gateway also ran one diagnostic
+18-client Job with its existing `GENERIC_PIPELINE_PROFILE_SECS=180` sampler at
+199 Hz. That Job completed at 12,511.05 requests/s with zero errors, but its
+throughput is **not** compared to unprofiled runs because sampling adds work.
+The sampler printed 23,931 CPU samples in the gateway Pod log:
+
+| Classified area | Share of samples |
+|---|---:|
+| Envoy | 35.05% |
+| serde_json | 32.60% |
+| prost_reflect | 15.76% |
+| pipeline_grpc | 9.19% |
+| tonic/HTTP2 client | 6.12% |
+| Tokio | 1.21% |
+
+The largest named leaf was `MessageDescriptor::get_field_by_name` at 5.43%.
+The classifier assigns whole stacks to its first matching category and
+samples a window extending beyond the 45-second AIPerf phase; these shares
+are diagnostic, not precise per-request CPU cost. They motivated a separate
+thin-facade experiment to resolve the response field once per stream rather
+than once per chunk. No Dynamo core or worker implementation was changed for
+that experiment.

@@ -981,6 +981,7 @@ impl HostTransport {
         // produce the same bytes the transport would have sent.
         let path = grpc.method_path(&req)?;
         let msg = grpc.encode_input(&req)?;
+        let decoder = grpc.prepare_output(&req)?;
 
         // Bounded, for the same reason the SSE channel is: an unbounded queue lets a fast
         // worker outrun a slow client and buffer a whole generation in memory.
@@ -1008,7 +1009,7 @@ impl HostTransport {
             let payload = urx
                 .await
                 .map_err(|_| "filter went away before the gRPC call completed")??;
-            let value = grpc.decode_output(&req, &payload)?;
+            let value = decoder.decode(&payload)?;
             return Ok(Reply {
                 status: 200,
                 payload: Payload::Unary(value),
@@ -1017,22 +1018,13 @@ impl HostTransport {
 
         // Decoding happens HERE, on the runtime, not on Envoy's worker thread: the worker
         // forwards raw frames and must not do work it can hand off.
-        let codec = self.fallback.clone();
-        let graph_request = req.clone();
-        let stream = futures::stream::unfold(srx, move |mut rx| {
-            let codec = codec.clone();
-            let graph_request = graph_request.clone();
-            async move {
-                let item = rx.recv().await?;
-                let out = match item {
-                    Ok(bytes) => codec
-                        .grpc()
-                        .decode_output(&graph_request, &bytes)
-                        .map_err(|e| format!("decode: {e}")),
-                    Err(e) => Err(e),
-                };
-                Some((out, rx))
-            }
+        let stream = futures::stream::unfold((srx, decoder), move |(mut rx, decoder)| async move {
+            let item = rx.recv().await?;
+            let out = match item {
+                Ok(bytes) => decoder.decode(&bytes).map_err(|e| format!("decode: {e}")),
+                Err(e) => Err(e),
+            };
+            Some((out, (rx, decoder)))
         });
         Ok(Reply {
             status: 200,

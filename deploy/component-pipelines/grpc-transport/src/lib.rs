@@ -37,8 +37,8 @@ use prost_reflect::{
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::{
-    Arc, Mutex,
     atomic::{AtomicUsize, Ordering},
+    Arc, Mutex,
 };
 const GRPC_STREAM_WINDOW_BYTES: u32 = 8 * 1024 * 1024;
 const GRPC_CONNECTION_WINDOW_BYTES: u32 = 16 * 1024 * 1024;
@@ -254,20 +254,7 @@ impl tonic::codec::Codec for DynCodec {
 /// This parser handles all protobuf wire types needed to skip unrelated fields and declines
 /// groups. The caller retains the descriptor-driven fallback, so unsupported or malformed
 /// input cannot silently acquire different semantics.
-fn decode_json_bytes_response_body(
-    descriptor: &MessageDescriptor,
-    bytes: &[u8],
-    response_body: &str,
-) -> Option<Value> {
-    let field = descriptor.get_field_by_name(response_body).or_else(|| {
-        descriptor
-            .fields()
-            .find(|field| field.json_name() == response_body)
-    })?;
-    if field.is_list() || !matches!(field.kind(), Kind::Bytes) {
-        return None;
-    }
-
+fn decode_json_bytes_response_body(bytes: &[u8], field_number: u32) -> Option<Value> {
     fn varint(bytes: &[u8], offset: &mut usize) -> Option<u64> {
         let mut value = 0u64;
         let mut shift = 0u32;
@@ -299,7 +286,7 @@ fn decode_json_bytes_response_body(
                 let len = usize::try_from(varint(bytes, &mut offset)?).ok()?;
                 let end = offset.checked_add(len)?;
                 let value = bytes.get(offset..end)?;
-                if number == field.number() {
+                if number == field_number {
                     body = Some(value);
                 }
                 offset = end;
@@ -325,10 +312,11 @@ fn decode_response(
     bytes: &[u8],
     decode_json_bytes: bool,
     response_body: Option<&str>,
+    fast_field_number: Option<u32>,
 ) -> Result<Value, GrpcError> {
     if decode_json_bytes {
-        if let Some(response_body) = response_body {
-            if let Some(value) = decode_json_bytes_response_body(descriptor, bytes, response_body) {
+        if let Some(field_number) = fast_field_number {
+            if let Some(value) = decode_json_bytes_response_body(bytes, field_number) {
                 return Ok(value);
             }
         }
@@ -341,6 +329,46 @@ fn decode_response(
         decode_json_bytes,
         response_body,
     )
+}
+
+/// Descriptor and graph response binding resolved once, before a response stream starts.
+/// The fast JSON-bytes path can then decode each chunk without a field-name lookup.
+pub struct PreparedOutputDecoder {
+    descriptor: MessageDescriptor,
+    decode_json_bytes: bool,
+    response_body: Option<String>,
+    fast_field_number: Option<u32>,
+}
+
+impl PreparedOutputDecoder {
+    fn new(
+        descriptor: MessageDescriptor,
+        decode_json_bytes: bool,
+        response_body: Option<String>,
+    ) -> Self {
+        let fast_field_number = response_body.as_deref().and_then(|name| {
+            let field = descriptor
+                .get_field_by_name(name)
+                .or_else(|| descriptor.fields().find(|field| field.json_name() == name))?;
+            (!field.is_list() && matches!(field.kind(), Kind::Bytes)).then(|| field.number())
+        });
+        Self {
+            descriptor,
+            decode_json_bytes,
+            response_body,
+            fast_field_number,
+        }
+    }
+
+    pub fn decode(&self, bytes: &[u8]) -> Result<Value, GrpcError> {
+        decode_response(
+            &self.descriptor,
+            bytes,
+            self.decode_json_bytes,
+            self.response_body.as_deref(),
+            self.fast_field_number,
+        )
+    }
 }
 
 /// gRPC transport over a descriptor pool.
@@ -447,6 +475,11 @@ impl GrpcTransport {
     /// Decode one protobuf response frame using the graph request's declared
     /// JSON-bytes and response-body transformations.
     pub fn decode_output(&self, request: &Request, bytes: &[u8]) -> Result<Value, GrpcError> {
+        self.prepare_output(request)?.decode(bytes)
+    }
+
+    /// Resolve the output method and response projection once per request stream.
+    pub fn prepare_output(&self, request: &Request) -> Result<PreparedOutputDecoder, GrpcError> {
         let method = self.method(&binding(request)?)?;
         let decode_json_bytes = request
             .extensions
@@ -456,8 +489,13 @@ impl GrpcTransport {
         let response_body = request
             .extensions
             .get("x-grpc-response-body")
-            .and_then(Value::as_str);
-        decode_response(&method.output(), bytes, decode_json_bytes, response_body)
+            .and_then(Value::as_str)
+            .map(str::to_owned);
+        Ok(PreparedOutputDecoder::new(
+            method.output(),
+            decode_json_bytes,
+            response_body,
+        ))
     }
 
     async fn channel(&self, url: &str) -> Result<tonic::transport::Channel, GrpcError> {
@@ -539,12 +577,11 @@ impl Transport for GrpcTransport {
             // Each streamed message becomes one item, converted to JSON. The core's
             // per-item projection then decides what is emitted -- the transport never
             // decides the public stream shape.
-            let output = method.output();
+            let decoder =
+                PreparedOutputDecoder::new(method.output(), decode_json_bytes, response_body);
             let stream = futures::StreamExt::map(inner, move |m| {
-                m.map_err(|e| e.to_string()).and_then(|bytes| {
-                    decode_response(&output, &bytes, decode_json_bytes, response_body.as_deref())
-                        .map_err(|e| e.to_string())
-                })
+                m.map_err(|e| e.to_string())
+                    .and_then(|bytes| decoder.decode(&bytes).map_err(|e| e.to_string()))
             });
             Ok(Reply {
                 status: 200,
@@ -556,12 +593,9 @@ impl Transport for GrpcTransport {
                 .await
                 .map_err(|e| GrpcError::Transport(e.to_string()))?;
             let bytes = resp.into_inner();
-            let v = decode_response(
-                &method.output(),
-                &bytes,
-                decode_json_bytes,
-                response_body.as_deref(),
-            )?;
+            let decoder =
+                PreparedOutputDecoder::new(method.output(), decode_json_bytes, response_body);
+            let v = decoder.decode(&bytes)?;
             Ok(Reply::ok(v))
         }
     }
@@ -724,6 +758,10 @@ mod tests {
             extensions: Arc::new(extensions),
         };
 
+        let decoder = transport.prepare_output(&request).unwrap();
+        assert_eq!(decoder.fast_field_number, Some(2));
+        assert_eq!(decoder.decode(&wire).unwrap(), expected);
+        assert_eq!(decoder.decode(&wire).unwrap(), expected);
         assert_eq!(transport.decode_output(&request, &wire).unwrap(), expected);
     }
 }
