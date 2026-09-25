@@ -8,16 +8,27 @@
 set -euo pipefail
 shopt -s nullglob
 
-if [ "$#" -ne 1 ] || ! [[ "$1" =~ ^r[1-9][0-9]*$ ]]; then
-  echo "usage: $0 rN" >&2
+reader_mode=original
+if [ "$#" -eq 1 ] && [[ "$1" =~ ^r[1-9][0-9]*$ ]]; then
+  clients=12
+  trial=$1
+  job="ceilv2-mooncake-envoy-callouts-c12-${trial}"
+  plan_sha256=0d88eea5e51bb20ebc4dc62d6aa09e7b0dd75e122c344ffd5b52ca19d6948ad9
+elif [ "$#" -eq 3 ] && [ "$1" = fixed ] && [[ "$2" =~ ^(12|18|24)$ ]] && [[ "$3" =~ ^r[1-9][0-9]*$ ]]; then
+  reader_mode=fixed
+  clients=$2
+  trial=$3
+  job="ceilfix-mooncake-envoy-callouts-c${clients}-${trial}"
+  plan_sha256=787bb593a7841345c4ccdc25405ce91454ccddc7ddaef402deee28383ce06a7e
+else
+  echo "usage: $0 rN | fixed {12|18|24} rN" >&2
   exit 2
 fi
-trial=$1
-job="ceilv2-mooncake-envoy-callouts-c12-${trial}"
 bundle=/nix/store/d9n60x9aylvjvj9j56654640xshsai1x-dynamo-component-pipelines-accf6af699
-plan_sha256=0d88eea5e51bb20ebc4dc62d6aa09e7b0dd75e122c344ffd5b52ca19d6948ad9
 trace_sha256=28a94e9bc1b63fdc88e5217bdd5c647a0487c08c83bdc64a814ec0840562f550
-clients=12
+patch_sha256=f03b650796bb1de5f4ed3dea2bd65545a102e9d0fd089e3e436b574cec38e418
+patch_file="$(dirname "$0")/bench_patches/sitecustomize.py"
+patch_configmap=aiperf-mmap-slice-f03b6507
 
 : "${VCLUSTER_KUBECONFIG:?set the explicit vCluster kubeconfig}"
 : "${VCLUSTER_EXPECTED_SERVER:?set the exact vCluster API server}"
@@ -33,6 +44,12 @@ command -v "$envsubst_bin" >/dev/null || {
   exit 2
 }
 test -d "$RESULT_DIR"
+if [ "$reader_mode" = fixed ]; then
+  test "$(sha256sum "$patch_file" | cut -d' ' -f1)" = "$patch_sha256" || {
+    echo "AIPerf mmap overlay differs from frozen plan" >&2
+    exit 2
+  }
+fi
 test "$AIPERF_NODE_A" != "$AIPERF_NODE_B"
 test "$(sha256sum "$RESULT_DIR/benchmark_plan.json" | cut -d' ' -f1)" = "$plan_sha256" || {
   echo "benchmark plan identity changed; start a new series" >&2
@@ -107,6 +124,17 @@ test "$actual_trace_sha" = "$trace_sha256" || {
   echo "Mooncake trace hash differs from frozen plan" >&2
   exit 2
 }
+if [ "$reader_mode" = fixed ]; then
+  if ! "${vc[@]}" get configmap "$patch_configmap" >/dev/null 2>&1; then
+    "${vc[@]}" create configmap "$patch_configmap" --from-file="sitecustomize.py=$patch_file"
+  fi
+  cm_sha=$("${vc[@]}" get configmap "$patch_configmap" -o json |
+    jq -j '.data["sitecustomize.py"]' | sha256sum | cut -d' ' -f1)
+  test "$cm_sha" = "$patch_sha256" || {
+    echo "vCluster AIPerf mmap ConfigMap differs from frozen patch" >&2
+    exit 2
+  }
+fi
 
 export JOB_NAME=$job ARM_NAME=envoy-callouts
 export TARGET_URL=http://envoy-callouts:8080/v1/chat/completions
@@ -116,12 +144,19 @@ export BENCHMARK_START_UNIX=$(( $(date -u +%s) + 120 ))
 "$envsubst_bin" '${JOB_NAME} ${VCLUSTER_NAMESPACE} ${ARM_NAME} ${AIPERF_NODE_A} ${AIPERF_NODE_B} ${BENCHMARK_START_UNIX} ${TARGET_URL} ${NIX_STORE_NFS_SERVER} ${NIX_STORE_NFS_PATH}' \
   < "$(dirname "$0")/mooncake-job.yaml.tmpl" |
   "${vc[@]}" create --dry-run=client -f - -o json |
-  jq --argjson clients "$clients" '
+  jq --argjson clients "$clients" --arg reader_mode "$reader_mode" --arg patch_configmap "$patch_configmap" '
     .spec.completions = $clients |
     .spec.parallelism = $clients |
     .spec.template.metadata.labels.benchmark = "mooncake-capacity" |
     .spec.template.spec.topologySpreadConstraints[0].labelSelector.matchLabels.benchmark = "mooncake-capacity" |
-    .spec.template.spec.containers[0].args[0] |= gsub("--record-processors 16"; "--record-processors 1")
+    .spec.template.spec.containers[0].args[0] |= gsub("--record-processors 16"; "--record-processors 1") |
+    if $reader_mode == "fixed" then
+      .spec.template.spec.containers[0].env += [{"name":"PYTHONPATH","value":"/opt/aiperf-mmap-patch"}] |
+      .spec.template.spec.containers[0].volumeMounts += [{"name":"aiperf-mmap-patch","mountPath":"/opt/aiperf-mmap-patch","readOnly":true}] |
+      .spec.template.spec.volumes += [{"name":"aiperf-mmap-patch","configMap":{"name":$patch_configmap}}] |
+      .spec.template.spec.containers[0].args[0] |= sub("exec aiperf profile";
+        "python3 -c \u0027from aiperf.dataset.memory_map_utils import MemoryMapDatasetClient; assert MemoryMapDatasetClient.get_conversation.__module__ == \"sitecustomize\"\u0027\nexec aiperf profile")
+    else . end
   ' | "${vc[@]}" apply -f -
 
 echo "waiting for $job ($clients clients, barrier $BENCHMARK_START_UNIX)" >&2

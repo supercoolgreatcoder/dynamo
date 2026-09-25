@@ -1,0 +1,56 @@
+{
+  "series_id": "accf6af-mooncake-capacity-fixed-reader-2026-09-25",
+  "unit": {
+    "rate": "requests/second",
+    "output_rate": "tokens/second",
+    "latency": "milliseconds",
+    "output_length": "tokens/request"
+  },
+  "points": [
+    {
+      "clients": 12,
+      "job": "ceilfix-mooncake-envoy-callouts-c12-r1",
+      "scheduled_requests": 272388,
+      "successful_requests": 272171,
+      "achieved_rps": 6043.3786176434605,
+      "output_tokens_per_second": 1034611.0788922479,
+      "mean_output_tokens": 171.19746042010354,
+      "mean_request_latency_ms": 25.625578995414642,
+      "mean_ttft_ms": 24.535442375976867,
+      "aiperf_errors": 0,
+      "cancelled_clients": 0,
+      "completed_clients": 12,
+      "cache_hit_clients": 12
+    },
+    {
+      "clients": 18,
+      "job": "ceilfix-mooncake-envoy-callouts-c18-r1",
+      "scheduled_requests": 408582,
+      "successful_requests": 373266,
+      "achieved_rps": 8234.627486254889,
+      "output_tokens_per_second": 1411468.5445298557,
+      "mean_output_tokens": 171.4063697202531,
+      "mean_request_latency_ms": 71.41395264963859,
+      "mean_ttft_ms": 69.15610550562333,
+      "aiperf_errors": 0,
+      "cancelled_clients": 0,
+      "completed_clients": 18,
+      "cache_hit_clients": 18
+    },
+    {
+      "clients": 24,
+      "job": "ceilfix-mooncake-envoy-callouts-c24-r1",
+      "scheduled_requests": 544776,
+      "successful_requests": 375387,
+      "achieved_rps": 8252.724851462312,
+      "output_tokens_per_second": 1413907.6694418772,
+      "mean_output_tokens": 171.3277684096679,
+      "mean_request_latency_ms": 100.40783851739936,
+      "mean_ttft_ms": 97.86354088080833,
+      "aiperf_errors": 0,
+      "cancelled_clients": 0,
+      "completed_clients": 24,
+      "cache_hit_clients": 24
+    }
+  ]
+}

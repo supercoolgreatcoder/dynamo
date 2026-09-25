@@ -1,0 +1,16 @@
+{
+  "job": "ceilfix-mooncake-envoy-callouts-c24-r1",
+  "clients": 24,
+  "version": [
+    "0.12.0"
+  ],
+  "phase_types": [
+    "fixed_schedule"
+  ],
+  "requests_scheduled": 544776,
+  "requests_successful": 375387,
+  "rps": 8252.724851462312,
+  "output_tps": 1413907.6694418772,
+  "errors": 0,
+  "cancelled": false
+}
