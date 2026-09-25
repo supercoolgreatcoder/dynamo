@@ -288,10 +288,28 @@ worker over gRPC, then asserts
 an OpenAI-compatible streamed response through AGW with a `stop` finish
 reason and `[DONE]`. The model's `chat_template_kwargs.enable_thinking=false`
 keeps this correctness check about the final answer rather than truncated
-thinking tokens. The fixture is aggregate-only; split vLLM and disaggregated
-real-worker verification remain pending. Its selector sees the runtime KV
+thinking tokens. The fixture is aggregate-only; disaggregated real-worker
+verification remains pending. Its selector sees the runtime KV
 capacity, but this fixture does not yet enable native SGLang KV-event emission.
 See [the captured real-SGLang run](results/2026-09-25-real-sglang-split/README.md).
+
+The real-vLLM path uses the same preprocessor, selector, and worker-facade
+contract, but the engine frontend must be upstream `vllm-rs` from the exact
+revision as its headless Python vLLM engine. The Python
+`vllm.entrypoints.grpc_server` does **not** expose the `vllm.Control` service
+required by Dynamo's sidecar. From the dedicated `/work/envs` Nix branch,
+build and stage `#vllm-rs` and `#vllm`; set `VLLM_RS_PATH` and
+`VLLM_WORKER_ENV_PATH` in addition
+to the shared vCluster, facade, gateway, model, and NFS settings above. Then run:
+
+```bash
+bash deploy/component-pipelines/k8s/vcluster/run-real-vllm-split.sh
+GRPCURL_BIN=/path/to/grpcurl \
+  bash deploy/component-pipelines/k8s/vcluster/smoke-real-vllm-split.sh
+```
+
+The [captured real-vLLM run](results/2026-09-25-real-vllm-split/README.md)
+proves aggregate streaming through AGW and runtime KV metadata publication.
 
 The retained evidence is organized as follows:
 

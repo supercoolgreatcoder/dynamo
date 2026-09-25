@@ -1,0 +1,40 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ${JOB_NAME}
+  namespace: ${VCLUSTER_NAMESPACE}
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 86400
+  template:
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      containers:
+        - name: stage
+          image: busybox:1.36
+          command: [sh, -ec]
+          args:
+            - |
+              test -d /bridge/nixstage-${BRIDGE_STAGE_ID}
+              for path in /bridge/nixstage-${BRIDGE_STAGE_ID}/*; do
+                test -e "$path"
+                name=${path##*/}
+                if [ ! -e "/nix/store/$name" ]; then
+                  cp -a "$path" /nix/store/
+                fi
+              done
+              echo "copied immutable Nix paths from ${BRIDGE_STAGE_ID}"
+          resources:
+            requests: {cpu: "500m", memory: 512Mi}
+          volumeMounts:
+            - {name: store, mountPath: /nix/store, subPath: store}
+            - {name: bridge, mountPath: /bridge, readOnly: true}
+      volumes:
+        - name: store
+          nfs: {server: "${NIX_STORE_NFS_SERVER}", path: "${NIX_STORE_NFS_PATH}"}
+        - name: bridge
+          nfs: {server: "${NIX_BRIDGE_NFS_SERVER}", path: "${NIX_BRIDGE_NFS_PATH}", readOnly: true}

@@ -2,9 +2,9 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# Exercise Dynamo preprocessing and a native SGLang engine through their thin
-# gRPC facades. This script only port-forwards vCluster Services; it never
-# contacts the host-cluster API or creates Kubernetes resources.
+# Exercise Dynamo preprocessing and a native engine through their thin gRPC
+# facades. Defaults to SGLang; the vLLM wrapper supplies isolated resource
+# names. Only vCluster Services are port-forwarded; no resources are created.
 set -euo pipefail
 
 : "${VCLUSTER_KUBECONFIG:?set the explicit vCluster kubeconfig}"
@@ -17,6 +17,10 @@ preprocessor_port=${PREPROCESSOR_PORT:-16052}
 worker_port=${WORKER_PORT:-16053}
 selector_port=${SELECTOR_PORT:-16054}
 gateway_port=${GATEWAY_PORT:-18081}
+worker_name=${REAL_WORKER_NAME:-real-sglang-split}
+selector_name=${REAL_SELECTOR_NAME:-real-qwen3-selector}
+gateway_name=${REAL_GATEWAY_NAME:-real-qwen3-agw-generic}
+engine_label=${REAL_ENGINE_LABEL:-SGLang native gRPC}
 command -v "$kubectl_bin" >/dev/null
 command -v "$grpcurl_bin" >/dev/null
 command -v jq >/dev/null
@@ -34,26 +38,26 @@ fi
 "$kubectl_bin" --kubeconfig "$VCLUSTER_KUBECONFIG" -n "$VCLUSTER_NAMESPACE" \
   rollout status deployment/real-qwen3-preprocessor --timeout=10s >/dev/null
 "$kubectl_bin" --kubeconfig "$VCLUSTER_KUBECONFIG" -n "$VCLUSTER_NAMESPACE" \
-  rollout status deployment/real-sglang-split --timeout=10s >/dev/null
+  rollout status "deployment/$worker_name" --timeout=10s >/dev/null
 "$kubectl_bin" --kubeconfig "$VCLUSTER_KUBECONFIG" -n "$VCLUSTER_NAMESPACE" \
-  rollout status deployment/real-qwen3-selector --timeout=10s >/dev/null
+  rollout status "deployment/$selector_name" --timeout=10s >/dev/null
 "$kubectl_bin" --kubeconfig "$VCLUSTER_KUBECONFIG" -n "$VCLUSTER_NAMESPACE" \
-  rollout status deployment/real-qwen3-agw-generic --timeout=10s >/dev/null
+  rollout status "deployment/$gateway_name" --timeout=10s >/dev/null
 
 "$kubectl_bin" --kubeconfig "$VCLUSTER_KUBECONFIG" -n "$VCLUSTER_NAMESPACE" \
   port-forward service/real-qwen3-preprocessor "$preprocessor_port:50051" \
   --address 127.0.0.1 >/dev/null 2>&1 &
 preprocessor_pid=$!
 "$kubectl_bin" --kubeconfig "$VCLUSTER_KUBECONFIG" -n "$VCLUSTER_NAMESPACE" \
-  port-forward service/real-sglang-split "$worker_port:50051" \
+  port-forward "service/$worker_name" "$worker_port:50051" \
   --address 127.0.0.1 >/dev/null 2>&1 &
 worker_pid=$!
 "$kubectl_bin" --kubeconfig "$VCLUSTER_KUBECONFIG" -n "$VCLUSTER_NAMESPACE" \
-  port-forward service/real-qwen3-selector "$selector_port:50051" \
+  port-forward "service/$selector_name" "$selector_port:50051" \
   --address 127.0.0.1 >/dev/null 2>&1 &
 selector_pid=$!
 "$kubectl_bin" --kubeconfig "$VCLUSTER_KUBECONFIG" -n "$VCLUSTER_NAMESPACE" \
-  port-forward service/real-qwen3-agw-generic "$gateway_port:8080" \
+  port-forward "service/$gateway_name" "$gateway_port:8080" \
   --address 127.0.0.1 >/dev/null 2>&1 &
 gateway_pid=$!
 trap 'kill "$preprocessor_pid" "$worker_pid" "$selector_pid" "$gateway_pid" 2>/dev/null || true' EXIT
@@ -81,8 +85,8 @@ done
 
 openai_request='{"model":"Qwen/Qwen3-0.6B","messages":[{"role":"user","content":"Say hello in one short sentence."}],"max_tokens":32,"temperature":0,"stream":true,"chat_template_kwargs":{"enable_thinking":false}}'
 prepared=$(
-  jq -n --arg request "$openai_request" \
-    '{itemId:"real-sglang-split-smoke",openaiRequestJson:($request|@base64),packedTokensOnly:true}' |
+  jq -n --arg request "$openai_request" --arg item_id "$worker_name-smoke" \
+    '{itemId:$item_id,openaiRequestJson:($request|@base64),packedTokensOnly:true}' |
     "$grpcurl_bin" -plaintext -d @ "127.0.0.1:$preprocessor_port" \
       dynamo.components.v1.Preprocessor/Prepare
 )
@@ -106,7 +110,7 @@ fi
 worker_endpoint=$(jq -r '.payloadJson | @base64d | fromjson | .endpoint' <<<"$selection")
 worker_pod=$(
   "$kubectl_bin" --kubeconfig "$VCLUSTER_KUBECONFIG" -n "$VCLUSTER_NAMESPACE" \
-    get pods -l app=real-sglang-split -o json
+    get pods -l "app=$worker_name" -o json
 )
 worker_ip=$(jq -r '.items[0].status.podIP' <<<"$worker_pod")
 if [[ "$worker_endpoint" != "http://$worker_ip:50051" ]]; then
@@ -182,7 +186,8 @@ jq -n --argjson prompt_tokens "$(jq -r '.promptTokens' <<<"$prepared")" \
   --arg gateway_finish_reason "$(jq -r 'select(.choices[0].finish_reason != null) | .choices[0].finish_reason' <<<"$gateway_chunks" | tail -1)" \
   --argjson block_size "$(jq -r '.block_size' <<<"$worker_metadata")" \
   --argjson total_kv_blocks "$(jq -r '.total_kv_blocks' <<<"$worker_metadata")" \
-  '{result:"pass",engine:"SGLang native gRPC",tokenizer:"Dynamo fastokens",
+  --arg engine "$engine_label" \
+  '{result:"pass",engine:$engine,tokenizer:"Dynamo fastokens",
     prompt_tokens:$prompt_tokens,stream_chunks:$chunks,finish_reason:$finish_reason,
     generated_text:$text,selector_endpoint:$selector_endpoint,
     gateway_stream_chunks:$gateway_chunks,gateway_finish_reason:$gateway_finish_reason,

@@ -1,0 +1,221 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Native vLLM gRPC server and Dynamo's canonical sidecar engine behind a thin
+# worker facade. The model and Nix closures are read-only NFS mounts.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: real-worker-metadata
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: real-worker-metadata
+rules:
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [get, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: real-worker-metadata
+subjects:
+  - kind: ServiceAccount
+    name: real-worker-metadata
+    namespace: ${VCLUSTER_NAMESPACE}
+roleRef:
+  kind: Role
+  name: real-worker-metadata
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: real-vllm-split
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app: real-vllm-split}
+  template:
+    metadata:
+      labels: {app: real-vllm-split}
+      annotations:
+        # Runtime KV capacity is published by the facade after engine startup.
+        dynamo.nvidia.com/worker-metadata: '{"schema_version":"v1","model_name":"Qwen/Qwen3-0.6B"}'
+    spec:
+      serviceAccountName: real-worker-metadata
+      terminationGracePeriodSeconds: 60
+      nodeSelector:
+        topology.unikorn-cloud.org/node-pool: B200
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Equal
+          value: "true"
+          effect: NoSchedule
+      initContainers:
+        - name: prepare-cuda-view
+          image: busybox:1.36
+          command: [sh, -c]
+          args:
+            - >-
+              ln -sf /nix/store/pf30k3mg7n6bibc1k6609gyq7glk00k2-glibc-2.42-61-bin/bin/ldconfig /sbin-shim/ldconfig;
+              ln -sf /nix/store/893x2zqx2kjd3rypfr2pb890cngz7l1j-cuda-merged-13.3/bin /cuda-shim/bin;
+              ln -sf /nix/store/893x2zqx2kjd3rypfr2pb890cngz7l1j-cuda-merged-13.3/include /cuda-shim/include;
+              mkdir -p /cuda-shim/lib64;
+              ln -sf /nix/store/893x2zqx2kjd3rypfr2pb890cngz7l1j-cuda-merged-13.3/lib/* /cuda-shim/lib64/
+          volumeMounts:
+            - {name: nix, mountPath: /nix/store, subPath: store, readOnly: true}
+            - {name: sbin-shim, mountPath: /sbin-shim}
+            - {name: cuda-shim, mountPath: /cuda-shim}
+      containers:
+        - name: engine
+          image: busybox:1.36
+          command: ["${VLLM_RS_PATH}/bin/vllm-rs"]
+          args:
+            - serve
+            - /models/huggingface/hub/models--Qwen--Qwen3-0.6B/snapshots/c1899de289a04d12100db370d81485cdf75e47ca
+            - --served-model-name
+            - Qwen/Qwen3-0.6B
+            - --host
+            - 127.0.0.1
+            - --port
+            - "8000"
+            - --grpc-port
+            - "30001"
+            - --python
+            - ${VLLM_WORKER_ENV_PATH}/bin/python
+            - --max-model-len
+            - "4096"
+            - --
+            - --gpu-memory-utilization
+            - "0.10"
+            - --enforce-eager
+          env:
+            - {name: HF_HOME, value: /cache/huggingface}
+            - {name: HF_HUB_OFFLINE, value: "1"}
+            - {name: TRANSFORMERS_OFFLINE, value: "1"}
+            - {name: CUDA_HOME, value: /cuda}
+            - {name: CUDA_PATH, value: /cuda}
+            - {name: CPATH, value: /cuda/include}
+            - {name: CPLUS_INCLUDE_PATH, value: /cuda/include}
+            - {name: NVCC_PREPEND_FLAGS, value: "-I/cuda/include"}
+            - {name: CC, value: /nix/store/qd70v8g0561vm8m33kmnp79z00cgyi5n-gcc-wrapper-15.2.0/bin/cc}
+            - {name: NVIDIA_CTK_LIBCUDA_DIR, value: /usr/lib/x86_64-linux-gnu}
+            - {name: NVIDIA_DRIVER_CAPABILITIES, value: "compute,utility"}
+            - {name: PYTHONUNBUFFERED, value: "1"}
+            - {name: PATH, value: "/nix/store/36zaqsjb04wl8ppvpsxcn8hvnwqvdd2j-ninja-1.13.2/bin:/nix/store/qd70v8g0561vm8m33kmnp79z00cgyi5n-gcc-wrapper-15.2.0/bin:/cuda/bin:${VLLM_WORKER_ENV_PATH}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"}
+            - {name: LD_LIBRARY_PATH, value: "/nix/store/fjkx1l5cnskzrqacf08z7i8z17256w0j-glibc-2.42-61/lib:/cuda/lib64:/nix/store/si4q3zks5mn5jhzzyri9hhd3cv789vlm-gcc-15.2.0-lib/lib:/usr/lib/x86_64-linux-gnu:/run/opengl-driver/lib"}
+          resources:
+            requests: {cpu: "2", memory: 8Gi, nvidia.com/gpu: "1"}
+            limits: {nvidia.com/gpu: "1"}
+          volumeMounts:
+            - {name: nix, mountPath: /nix/store, subPath: store, readOnly: true}
+            - {name: models, mountPath: /models, readOnly: true}
+            - {name: cache, mountPath: /cache}
+            - {name: shm, mountPath: /dev/shm}
+            - {name: sbin-shim, mountPath: /sbin}
+            - {name: cuda-shim, mountPath: /cuda}
+        - name: facade
+          image: busybox:1.36
+          command: ["${FACADE_STORE_PATH}/bin/dynamo-component-facade"]
+          args:
+            - --listen
+            - 0.0.0.0:50051
+            - vllm-worker
+            - --model-path
+            - /models/huggingface/hub/models--Qwen--Qwen3-0.6B/snapshots/c1899de289a04d12100db370d81485cdf75e47ca
+            - --
+            - --grpc-endpoint
+            - 127.0.0.1:30001
+          env:
+            - {name: DYN_TOKENIZER, value: fastokens}
+            - {name: DYN_TOKENIZER_FALLBACK, value: "false"}
+            - name: DYN_COMPONENT_POD_NAME
+              valueFrom: {fieldRef: {fieldPath: metadata.name}}
+            - name: DYN_COMPONENT_POD_NAMESPACE
+              valueFrom: {fieldRef: {fieldPath: metadata.namespace}}
+            - name: DYN_COMPONENT_POD_UID
+              valueFrom: {fieldRef: {fieldPath: metadata.uid}}
+          ports: [{name: grpc, containerPort: 50051}]
+          readinessProbe:
+            grpc: {port: 50051}
+            periodSeconds: 5
+            failureThreshold: 90
+          resources:
+            requests: {cpu: "1", memory: 1Gi}
+          volumeMounts:
+            - {name: nix, mountPath: /nix/store, subPath: store, readOnly: true}
+            - {name: models, mountPath: /models, readOnly: true}
+      volumes:
+        - name: nix
+          nfs: {server: "${NIX_STORE_NFS_SERVER}", path: "${NIX_STORE_NFS_PATH}", readOnly: true}
+        - name: models
+          nfs: {server: "${MODEL_NFS_SERVER}", path: "${MODEL_NFS_PATH}", readOnly: true}
+        - name: cache
+          emptyDir: {}
+        - name: shm
+          emptyDir: {medium: Memory, sizeLimit: 8Gi}
+        - name: sbin-shim
+          emptyDir: {}
+        - name: cuda-shim
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: real-vllm-split
+spec:
+  selector: {app: real-vllm-split}
+  ports: [{name: grpc, port: 50051, targetPort: grpc}]
+---
+# Reuse the same model-specific preprocessor contract as the SGLang fixture.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: real-qwen3-preprocessor
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: real-qwen3-preprocessor}
+  template:
+    metadata:
+      labels: {app: real-qwen3-preprocessor}
+    spec:
+      containers:
+        - name: preprocessor
+          image: busybox:1.36
+          command: ["${FACADE_STORE_PATH}/bin/dynamo-component-facade"]
+          args:
+            - --listen
+            - 0.0.0.0:50051
+            - preprocessor
+            - --model-path
+            - /models/huggingface/hub/models--Qwen--Qwen3-0.6B/snapshots/c1899de289a04d12100db370d81485cdf75e47ca
+          env:
+            - {name: DYN_TOKENIZER, value: fastokens}
+            - {name: DYN_TOKENIZER_FALLBACK, value: "false"}
+          ports: [{name: grpc, containerPort: 50051}]
+          readinessProbe:
+            grpc: {port: 50051}
+            periodSeconds: 5
+          resources:
+            requests: {cpu: "1", memory: 1Gi}
+          volumeMounts:
+            - {name: nix, mountPath: /nix/store, subPath: store, readOnly: true}
+            - {name: models, mountPath: /models, readOnly: true}
+      volumes:
+        - name: nix
+          nfs: {server: "${NIX_STORE_NFS_SERVER}", path: "${NIX_STORE_NFS_PATH}", readOnly: true}
+        - name: models
+          nfs: {server: "${MODEL_NFS_SERVER}", path: "${MODEL_NFS_PATH}", readOnly: true}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: real-qwen3-preprocessor
+spec:
+  selector: {app: real-qwen3-preprocessor}
+  ports: [{name: grpc, port: 50051, targetPort: grpc}]
