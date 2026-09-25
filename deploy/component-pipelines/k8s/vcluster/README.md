@@ -121,6 +121,14 @@ bash deploy/component-pipelines/k8s/vcluster/run-nix-mocker-trial.sh \
 The runner still requires the vCluster-only `dynamo-component-store-stager` Pod
 for evidence collection. A successful Job alone is not accepted as a result:
 the script also parses all six exports and reports errors and cancellations.
+For a newly pinned bundle, use `run-nix-mocker-recheck.sh` with the same
+environment and a fresh `RESULT_DIR`, for example `TRIAL=r21 WORKLOAD=short`.
+It runs four gateway arms one at a time with a rotating order for `r21`–`r23`,
+refuses active Jobs or an active real-model/stock-reference fixture, and skips
+only complete six-client error-free local exports. Job names must be unused;
+it never overwrites a prior Kubernetes Job. The
+[facade 846821 recheck](results/2026-09-25-facade-846821-recheck/README.md)
+retains the first clean short series and the later workload results.
 After one valid first pass per cell, `run-nix-mocker-matrix.sh` runs the two
 remaining interleaved passes for all four gateway arms and three workloads,
 plus the stock Dynamo reference on short and ISL4000. It verifies
