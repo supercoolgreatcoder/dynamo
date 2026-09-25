@@ -11,13 +11,15 @@ to the host-cluster context.
 
 The preferred source-native build is `gateway-pipeline#component-pipeline-v2` in the
 `dynamo-nix-envs` repository, branch `feat/dynamo-component-pipeline-builds`
-(current commit `8a612b7`; earlier full-bundle build tested at `672d85e`). It assembles the thin Dynamo facade, patched Agentgateway
+(full-bundle build tested at commit `8a612b7`). It assembles the thin Dynamo facade, patched Agentgateway
 host, patched Envoy executable, and Envoy dynamic module into one Nix-store output.
 `package.nix` is the older prototype packaging reference. The source pins and
 build instructions are in the envs flake's `gateway-pipeline/README.md`; the
 component code and patch sources are pinned to this Dynamo branch at `98676215fa`.
 The standalone Envoy module from the current Nix pin builds and passes a streaming
-smoke test; repeat the full-bundle build after changing any source pin.
+smoke test. The complete bundle also builds to
+`/nix/store/g7achknzv9ibixmfdaxgjy4a3pp33dp5-dynamo-component-pipelines-98676215fa`;
+repeat the build after changing any source pin.
 The selector itself uses the
 vCluster Kubernetes API to watch `InferencePool` objects and annotated worker Pods.
 It does not connect to the Dynamo runtime.
