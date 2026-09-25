@@ -39,3 +39,37 @@ completed and is excluded. The runner now checks node readiness and taints
 before creating a Job. The retained valid 12-client run is therefore `r2`.
 This sweep intentionally changes offered load and is not a same-load
 comparison against the older Claude prototype or stock Dynamo frontend.
+
+## Downstream-replica probes at 18 clients
+
+Two follow-up probes changed one downstream replica count at a time. The
+single gateway was restarted after each scaling change because its persistent
+gRPC channels connect through Kubernetes ClusterIP Services. The same frozen
+requests, client nodes, 18×128 concurrency, and 45-second duration were used.
+Each Job completed all 18 clients with zero errors and retained its own Pod
+placement record and raw AIPerf JSON/CSV summaries. These are diagnostic
+measurements; they were not interleaved, the server-side replica snapshots
+were observed live rather than persisted in the Job record, and the client
+node that hosts synthetic workers remains an isolation limitation.
+
+| Topology | Requests/s in two runs | Mean request latency (ms) |
+|---|---:|---:|
+| 4 preprocessors, 1 selector (baseline) | 13,840.63 / 13,353.78 | 122.37 / 143.67 |
+| 4 preprocessors, 4 selectors | 12,615.29 / 12,290.65 | 160.12 / 163.75 |
+| 8 preprocessors, 1 selector | 14,107.22 / 12,957.51 | 122.81 / 152.16 |
+
+All four selector replicas shared one 32-core CPU node with the other pods
+already there. The eight preprocessors were Ready, four on each of two CPU
+nodes. Adding selector replicas did not improve throughput in this placement;
+the preprocessor result overlaps the baseline's run-to-run range, so its
+effect is inconclusive. During the first eight-preprocessor measurement, a
+17-second read-only cgroup sample on the sole gateway Pod increased from
+222,063,445 to 419,114,143 `usage_usec` (about 11.6 CPU cores in use), with
+`cpu.max` showing no quota. This supports substantial gateway CPU work, but
+does not isolate its maximum capacity or rule out client/downstream effects.
+
+The second four-selector Job completed successfully, but an in-flight edit
+caused its launching shell to fail before collection. The independent
+[`collect-nix-mocker-ceiling.sh`](../../collect-nix-mocker-ceiling.sh) runner
+recovered its unchanged Job, Pod placement, and AIPerf exports from the
+vCluster store. No measurement was rerun or reconstructed.
