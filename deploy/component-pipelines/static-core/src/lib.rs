@@ -337,6 +337,7 @@ impl StaticAggregatePipeline {
                 deadline_unix_ms,
                 token_ids: Vec::new(),
                 token_ids_le: prepared.token_ids_le,
+                prefill_result_json: Vec::new(),
             })
             .await
             .map(tonic::Response::into_inner)
