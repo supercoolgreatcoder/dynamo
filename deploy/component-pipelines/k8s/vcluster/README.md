@@ -11,15 +11,15 @@ to the host-cluster context.
 
 The preferred source-native build is `gateway-pipeline#component-pipeline-v2` in the
 `dynamo-nix-envs` repository, branch `feat/dynamo-component-pipeline-builds`
-(full-bundle build tested at commit `8a612b7`). It assembles the thin Dynamo facade, patched Agentgateway
+(current validated package commit `7024cac`). It assembles the thin Dynamo facade, patched Agentgateway
 host, patched Envoy executable, and Envoy dynamic module into one Nix-store output.
 `package.nix` is the older prototype packaging reference. The source pins and
 build instructions are in the envs flake's `gateway-pipeline/README.md`; the
-gateway and Envoy patch sources remain pinned to this Dynamo branch at
-`98676215fa`, while the facade has an independent newer pin.
+gateway graph and facade sources are pinned to Dynamo `accf6af699`, while the
+unchanged Envoy ABI patch is independently pinned to `98676215fa`.
 The standalone Envoy module from the current Nix pin builds and passes a streaming
-smoke test. The complete bundle also builds to
-`/nix/store/g7achknzv9ibixmfdaxgjy4a3pp33dp5-dynamo-component-pipelines-98676215fa`;
+smoke test. The current complete bundle builds to
+`/nix/store/d9n60x9aylvjvj9j56654640xshsai1x-dynamo-component-pipelines-accf6af699`;
 repeat the build after changing any source pin.
 The selector itself uses the
 vCluster Kubernetes API to watch `InferencePool` objects and annotated worker Pods.
@@ -32,6 +32,9 @@ rebuild the patched gateway unnecessarily. The Nix-built facade is
 `/nix/store/gig2imm94kjrv2jbdqkyysfpgqnc1bmv-dynamo-component-facade-1.6.0-8468212130`;
 the complete bundle also builds as
 `/nix/store/j7n9hn14s34c2595q1nr4h9w0055y24x-dynamo-component-pipelines-8468212130`.
+That older bundle produced the retained three-run aggregate matrix; it is not
+the `accf6af699` bundle used by the subsequent real-vLLM P/D smoke and
+fresh benchmark recheck.
 
 Build the bundle from a checkout of that envs branch, then publish only its runtime
 closure to the vCluster's existing NFS store export. Use the explicit vCluster
@@ -140,6 +143,107 @@ traffic. Stock Dynamo Mooncake `r2` and `r3` completed with request errors;
 their exports are retained and excluded while a separate diagnostic investigates
 the intermittent empty-content responses. The script scales the
 gateway/reference Deployments back to zero at completion.
+
+## Reproduce the current Nix-bundle mocker recheck
+
+Use source branch `feat/dynamo-component-pipelines-repro` and envs branch
+`feat/dynamo-component-pipeline-builds` at or after the commits above. Build
+`#component-pipeline-v2` from the envs `gateway-pipeline` flake and record
+`nix path-info .#component-pipeline-v2`; for the pinned source it resolves to
+the `accf6af699` bundle above. Its four outputs are the Dynamo facade,
+patched AGW, patched Envoy executable, and generic Envoy module. Check
+`nix flake check --no-build --impure` before staging. Do not build on the
+benchmark nodes while measuring.
+
+Point `VCLUSTER_KUBECONFIG` to the issued vCluster kubeconfig and set
+`VCLUSTER_EXPECTED_SERVER` to its exact API URL. The helpers compare these
+before every Kubernetes write. The 2026-09-25 campaign used namespace
+`dynamo-components-v2`, six AIPerf 0.12.0 clients split 3/3 over nodes
+`cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj` and
+`cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67`, four Dynamo `fastokens`
+preprocessors, one InferencePool selector, 16 synthetic facade workers, and
+one gateway replica per cell. The gateway rotation runs short, ISL4000, and
+Mooncake separately. Short and ISL4000 replay frozen raw OpenAI payloads;
+Mooncake reuses the prepared content-addressed mmap. Clients do not
+synthesize prompts or compute token counts in the measured phase.
+
+Stage the complete Nix closure with `stage-nix-closure.sh` and a fresh DNS-safe
+stage ID. It requires the vCluster store NFS server/path and the host-visible
+bridge NFS server/path/mount (`NIX_STORE_NFS_SERVER/PATH`,
+`NIX_BRIDGE_NFS_SERVER/PATH`, `NIX_BRIDGE_HOST_PATH`). The 2026-09-25 run used
+store server `192.168.0.220`, store export
+`/unikorn-identity-03cfadd31877-551/pvc-19aeb650-5f77-45c4-8b8b-0a3b88542f39`,
+bridge server `192.168.0.220`, bridge export
+`/unikorn-identity-03cfadd31877-551/pvc-e3aa3d24-3aa3-4459-a23f-dfd5bc12990d`,
+and host mount `/data`. Set `ENVSUBST_BIN` if `envsubst` is not on `PATH`.
+Never point these helpers at the host-cluster kubeconfig.
+
+```bash
+# From the Dynamo repository root; COMPONENT_BUNDLE is the flake output path.
+export COMPONENT_BUNDLE=/nix/store/d9n60x9aylvjvj9j56654640xshsai1x-dynamo-component-pipelines-accf6af699
+export VCLUSTER_KUBECONFIG=/path/to/issued-vcluster.kubeconfig
+export VCLUSTER_EXPECTED_SERVER=https://gateway-poc.mkhadkevich-dev:443
+export VCLUSTER_NAMESPACE=dynamo-components-v2
+export NIX_STORE_NFS_SERVER=192.168.0.220
+export NIX_STORE_NFS_PATH=/unikorn-identity-03cfadd31877-551/pvc-19aeb650-5f77-45c4-8b8b-0a3b88542f39
+export NIX_BRIDGE_NFS_SERVER=192.168.0.220
+export NIX_BRIDGE_NFS_PATH=/unikorn-identity-03cfadd31877-551/pvc-e3aa3d24-3aa3-4459-a23f-dfd5bc12990d
+export NIX_BRIDGE_HOST_PATH=/data
+bash deploy/component-pipelines/k8s/vcluster/stage-nix-closure.sh \
+  "$COMPONENT_BUNDLE" accf6af-repro-unique1
+```
+
+Use a fresh stage ID for every run. The store stager Pod and bridge mount must
+already exist in the vCluster environment; the first section shows how to
+create the Pod. The helper copies only missing closure paths and verifies them
+in the vCluster store after its Job completes.
+
+Scale real-worker fixtures and all benchmark gateways to zero; verify their
+Pods are gone and no Job is active. Bring up only `envoy-independent` to 1/1,
+then run `rollout-nix-bundle.sh "$COMPONENT_BUNDLE"`. That helper rolls the
+facade workers, preprocessor, selector, AGW and Envoy binaries, and refreshes
+the Envoy-callout worker map after Pod IPs change. Smoke one streamed request
+before load. For the exact frozen benchmark topology, set:
+
+```bash
+export VCLUSTER_KUBECONFIG=/path/to/issued-vcluster.kubeconfig
+export VCLUSTER_EXPECTED_SERVER=https://gateway-poc.mkhadkevich-dev:443
+export VCLUSTER_NAMESPACE=dynamo-components-v2
+export AIPERF_NODE_A=cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj
+export AIPERF_NODE_B=cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67
+export NIX_STORE_NFS_SERVER=192.168.0.220
+export NIX_STORE_NFS_PATH=/unikorn-identity-03cfadd31877-551/pvc-19aeb650-5f77-45c4-8b8b-0a3b88542f39
+export TOKENIZER_STORE_BASENAME=wjq1b3wfjpzak4yd4rmj9arwqk1gkiir-qwen-tokenizer
+export RESULT_DIR="$PWD/deploy/component-pipelines/k8s/vcluster/results/2026-09-25-accf6af-bundle-recheck"
+mkdir -p "$RESULT_DIR"
+for workload in short isl4000 mooncake; do
+  for trial in r28 r29 r30; do
+    TRIAL="$trial" WORKLOAD="$workload" \
+      bash deploy/component-pipelines/k8s/vcluster/run-nix-mocker-recheck.sh
+  done
+done
+jobs=("$RESULT_DIR"/raw_aiperf/nixv2-*)
+JOB_NAMES=$(printf '%s\n' "${jobs[@]##*/}" | paste -sd, -) \
+  bash deploy/component-pipelines/k8s/vcluster/capture-nix-mocker-execution.sh
+SERIES_ID=nix-component-pipeline-accf6af-2026-09-25 \
+  bash deploy/component-pipelines/k8s/vcluster/summarize-nix-mocker-results.sh
+```
+
+Run from the Dynamo repository root, with `COMPONENT_BUNDLE` set to the Nix
+output and `ENVSUBST_BIN` set if needed. The runner refuses active Jobs,
+active real-model fixtures, incomplete facade replicas, existing partial
+exports, and reused Job names; it rotates arm order and scales exactly one
+gateway at a time. Each Job has a 90-second shared start barrier, concurrency
+128 per client, and a 45-second measured interval. It accepts a cell only
+when all six AIPerf JSON exports exist with no reported request errors or
+cancellations. Preserve the complete `raw_aiperf/` tree, Jobs' commands and
+Pod placement, bundle path, and excluded runs in the result record. Report
+the median of three aggregate Job RPS values, not a mean of client RPS
+values. The source script `capture-nix-mocker-execution.sh` captures Job
+commands and placement; `summarize-nix-mocker-results.sh` normalizes exports.
+The [earlier 846821 recheck](results/2026-09-25-facade-846821-recheck/README.md)
+is the comparison series. Mooncake's approximately 3,026 RPS offered rate
+is not a saturation ceiling.
 
 The reproducible zero-delay benchmark is rendered from
 `benchmark-pod.yaml.tmpl`. It runs three interleaved trials for all four gateway arms
@@ -288,8 +392,8 @@ worker over gRPC, then asserts
 an OpenAI-compatible streamed response through AGW with a `stop` finish
 reason and `[DONE]`. The model's `chat_template_kwargs.enable_thinking=false`
 keeps this correctness check about the final answer rather than truncated
-thinking tokens. The fixture is aggregate-only; disaggregated real-worker
-verification remains pending. Its selector sees the runtime KV
+thinking tokens. The SGLang fixture is aggregate-only; SGLang disaggregated
+real-worker verification remains pending. Its selector sees the runtime KV
 capacity, but this fixture does not yet enable native SGLang KV-event emission.
 See [the captured real-SGLang run](results/2026-09-25-real-sglang-split/README.md).
 
@@ -310,6 +414,21 @@ GRPCURL_BIN=/path/to/grpcurl \
 
 The [captured real-vLLM run](results/2026-09-25-real-vllm-split/README.md)
 proves aggregate streaming through AGW and runtime KV metadata publication.
+
+For real vLLM prefill/decode, stage the current `accf6af699` facade output
+and complete bundle in the same vCluster NFS store, set their absolute store
+paths as `FACADE_STORE_PATH` and `GATEWAY_BUNDLE_PATH`, and use the exact
+vCluster variables above. Run `run-real-vllm-pd.sh` and then
+`smoke-real-vllm-pd.sh`. The fixture clones the aggregate vLLM worker into
+separate `kv_producer` and `kv_consumer` Pods, gives each NIXL side channel
+the routable `status.podIP`, and routes the prefill handoff over the graph's
+batched gRPC facades to the decode worker. The smoke validates both workers'
+runtime KV annotations and an OpenAI-compatible streamed answer with a
+terminal finish reason. This correctness check passed on 2026-09-25 with
+real Qwen3-0.6B GPU workers in the vCluster; it is not a P/D throughput
+result. The NIXL side-channel pod-IP setting follows
+`lib/sidecar/vllm/deploy/disagg.yaml` and is required when bypassing the
+`dynamo.vllm` wrapper.
 
 The retained evidence is organized as follows:
 

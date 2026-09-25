@@ -35,8 +35,10 @@ for component in dynamo-preprocessor:4 dynamo-selector:1 dynamo-benchmark-worker
       }
 done
 for inactive in real-qwen3-agw-generic real-qwen3-preprocessor \
-  real-qwen3-selector real-sglang-split dynamo-frontend-reference \
-  dynamo-reference-worker; do
+  real-qwen3-selector real-sglang real-sglang-split real-vllm-split \
+  real-vllm-agw-generic real-vllm-pd-prefill \
+  real-vllm-pd-decode real-vllm-pd-preprocessor real-vllm-pd-selector \
+  real-vllm-pd-agw dynamo-frontend-reference dynamo-reference-worker; do
   "${vc[@]}" get deployment "$inactive" -o json |
     jq -e '.spec.replicas == 0 and (.status.readyReplicas // 0) == 0' >/dev/null || {
       echo "$inactive is active; refusing a confounded mocker benchmark" >&2
@@ -50,17 +52,18 @@ workload=${WORKLOAD:-short}
 case "$workload" in short|isl4000|mooncake) ;; *) echo "invalid WORKLOAD" >&2; exit 2 ;; esac
 
 # Alternating orders reduce systematic warm/cold bias across clean repeats.
-# r20 is retained as a diagnostic pass: a separate real-model AGW was then
-# present on an AIPerf node. r21-r23 run after that fixture is scaled to zero.
-# r24 replaces Mooncake r22 after its callout client reported four AIPerf
-# MemoryMapSerializationError/ServiceError failures; r22 is never counted.
+# r20-r24 belong to the earlier 846821 facade campaign. The accf6af bundle
+# uses new r28-r30 Job names so evidence cannot be confused or overwritten.
 case "$trial" in
   r20) arms=(envoy-generic agw-generic envoy-callouts agw-static) ;;
   r21) arms=(agw-static envoy-callouts agw-generic envoy-generic) ;;
   r22) arms=(envoy-callouts envoy-generic agw-static agw-generic) ;;
   r23) arms=(agw-generic agw-static envoy-generic envoy-callouts) ;;
   r24) arms=(envoy-callouts envoy-generic agw-static agw-generic) ;;
-  *) echo "this frozen recheck reserves r20-r24 only" >&2; exit 2 ;;
+  r28) arms=(agw-static envoy-callouts agw-generic envoy-generic) ;;
+  r29) arms=(envoy-generic agw-generic envoy-callouts agw-static) ;;
+  r30) arms=(agw-generic agw-static envoy-generic envoy-callouts) ;;
+  *) echo "this frozen recheck reserves r20-r24 and r28-r30 only" >&2; exit 2 ;;
 esac
 
 service_for_arm() {
