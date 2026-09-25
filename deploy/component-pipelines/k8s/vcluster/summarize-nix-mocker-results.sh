@@ -7,6 +7,11 @@ set -euo pipefail
 shopt -s nullglob
 
 : "${RESULT_DIR:?set the local result directory}"
+series_id=${SERIES_ID:-nix-component-pipeline-mocker-parity-2026-09-24}
+[[ $series_id =~ ^[a-z0-9][-a-z0-9]*$ ]] || {
+  echo "SERIES_ID must be a DNS-safe series name" >&2
+  exit 2
+}
 test -f "$RESULT_DIR/benchmark_execution.json"
 test ! -e "$RESULT_DIR/benchmark_summary.json" || {
   echo "refusing to overwrite benchmark_summary.json" >&2
@@ -54,10 +59,10 @@ for dir in "$RESULT_DIR"/raw_aiperf/nixv2-*; do
   ' "${summaries[@]}" >> "$run_records"
 done
 
-jq -s '
+jq -s --arg series_id "$series_id" '
   map(. + (.job | capture("^nixv2-(?<workload>short|isl4000|mooncake)-(?<arm>.+)-(?<trial>r[0-9]+)$"))) as $runs |
   {
-    series_id: "nix-component-pipeline-mocker-parity-2026-09-24",
+    series_id: $series_id,
     metric: "aggregate successful request throughput",
     unit: "requests/second",
     runs: $runs,
