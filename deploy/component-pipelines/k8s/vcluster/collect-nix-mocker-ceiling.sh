@@ -5,7 +5,7 @@
 # Collect a completed ceiling Job, including after the launching shell exited.
 set -euo pipefail
 shopt -s nullglob
-if [ "$#" -ne 2 ] || ! [[ "$1" =~ ^ceilv1-short-envoy-direct-c[0-9]+-r[1-9][0-9]*(-selector4|-preprocessor8|-gateway12|-isolated|-envoy12|-profile)?$ ]] ||
+if [ "$#" -ne 2 ] || ! [[ "$1" =~ ^ceilv1-short-envoy-direct-c[0-9]+-r[1-9][0-9]*(-selector4|-preprocessor8|-gateway12|-isolated|-envoy12|-profile|-prepared)?$ ]] ||
   ! [[ "$2" =~ ^[0-9]+$ ]]; then
   echo "usage: $0 JOB CLIENTS" >&2
   exit 2

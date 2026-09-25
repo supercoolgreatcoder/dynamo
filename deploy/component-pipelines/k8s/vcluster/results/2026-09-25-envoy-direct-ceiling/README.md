@@ -126,3 +126,36 @@ are diagnostic, not precise per-request CPU cost. They motivated a separate
 thin-facade experiment to resolve the response field once per stream rather
 than once per chunk. No Dynamo core or worker implementation was changed for
 that experiment.
+
+## Prepared-output Envoy module A/B check
+
+The revised module from Dynamo commit `98676215fa` was built by the independent
+Nix flake at envs commit `8a612b7`, staged as a Nix-store closure, loaded by the
+same one-replica `envoy-independent` Deployment, and passed a streaming OpenAI
+smoke test. Its only Envoy-host/transport code delta relative to the old module
+is preparing the protobuf response decoder once per request stream and avoiding
+per-chunk graph-request/fallback clones. The Nix package also adds the
+`libgeneric_pipeline.so` alias required by Envoy's dynamic-module loader.
+
+The 18-client AIPerf workload and 45-second window remained fixed. All 16 mock
+workers were Ready and off the third client node, with four preprocessors, one
+selector, eight Tokio threads, six Envoy workers, and four gRPC channels per
+endpoint. The new-module runs were followed by one old-module control on this
+same isolated placement, after which the new module was restored. All 18
+clients completed in each Job with zero reported errors or cancellations.
+
+| Module | Run | Requests/s | Weighted mean latency (ms) | Requests |
+|---|---|---:|---:|---:|
+| New prepared decoder | r1 | 16,150.49 | 79.05 | 729,378 |
+| New prepared decoder | r2 | 16,525.34 | 71.09 | 745,845 |
+| Old decoder, same placement | r3 control | 13,773.52 | 133.08 | 622,109 |
+
+The two new-module runs averaged **16,337.92 requests/s**, 18.6% above the
+same-placement old-module control. The earlier old-module isolated runs were
+12,995.96 and 13,102.46 requests/s; that earlier worker distribution was
+5/6/5 across its three non-client nodes, versus 4/6/6 for this A/B check.
+This evidence supports a material improvement, but the three runs were not
+interleaved and the old-module control has only one repeat. It does not prove
+the final gateway ceiling. The retained per-client AIPerf JSON/CSV summaries
+and Job/Pod placement records are diagnostic campaign artifacts, not a
+request-level SLO audit.

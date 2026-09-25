@@ -9,8 +9,8 @@ set -euo pipefail
 shopt -s nullglob
 
 if [ "$#" -lt 2 ] || [ "$#" -gt 3 ] || ! [[ "$1" =~ ^[0-9]+$ ]] ||
-  ! [[ "$2" =~ ^r[1-9][0-9]*$ ]] || ! [[ "${3:-base}" =~ ^(base|selector4|preprocessor8|gateway12|isolated|envoy12|profile)$ ]]; then
-  echo "usage: $0 CLIENTS rN [base|selector4|preprocessor8|gateway12|isolated|envoy12|profile]" >&2
+  ! [[ "$2" =~ ^r[1-9][0-9]*$ ]] || ! [[ "${3:-base}" =~ ^(base|selector4|preprocessor8|gateway12|isolated|envoy12|profile|prepared)$ ]]; then
+  echo "usage: $0 CLIENTS rN [base|selector4|preprocessor8|gateway12|isolated|envoy12|profile|prepared]" >&2
   exit 2
 fi
 clients=$1
@@ -84,7 +84,8 @@ fi
     exit 2
   }
 "${kubectl_vc[@]}" get deployment envoy-independent -o json |
-  jq -e --arg threads "$gateway_threads" --arg workers "$envoy_workers" --arg variant "$variant" '
+  jq -e --arg threads "$gateway_threads" --arg workers "$envoy_workers" \
+    --arg variant "$variant" --arg module_path "${EXPECTED_MODULE_PATH:-}" '
     (.spec.replicas == 1) and (.status.readyReplicas == 1) and
     (.spec.template.spec.containers[0].args[3] == $workers) and
     any(.spec.template.spec.containers[].env[]?;
@@ -92,6 +93,11 @@ fi
     (if $variant == "profile" then
        any(.spec.template.spec.containers[].env[]?;
          .name == "GENERIC_PIPELINE_PROFILE_SECS" and .value == "180")
+     else true end) and
+    (if $variant == "prepared" then
+       ($module_path != "") and
+       any(.spec.template.spec.containers[].env[]?;
+         .name == "ENVOY_DYNAMIC_MODULES_SEARCH_PATH" and .value == $module_path)
      else true end)
   ' >/dev/null || {
     echo "envoy-independent must be 1/1 Ready with $gateway_threads Tokio threads and $envoy_workers Envoy workers" >&2
@@ -106,7 +112,7 @@ for component in "dynamo-preprocessor:${preprocessor_replicas}" "dynamo-selector
       exit 2
     }
 done
-if [ "$variant" = isolated ] || [ "$variant" = envoy12 ]; then
+if [ "$variant" = isolated ] || [ "$variant" = envoy12 ] || [ "$variant" = prepared ]; then
   "${kubectl_vc[@]}" get pods -l app=dynamo-benchmark-worker -o json |
     jq -e --arg node "$AIPERF_NODE_C" '
       (.items | length == 16) and
