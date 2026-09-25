@@ -8,12 +8,21 @@
 set -euo pipefail
 shopt -s nullglob
 
-if [ "$#" -ne 2 ] || ! [[ "$1" =~ ^[0-9]+$ ]] || ! [[ "$2" =~ ^r[1-9][0-9]*$ ]]; then
-  echo "usage: $0 CLIENTS rN (for example: 12 r1)" >&2
+if [ "$#" -lt 2 ] || [ "$#" -gt 3 ] || ! [[ "$1" =~ ^[0-9]+$ ]] ||
+  ! [[ "$2" =~ ^r[1-9][0-9]*$ ]] || ! [[ "${3:-base}" =~ ^(base|selector4|preprocessor8)$ ]]; then
+  echo "usage: $0 CLIENTS rN [base|selector4|preprocessor8]" >&2
   exit 2
 fi
 clients=$1
 trial=$2
+variant=${3:-base}
+selector_replicas=1
+preprocessor_replicas=4
+if [ "$variant" = selector4 ]; then
+  selector_replicas=4
+elif [ "$variant" = preprocessor8 ]; then
+  preprocessor_replicas=8
+fi
 if [ "$clients" -lt 6 ] || [ "$clients" -gt 24 ] || [ $((clients % 3)) -ne 0 ]; then
   echo "CLIENTS must be a multiple of 3 between 6 and 24" >&2
   exit 2
@@ -56,6 +65,9 @@ for node in "$AIPERF_NODE_A" "$AIPERF_NODE_B" "$AIPERF_NODE_C"; do
 done
 
 job="ceilv1-short-envoy-direct-c${clients}-${trial}"
+if [ "$variant" != base ]; then
+  job="${job}-${variant}"
+fi
 if "${kubectl_vc[@]}" get job "$job" >/dev/null 2>&1; then
   echo "refusing to reuse Job $job" >&2
   exit 2
@@ -70,7 +82,7 @@ fi
     echo "envoy-independent must be exactly 1/1 Ready" >&2
     exit 2
   }
-for component in dynamo-preprocessor:4 dynamo-selector:1 dynamo-benchmark-worker:16; do
+for component in "dynamo-preprocessor:${preprocessor_replicas}" "dynamo-selector:${selector_replicas}" dynamo-benchmark-worker:16; do
   name=${component%:*}
   expected=${component#*:}
   "${kubectl_vc[@]}" get deployment "$name" -o json |
@@ -101,58 +113,4 @@ export BENCHMARK_START_UNIX=$(( $(date -u +%s) + 120 ))
 
 echo "waiting for $job ($clients clients, barrier $BENCHMARK_START_UNIX)" >&2
 "${kubectl_vc[@]}" wait --for=condition=complete "job/$job" --timeout=900s
-execution="$RESULT_DIR/execution-${job}.json"
-"${kubectl_vc[@]}" get jobs,pods -o json |
-  jq --arg job "$job" '
-    .items as $items |
-    {
-      job: ($items[] | select(.kind == "Job" and .metadata.name == $job) |
-        {name: .metadata.name, uid: .metadata.uid,
-         created_at: .metadata.creationTimestamp,
-         completed_at: .status.completionTime,
-         succeeded: (.status.succeeded // 0),
-         image: .spec.template.spec.containers[0].image,
-         command: .spec.template.spec.containers[0].command,
-         args: .spec.template.spec.containers[0].args,
-         completions: .spec.completions,
-         parallelism: .spec.parallelism,
-         node_affinity: .spec.template.spec.affinity.nodeAffinity,
-         topology_spread: .spec.template.spec.topologySpreadConstraints}),
-      pods: [$items[] | select(.kind == "Pod" and .metadata.labels["job-name"] == $job) |
-        {name: .metadata.name, node: .spec.nodeName, phase: .status.phase,
-         started_at: .status.startTime,
-         finished_at: .status.containerStatuses[0].state.terminated.finishedAt}]
-    }
-  ' > "$execution"
-jq -e --argjson clients "$clients" \
-  --arg a "$AIPERF_NODE_A" --arg b "$AIPERF_NODE_B" --arg c "$AIPERF_NODE_C" '
-    (.job.succeeded == $clients) and (.pods | length == $clients) and
-    ([.pods[].node] | group_by(.) | map(length) | sort == [($clients/3),($clients/3),($clients/3)]) and
-    (([.pods[].node] | unique | sort) == ([$a,$b,$c] | sort))
-  ' "$execution" >/dev/null || {
-    echo "missing or skewed Pod placement evidence for $job" >&2
-    exit 1
-  }
-out="$RESULT_DIR/raw_aiperf/$job"
-mkdir -p "$out"
-"${kubectl_vc[@]}" exec -i dynamo-component-store-stager -- \
-  sh -c "cd /shared/nix/aiperf/results/$job && tar -cf - */profile_export_aiperf.json */profile_export_aiperf.csv */profile_export_console.txt" |
-  tar -C "$out" -xf -
-summaries=("$out"/*/profile_export_aiperf.json)
-if [ "${#summaries[@]}" -ne "$clients" ]; then
-  echo "expected $clients client exports, found ${#summaries[@]}" >&2
-  exit 1
-fi
-jq -es --arg job "$job" --argjson clients "$clients" '
-  {job:$job,clients:length,rps:(map(.request_throughput.avg)|add),
-   effective_concurrency:(map(.effective_concurrency.avg)|add),
-   requests:(map(.request_count.avg)|add),
-   errors:(map(.error_summary|map(.count)|add // 0)|add),
-   cancelled:(map(.was_cancelled)|any)}
-' "${summaries[@]}"
-jq -es --argjson clients "$clients" '
-  length == $clients and all(.[]; (.error_summary | length) == 0 and .was_cancelled == false)
-' "${summaries[@]}" >/dev/null || {
-  echo "Job $job completed but client exports are not error-free" >&2
-  exit 1
-}
+bash "$(dirname "$0")/collect-nix-mocker-ceiling.sh" "$job" "$clients"
