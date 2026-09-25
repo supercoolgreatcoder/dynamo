@@ -25,6 +25,15 @@ All three Kubernetes Jobs completed 12/12 clients, with six clients on each
 of two CPU nodes. The r2 and r3 errors are `MemoryMapSerializationError` /
 truncated JSON while AIPerf reads its cached conversation data. They are not
 HTTP failures, but the zero-error gate correctly excludes those attempts.
+Inspection of the pinned AIPerf image confirmed that
+`aiperf/dataset/memory_map_utils.py` implements
+`MemoryMapDatasetClient.get_conversation()` as `data_mmap.seek(offset)`
+followed by `data_mmap.read(size)` on the same object. This is not an atomic
+offset read; concurrent access can interleave the two operations. Its
+`get_payload_bytes()` path already uses cursor-free mmap slicing. This
+diagnosis explains the observed truncated JSON, but the failing attempts
+remain ineligible until a new, separately identified instrument series
+actually validates a fix.
 Their numerical agreement is diagnostic only; it must not be used to claim a
 three-run clean median or production SLO. Raw AIPerf JSON/CSV/console exports,
 the captured Job/Pod placement, and cache-hit evidence are retained separately
