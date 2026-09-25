@@ -1,0 +1,92 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Render with envsubst restricted to RUN_NAME, VCLUSTER_NAMESPACE,
+# BENCHMARK_START_UNIX, ARM_SERVICE, DATASET, AIPERF_NODE_A,
+# AIPERF_NODE_B, TOKENIZER_STORE_BASENAME, NIX_STORE_NFS_SERVER, and
+# NIX_STORE_NFS_PATH.
+# Keep the image, dataset, duration, load, and two-node spread identical
+# across gateway arms.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ${RUN_NAME}
+  namespace: ${VCLUSTER_NAMESPACE}
+  labels:
+    benchmark: frozen-raw-capacity
+spec:
+  backoffLimit: 0
+  completionMode: Indexed
+  completions: 6
+  parallelism: 6
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        benchmark: frozen-raw-capacity
+        benchmark-run: ${RUN_NAME}
+    spec:
+      automountServiceAccountToken: false
+      restartPolicy: Never
+      nodeSelector:
+        topology.unikorn-cloud.org/node-pool: cpu-pool
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values:
+                      - ${AIPERF_NODE_A}
+                      - ${AIPERF_NODE_B}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              benchmark-run: ${RUN_NAME}
+      containers:
+        - name: benchmark
+          image: nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            runAsUser: 0
+          command: ["/bin/bash", "-lc"]
+          args:
+            - |-
+              set -euo pipefail
+              while [ "$(date +%s)" -lt "${BENCHMARK_START_UNIX}" ]; do sleep 0.2; done
+              export HF_HOME=/tmp/hf HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
+              cache=/tmp/hf/hub/models--Qwen--Qwen2.5-0.5B-Instruct
+              mkdir -p "$cache/snapshots" "$cache/refs"
+              ln -s /model/tokenizer "$cache/snapshots/nix"
+              printf nix > "$cache/refs/main"
+              dataset=/shared/aiperf/static-qwen2.5-0.5b/${DATASET}
+              test -s "$dataset"
+              exec aiperf profile --url "http://${ARM_SERVICE}:8080/v1/chat/completions" \
+                --model Qwen/Qwen2.5-0.5B-Instruct \
+                --tokenizer Qwen/Qwen2.5-0.5B-Instruct \
+                --endpoint-type chat --streaming --use-server-token-count \
+                --use-legacy-max-tokens --custom-dataset-type raw_payload \
+                --input-file "$dataset" --random-seed 42 \
+                --concurrency 128 --benchmark-duration 45 \
+                --export-level summary --record-processors 16 \
+                --output-artifact-dir /shared/aiperf/results/${RUN_NAME}/$(JOB_COMPLETION_INDEX)
+          volumeMounts:
+            - name: nix-store
+              mountPath: /nix/store
+              readOnly: true
+              subPath: store
+            - name: nix-store
+              mountPath: /model/tokenizer
+              readOnly: true
+              subPath: store/${TOKENIZER_STORE_BASENAME}
+            - name: nix-store
+              mountPath: /shared
+      volumes:
+        - name: nix-store
+          nfs:
+            server: ${NIX_STORE_NFS_SERVER}
+            path: ${NIX_STORE_NFS_PATH}
