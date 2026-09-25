@@ -276,7 +276,7 @@ impl StaticAggregatePipeline {
             preserve_omitted_max_tokens: false,
             lora_name: String::new(),
             deadline_unix_ms,
-            packed_tokens_only: false,
+            packed_tokens_only: true,
         };
         let prepared = if let Some(batcher) = &self.preprocess_batcher {
             batcher
@@ -307,8 +307,8 @@ impl StaticAggregatePipeline {
                 item_id: request_id.clone(),
                 payload_json: prepared.selector_request_json.clone(),
                 deadline_unix_ms,
-                token_ids: prepared.token_ids.clone(),
-                token_ids_le: Vec::new(),
+                token_ids: Vec::new(),
+                token_ids_le: prepared.token_ids_le.clone(),
             })
             .await
             .map_err(PipelineError::SelectorTransport)?
@@ -335,8 +335,8 @@ impl StaticAggregatePipeline {
                 video_count: prepared.video_count,
                 audio_count: prepared.audio_count,
                 deadline_unix_ms,
-                token_ids: prepared.token_ids,
-                token_ids_le: Vec::new(),
+                token_ids: Vec::new(),
+                token_ids_le: prepared.token_ids_le,
             })
             .await
             .map(tonic::Response::into_inner)
