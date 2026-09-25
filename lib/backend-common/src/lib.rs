@@ -13,6 +13,7 @@
 //! See `CLAUDE.md` in this crate for the design contract.
 
 mod adapter;
+pub use adapter::EngineAdapter;
 pub mod args;
 pub mod disagg;
 pub mod engine;

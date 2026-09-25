@@ -5,6 +5,7 @@ use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 
 use anyhow::Context;
 use clap::{Parser, Subcommand};
+use dynamo_backend_common::{DisaggregationMode, EngineAdapter, LLMEngine};
 use dynamo_component_facades::{
     chat_worker::ChatWorkerFacade,
     postprocess::PostprocessorFacade,
@@ -23,14 +24,16 @@ use dynamo_kv_router::{
     services::selection::SelectionServiceBuilder,
 };
 use dynamo_llm::{
+    backend::Backend,
     model_card::ModelDeploymentCard,
     preprocessor::{BackendOutput, OpenAIPreprocessor, PreprocessedRequest},
-    protocols::common::llm_backend::FinishReason,
+    protocols::common::llm_backend::{FinishReason, LLMEngineOutput},
 };
 use dynamo_runtime::{
     pipeline::{
         AsyncEngine, AsyncEngineContextProvider, Context as EngineContext, Error, ManyOut,
-        ResponseStream, SingleIn, async_trait,
+        Operator, ResponseStream, ServiceBackend, ServiceEngine, ServiceFrontend, SingleIn, Source,
+        async_trait,
     },
     protocols::annotated::Annotated,
 };
@@ -68,6 +71,10 @@ enum Command {
     Selector(SelectorArgs),
     /// CPU-only deterministic worker for facade/orchestrator benchmarks.
     BenchmarkWorker(ModelArgs),
+    /// Aggregate vLLM worker facade using Dynamo's native sidecar engine.
+    VllmWorker(SidecarWorkerArgs),
+    /// Aggregate SGLang worker facade using Dynamo's native sidecar engine.
+    SglangWorker(SidecarWorkerArgs),
 }
 
 #[derive(clap::Args)]
@@ -102,6 +109,15 @@ struct PostprocessorArgs {
     output_queue_capacity: usize,
     #[arg(long, default_value_t = 1024 * 1024)]
     max_chunk_bytes: usize,
+}
+
+#[derive(clap::Args)]
+struct SidecarWorkerArgs {
+    #[command(flatten)]
+    model: ModelArgs,
+    /// Native Dynamo sidecar options, supplied after `--`.
+    #[arg(last = true, allow_hyphen_values = true)]
+    sidecar_args: Vec<String>,
 }
 
 #[derive(clap::Args)]
@@ -214,6 +230,96 @@ fn load_preprocessor(args: &ModelArgs) -> anyhow::Result<Arc<OpenAIPreprocessor>
     OpenAIPreprocessor::new(model_card)
 }
 
+fn real_worker_pipeline(
+    engine: Arc<dyn LLMEngine>,
+    model_card: &ModelDeploymentCard,
+) -> anyhow::Result<CanonicalBackendEngine> {
+    // This is Dynamo's normal worker adapter and Backend detokenizer. Only
+    // their transport boundary changes; no engine or token policy is copied.
+    let tokenizer = model_card.tokenizer()?;
+    let frontend =
+        ServiceFrontend::<SingleIn<PreprocessedRequest>, ManyOut<Annotated<BackendOutput>>>::new();
+    let backend = Backend::from_tokenizer(tokenizer).into_operator();
+    let inner: ServiceEngine<SingleIn<PreprocessedRequest>, ManyOut<Annotated<LLMEngineOutput>>> =
+        Arc::new(EngineAdapter::new(engine, DisaggregationMode::Aggregated));
+    let inner = ServiceBackend::from_engine(inner);
+    Ok(frontend
+        .link(backend.forward_edge())?
+        .link(inner)?
+        .link(backend.backward_edge())?
+        .link_terminal(frontend)?)
+}
+
+async fn serve_real_worker(
+    engine: Arc<dyn LLMEngine>,
+    config: SidecarWorkerArgs,
+    listen: SocketAddr,
+) -> anyhow::Result<()> {
+    let model_card = ModelDeploymentCard::load_from_disk(
+        &config.model.model_path,
+        config.model.chat_template.as_deref(),
+    )
+    .with_context(|| {
+        format!(
+            "load model assets from {}",
+            config.model.model_path.display()
+        )
+    })?;
+    let processor = OpenAIPreprocessor::new(model_card.clone())?;
+    let pipeline = real_worker_pipeline(engine.clone(), &model_card)?;
+    // Native sidecar engines discover their runtime metadata and connect to
+    // the engine here. The gRPC health service becomes Ready only afterward.
+    if let Err(error) = engine.start(0).await {
+        // The backend-common lifecycle contract also requires cleanup after
+        // a partial start; do not leave an engine connection behind.
+        if let Err(cleanup_error) = engine.cleanup().await {
+            tracing::warn!(%cleanup_error, "native sidecar cleanup after failed start failed");
+        }
+        return Err(error.into());
+    }
+    let result = async {
+        let service = ChatWorkerFacade::new(
+            pipeline,
+            processor,
+            config.model.max_batch_bytes,
+            config.model.max_batch_bytes,
+        )?;
+        let (reporter, health) = tonic_health::server::health_reporter();
+        reporter
+            .set_serving::<ChatWorkerBridgeServer<ChatWorkerFacade>>()
+            .await;
+        let reflection = tonic_reflection::server::Builder::configure()
+            .register_encoded_file_descriptor_set(FILE_DESCRIPTOR_SET)
+            .build_v1()
+            .context("build component reflection service")?;
+        server_builder()
+            .add_service(health)
+            .add_service(reflection)
+            .add_service(ChatWorkerBridgeServer::new(service))
+            .serve_with_shutdown(listen, shutdown_signal())
+            .await?;
+        Ok::<_, anyhow::Error>(())
+    }
+    .await;
+    let cleanup = engine.cleanup().await.map_err(anyhow::Error::from);
+    result.and(cleanup)
+}
+
+async fn shutdown_signal() {
+    #[cfg(unix)]
+    {
+        let mut terminate =
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                .expect("install SIGTERM handler");
+        tokio::select! {
+            _ = terminate.recv() => {},
+            _ = tokio::signal::ctrl_c() => {},
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = tokio::signal::ctrl_c().await;
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
@@ -294,6 +400,32 @@ async fn main() -> anyhow::Result<()> {
                 .add_service(ChatWorkerBridgeServer::new(service))
                 .serve(args.listen)
                 .await?;
+        }
+        Command::VllmWorker(config) => {
+            let mut argv = vec!["dynamo-vllm-sidecar".to_string()];
+            argv.extend(config.sidecar_args.iter().cloned());
+            let (engine, sidecar_config) = tokio::task::spawn_blocking(move || {
+                dynamo_vllm_sidecar::VllmSidecarEngine::try_from_args(argv)
+            })
+            .await??;
+            anyhow::ensure!(
+                sidecar_config.disaggregation_mode == DisaggregationMode::Aggregated,
+                "vLLM gRPC facade currently supports only aggregated workers"
+            );
+            serve_real_worker(Arc::new(engine), config, args.listen).await?;
+        }
+        Command::SglangWorker(config) => {
+            let mut argv = vec!["dynamo-sglang-sidecar".to_string()];
+            argv.extend(config.sidecar_args.iter().cloned());
+            let (engine, sidecar_config) = tokio::task::spawn_blocking(move || {
+                dynamo_sglang_sidecar::SglangSidecarEngine::try_from_args(argv)
+            })
+            .await??;
+            anyhow::ensure!(
+                sidecar_config.disaggregation_mode == DisaggregationMode::Aggregated,
+                "SGLang gRPC facade currently supports only aggregated workers"
+            );
+            serve_real_worker(Arc::new(engine), config, args.listen).await?;
         }
         Command::Selector(config) => {
             let router_config = match config.router_config {
