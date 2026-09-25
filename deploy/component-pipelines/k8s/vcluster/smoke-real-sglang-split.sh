@@ -104,12 +104,23 @@ if [[ -n "$(jq -r '.error // empty' <<<"$selection")" ]]; then
   exit 1
 fi
 worker_endpoint=$(jq -r '.payloadJson | @base64d | fromjson | .endpoint' <<<"$selection")
-worker_ip=$(
+worker_pod=$(
   "$kubectl_bin" --kubeconfig "$VCLUSTER_KUBECONFIG" -n "$VCLUSTER_NAMESPACE" \
-    get pods -l app=real-sglang-split -o jsonpath='{.items[0].status.podIP}'
+    get pods -l app=real-sglang-split -o json
 )
+worker_ip=$(jq -r '.items[0].status.podIP' <<<"$worker_pod")
 if [[ "$worker_endpoint" != "http://$worker_ip:50051" ]]; then
   echo "selector returned $worker_endpoint, expected real worker Pod $worker_ip:50051" >&2
+  exit 1
+fi
+worker_metadata=$(jq -r '.items[0].metadata.annotations["dynamo.nvidia.com/worker-metadata"]' <<<"$worker_pod")
+worker_uid=$(jq -r '.items[0].metadata.uid' <<<"$worker_pod")
+if ! jq -e --arg uid "$worker_uid" '
+  .model_name == "Qwen/Qwen3-0.6B" and
+  .stable_routing_id == $uid and
+  .block_size > 0 and .total_kv_blocks > 0
+' <<<"$worker_metadata" >/dev/null; then
+  echo "native worker did not publish its runtime KV capacity to its own Pod" >&2
   exit 1
 fi
 if ! jq -e '.promptTokens | tonumber > 0' <<<"$prepared" >/dev/null; then
@@ -169,7 +180,10 @@ jq -n --argjson prompt_tokens "$(jq -r '.promptTokens' <<<"$prepared")" \
   --arg selector_endpoint "$worker_endpoint" \
   --argjson gateway_chunks "$(jq -s 'length' <<<"$gateway_chunks")" \
   --arg gateway_finish_reason "$(jq -r 'select(.choices[0].finish_reason != null) | .choices[0].finish_reason' <<<"$gateway_chunks" | tail -1)" \
+  --argjson block_size "$(jq -r '.block_size' <<<"$worker_metadata")" \
+  --argjson total_kv_blocks "$(jq -r '.total_kv_blocks' <<<"$worker_metadata")" \
   '{result:"pass",engine:"SGLang native gRPC",tokenizer:"Dynamo fastokens",
     prompt_tokens:$prompt_tokens,stream_chunks:$chunks,finish_reason:$finish_reason,
     generated_text:$text,selector_endpoint:$selector_endpoint,
-    gateway_stream_chunks:$gateway_chunks,gateway_finish_reason:$gateway_finish_reason}'
+    gateway_stream_chunks:$gateway_chunks,gateway_finish_reason:$gateway_finish_reason,
+    runtime_block_size:$block_size,runtime_total_kv_blocks:$total_kv_blocks}'
