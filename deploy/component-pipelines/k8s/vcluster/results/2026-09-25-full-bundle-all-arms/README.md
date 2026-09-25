@@ -43,6 +43,9 @@ its earlier 9,255.85 RPS median. AGW generic's ISL4000 point closely matches
 its earlier 10,190.12 median; AGW static's packed-token ISL4000 point closely
 matches its earlier 8,982.09 median. All Mooncake cells track the trace's
 approximately 3,026 RPS offered rate and do not measure a gateway ceiling.
+The subsequent [direct/callout ISL4000 crossover](../2026-09-25-isl-callout-direct-crossover/README.md)
+measured a smaller approximately 7.4% callout lead against two bracketing
+direct runs; matching Envoy worker count did not close it in one probe.
 
 The same verified frozen inputs were used throughout: short SHA256
 `ab030551a31fb4ac8e7a864a940862a68bc0d386b152b4aba7bc249322833426`,
