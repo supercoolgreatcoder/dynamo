@@ -22,10 +22,14 @@ if [ -e "$out" ]; then
   exit 2
 fi
 captured_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+job_names=${JOB_NAMES:-}
 kubectl --kubeconfig "$VCLUSTER_KUBECONFIG" -n "$VCLUSTER_NAMESPACE" get jobs,pods -o json |
-  jq --arg captured_at "$captured_at" --arg server "$actual_server" --arg namespace "$VCLUSTER_NAMESPACE" '
+  jq --arg captured_at "$captured_at" --arg server "$actual_server" --arg namespace "$VCLUSTER_NAMESPACE" --arg job_names "$job_names" '
     .items as $items |
-    [$items[] | select(.kind == "Job" and (.metadata.name | startswith("nixv2-") or startswith("diag-mooncake-")))] as $jobs |
+    ($job_names | split(",") | map(select(length > 0))) as $selected |
+    [$items[] | select(.kind == "Job" and
+      (if ($selected | length) > 0 then (.metadata.name as $name | $selected | index($name) != null)
+       else (.metadata.name | startswith("nixv2-") or startswith("diag-mooncake-")) end))] as $jobs |
     [$items[] | select(.kind == "Pod")] as $pods |
     {
       captured_at: $captured_at,
@@ -60,5 +64,13 @@ jq -e '.jobs | length > 0 and all(.[]; .succeeded == 6 or .failed > 0)' "$out" >
   echo "execution ledger contains active or unresolved Jobs: $out" >&2
   exit 1
 }
+if [ -n "$job_names" ]; then
+  expected=$(printf '%s' "$job_names" | tr ',' '\n' | sed '/^$/d' | sort -u | wc -l)
+  actual=$(jq '.jobs | length' "$out")
+  if [ "$actual" -ne "$expected" ]; then
+    echo "requested $expected Jobs but captured $actual: $out" >&2
+    exit 1
+  fi
+fi
 echo "captured $(jq '.jobs | length' "$out") completed Jobs in $out"
 echo "Jobs lacking six retained Pod placements: $(jq '[.jobs[] | select(.placement_evidence_complete == false)] | length' "$out")" >&2
