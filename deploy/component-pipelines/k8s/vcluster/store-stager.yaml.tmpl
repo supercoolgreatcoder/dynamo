@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Temporary, vCluster-only writer for the Nix export already mounted read-only
+# by gateway and facade Pods. Delete the Pod after publishing and verification.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dynamo-component-store-stager
+  namespace: ${VCLUSTER_NAMESPACE}
+  labels:
+    app: dynamo-component-store-stager
+spec:
+  automountServiceAccountToken: false
+  restartPolicy: Never
+  containers:
+    - name: stager
+      image: busybox:1.36.1
+      command: ["sh", "-c", "sleep 86400"]
+      volumeMounts:
+        - name: nix
+          mountPath: /shared/nix
+  volumes:
+    - name: nix
+      nfs:
+        server: ${NIX_STORE_NFS_SERVER}
+        path: ${NIX_STORE_NFS_PATH}

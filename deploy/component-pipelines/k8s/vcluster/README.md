@@ -9,12 +9,98 @@ These assets keep the prototype deployment and all benchmark load inside a vClus
 Use the vCluster kubeconfig explicitly for every command; do not apply these resources
 to the host-cluster context.
 
-`package.nix` assembles the thin Dynamo facade, patched Agentgateway host, patched
-Envoy executable, and Envoy dynamic module into one relocatable Nix-store output.
-The source build commands and upstream pins are in
-`deploy/component-pipelines/README.md`. The selector itself uses the
+The preferred source-native build is `gateway-pipeline#component-pipeline-v2` in the
+`dynamo-nix-envs` repository, branch `feat/dynamo-component-pipeline-builds`
+(tested commit `e62908a`). It assembles the thin Dynamo facade, patched Agentgateway
+host, patched Envoy executable, and Envoy dynamic module into one Nix-store output.
+`package.nix` is the older prototype packaging reference. The source pins and
+build instructions are in the envs flake's `gateway-pipeline/README.md`; the
+component code and patch sources are pinned to this Dynamo branch at `e007954067`.
+The selector itself uses the
 vCluster Kubernetes API to watch `InferencePool` objects and annotated worker Pods.
 It does not connect to the Dynamo runtime.
+
+Build the bundle from a checkout of that envs branch, then publish only its runtime
+closure to the vCluster's existing NFS store export. Use the explicit vCluster
+kubeconfig for every Kubernetes write; the temporary stager is itself a vCluster Pod.
+
+```bash
+cd /work/envs/gateway-pipeline
+nix build .#component-pipeline-v2
+COMPONENT_BUNDLE=$(nix path-info .#component-pipeline-v2)
+cd /work/dynamo-epp
+export KUBECONFIG=/path/to/vcluster.kubeconfig
+export VCLUSTER_NAMESPACE=dynamo-components-v2
+export NIX_STORE_NFS_SERVER=192.0.2.1
+export NIX_STORE_NFS_PATH=/path/to/shared/nix
+envsubst '${VCLUSTER_NAMESPACE} ${NIX_STORE_NFS_SERVER} ${NIX_STORE_NFS_PATH}' \
+  < deploy/component-pipelines/k8s/vcluster/store-stager.yaml.tmpl |
+  kubectl --kubeconfig "$KUBECONFIG" apply -f -
+kubectl --kubeconfig "$KUBECONFIG" -n "$VCLUSTER_NAMESPACE" \
+  wait --for=condition=Ready pod/dynamo-component-store-stager --timeout=120s
+nix-store -qR "$COMPONENT_BUNDLE" | sed 's#^/nix/store/##' |
+  tar -C /nix/store -cf - -T - |
+  kubectl --kubeconfig "$KUBECONFIG" -n "$VCLUSTER_NAMESPACE" \
+    exec -i dynamo-component-store-stager -- tar -C /shared/nix/store -xf -
+```
+
+After replacing the mock-worker Pods, refresh the static Envoy-callout authority map
+before restarting that gateway:
+
+```bash
+bash deploy/component-pipelines/k8s/vcluster/refresh-envoy-callout-worker-map.sh \
+  "$KUBECONFIG" "$VCLUSTER_NAMESPACE"
+```
+
+The script refuses to update unless all 16
+parity-topology mock workers are Ready. This ConfigMap is benchmark-only; production
+worker churn needs CDS/xDS rather than hard-coded Pod IPs.
+
+For short and ISL4000 capacity, render
+`frozen-raw-capacity-job.yaml.tmpl` with a unique `RUN_NAME`, an
+`ARM_SERVICE` of `agw-static`, `agw-generic`, `envoy-independent`,
+`envoy-callouts`, or `dynamo-frontend-reference`, and a `DATASET` of
+`short-claude-sonnet-raw.jsonl` or `isl4000-claude-sonnet-raw.jsonl`.
+Set `BENCHMARK_START_UNIX` at least 60 seconds ahead and provide
+`AIPERF_NODE_A`, `AIPERF_NODE_B`, and
+`TOKENIZER_STORE_BASENAME` (the basename, without `/nix/store/`).
+Restrict `envsubst` to these render variables and the namespace/NFS variables, so
+the Job's runtime `$(JOB_COMPLETION_INDEX)` reference is preserved. Each Job runs
+six AIPerf 0.12.0 clients at concurrency 128 for 45 seconds, 3/3 across the two
+load-generator nodes. The measured clients replay frozen raw OpenAI bodies and do
+not synthesize or tokenize prompts on the hot path.
+
+`run-nix-mocker-trial.sh` renders either frozen-raw or cached-Mooncake template,
+waits for all six clients, and copies their JSON/CSV/console summaries into a
+local result directory. It refuses to reuse a Job name and requires the selected
+gateway to be exactly 1/1 Ready. Scale one gateway arm up at a time; for the
+Dynamo reference arm, also scale its four reference-worker Pods to 4/4 Ready.
+The script never scales Deployments or chooses a Kubernetes context implicitly:
+set `VCLUSTER_KUBECONFIG`, `VCLUSTER_EXPECTED_SERVER` (the API URL from the
+vCluster kubeconfig), `VCLUSTER_NAMESPACE`, `AIPERF_NODE_A/B`,
+`NIX_STORE_NFS_SERVER/PATH`, `TOKENIZER_STORE_BASENAME`, and `RESULT_DIR`
+explicitly. Set `ENVSUBST_BIN` if `envsubst` is not on `PATH`. Then run, for
+example:
+
+```bash
+bash deploy/component-pipelines/k8s/vcluster/run-nix-mocker-trial.sh \
+  envoy-callouts short r3
+```
+
+The runner still requires the vCluster-only `dynamo-component-store-stager` Pod
+for evidence collection. A successful Job alone is not accepted as a result:
+the script also parses all six exports and reports errors and cancellations.
+After one valid first pass per cell, `run-nix-mocker-matrix.sh` runs the two
+remaining interleaved passes for all four gateway arms and three workloads,
+plus the stock Dynamo reference on short and ISL4000. It verifies
+the expected vCluster API URL, refuses to overlap an active `nixv2-*` Job,
+scales only the six benchmark gateway/reference Deployments inside that
+vCluster, and skips only already-collected, six-client, error-free cells. AGW
+static Mooncake receives an extra `r4` because its original `r1` failed before
+traffic. Stock Dynamo Mooncake `r2` and `r3` completed with request errors;
+their exports are retained and excluded while a separate diagnostic investigates
+the intermittent empty-content responses. The script scales the
+gateway/reference Deployments back to zero at completion.
 
 The reproducible zero-delay benchmark is rendered from
 `benchmark-pod.yaml.tmpl`. It runs three interleaved trials for all four gateway arms
@@ -140,6 +226,6 @@ The retained evidence is organized as follows:
   one Envoy-callout gateway while scaling the other components.
 
 The repository intentionally retains normalized and raw benchmark evidence, but not
-machine-local `result` symlinks or Nix store closures. Rebuild those closures with
-`package.nix`; a `/nix/store/...` symlink from the machine that performed the run is
+machine-local `result` symlinks or Nix store closures. Rebuild the refactored bundle
+with the envs flake above; a `/nix/store/...` symlink from the machine that performed the run is
 not portable evidence.

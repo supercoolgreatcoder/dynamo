@@ -5,6 +5,8 @@
 # methodology. Run mooncake-prepare-job.yaml.tmpl once first. Every replica
 # hard-links the resulting content-addressed mmap cache, avoiding repeated
 # tokenizer-driven synthesis of the ~700 MiB conversation set.
+# In AIPerf 0.12, --profile-export-level aliases --export-level; passing both
+# makes profile argument parsing fail before any requests are sent.
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -85,7 +87,7 @@ spec:
                 --isl-block-size 512 \
                 --random-seed 42 \
                 --concurrency 128 --benchmark-duration 45 \
-                --export-level summary --profile-export-level records \
+                --export-level summary \
                 --record-processors 16 \
                 --output-artifact-dir "$artifacts"
           volumeMounts:

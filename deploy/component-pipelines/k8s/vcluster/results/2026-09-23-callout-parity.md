@@ -29,7 +29,13 @@ tokenizing or formatting them on the hot path.
 | `short-claude-sonnet-raw.jsonl` | 4,096 | `ab030551a31fb4ac8e7a864a940862a68bc0d386b152b4aba7bc249322833426` | ISL mean 128, stddev 16; OSL 50 |
 | `isl4000-claude-sonnet-raw.jsonl` | 4,096 | `3ad382586f5417f4255d7eea774700d9817bc39acbc7b537e2efa7d89145c743` | ISL mean 4,000, stddev 100; OSL 50 |
 
-Raw AIPerf artifacts remain on persistent vCluster storage:
+The six per-client AIPerf JSON, CSV, and console exports for each run are
+committed in `results/2026-09-23-callout-parity/raw_aiperf/`, grouped by the
+Job names below. Summing `request_throughput.avg` across the six JSON exports
+reproduces 11,272.38 short, 9,081.89 ISL4000, and 3,021.73 Mooncake RPS. All
+18 exports have an empty `error_summary` and `was_cancelled: false`. These are
+client summary exports, not per-request traces. The larger AIPerf diagnostic
+logs remain on persistent vCluster storage:
 
 - `/shared/aiperf/results/raw-short-envoy-callout-r43/{0..5}`
 - `/shared/aiperf/results/raw-isl4000-envoy-callout-r44/{0..5}`
