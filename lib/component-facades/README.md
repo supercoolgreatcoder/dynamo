@@ -39,11 +39,17 @@ contract rather than carrying a separately maintained protobuf model.
 For gateway graphs, `ChatWorkerFacade` composes the supplied backend engine with the
 same canonical postprocessor behind one server-streaming RPC. This is the preferred
 sidecar boundary: backend chunks never become gateway policy, and dropping the client
-stream drops the underlying Dynamo stream.
+stream drops the underlying Dynamo stream. Its `GenerateRaw` RPC preserves the
+canonical annotated backend stream, including an opaque prefill KV handoff,
+without OpenAI postprocessing. `WorkerBridge.Process` remains available for
+bidirectional cancellation. Both raw methods accept packed prompt token IDs.
+`ChatWorkerBridge.Generate` also accepts the opaque prefill handoff in a
+separate protobuf field and inserts it into Dynamo's `PreprocessedRequest`
+before invoking the decode engine.
 
 ## Native worker-side gRPC facade
 
-For an aggregated vLLM or SGLang engine exposing its native gRPC service, the
+For a vLLM or SGLang engine exposing its native gRPC service, the
 executable can build the worker bridge directly from Dynamo's own sidecar
 engine, `dynamo_backend_common::EngineAdapter`, and
 `dynamo_llm::backend::Backend`. For example, colocate the process with a
@@ -61,12 +67,24 @@ serving only after engine discovery and startup succeed. No Dynamo distributed
 runtime is started by this facade; Kubernetes owns worker lifecycle and the
 selector discovers the serving Pod through its InferencePool.
 
-This mode currently accepts **aggregated** workers only. It does not install
-Dynamo runtime endpoint registration, KV-event publishers, dynamic LoRA
-discovery, or the prefill/decode lifecycle; those capabilities still require
-the stock Dynamo worker until their runtime-less equivalents are validated.
-Do not infer real-engine or disaggregated correctness from the synthetic
-`benchmark-worker` measurements.
+`--disaggregation-mode prefill` and `--disaggregation-mode decode` are passed
+through to the same Dynamo sidecar and `EngineAdapter`; the facade no longer
+forces aggregated mode. The CPU-only
+[`smoke-vllm-pd-mocker.sh`](tests/smoke-vllm-pd-mocker.sh) test runs two of
+Dynamo's native vLLM gRPC mockers, proves prefill returns an opaque handoff,
+proves decode rejects a missing handoff, then forwards that handoff and checks
+the decode OpenAI stream. Build `dynamo-component-facade` and
+`dynamo-vllm-mocker-server`, set `GRPCURL_BIN` if needed, and run the script.
+The 2026-09-25 run passed with eight decode chunks. A generic-core regression
+test separately checks that the configured gateway graph keeps the prefill
+handoff out of the public stream and passes it to decode. Neither test moves
+real KV data, proves NIXL readiness, or exercises the deployed gateway P/D
+path. Those GPU-backed and deployed-graph checks remain pending.
+
+The facade still does not install Dynamo runtime endpoint registration,
+KV-event publishers, or dynamic LoRA discovery. Runtime-less equivalents for
+those capabilities require separate validation. Do not infer real-engine or
+disaggregated performance from the synthetic `benchmark-worker` measurements.
 
 ## Upgrade procedure
 

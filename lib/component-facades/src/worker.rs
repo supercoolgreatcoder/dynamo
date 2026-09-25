@@ -16,6 +16,7 @@ use tonic::{Request, Response, Status, Streaming};
 use crate::{
     deadline_expired, item_error,
     proto::{WorkerInput, WorkerOutput, worker_bridge_server::WorkerBridge, worker_input},
+    token_ids_from_wire,
 };
 
 pub type CanonicalBackendEngine =
@@ -107,7 +108,13 @@ impl WorkerBridge for WorkerFacade {
                             .await;
                             continue;
                         }
-                        if open.backend_request_json.len() > max_request_bytes {
+                        if open
+                            .backend_request_json
+                            .len()
+                            .saturating_add(open.token_ids.len().saturating_mul(size_of::<u32>()))
+                            .saturating_add(open.token_ids_le.len())
+                            > max_request_bytes
+                        {
                             send_error(
                                 &output_tx,
                                 &open.request_id,
@@ -117,8 +124,49 @@ impl WorkerBridge for WorkerFacade {
                             .await;
                             continue;
                         }
-                        let backend_request: PreprocessedRequest =
+                        let token_ids =
+                            match token_ids_from_wire(open.token_ids, &open.token_ids_le) {
+                                Ok(token_ids) => token_ids,
+                                Err(error) => {
+                                    send_error(
+                                        &output_tx,
+                                        &open.request_id,
+                                        "invalid_argument",
+                                        &error,
+                                    )
+                                    .await;
+                                    continue;
+                                }
+                            };
+                        let mut backend_value: serde_json::Value =
                             match serde_json::from_slice(&open.backend_request_json) {
+                                Ok(value) => value,
+                                Err(error) => {
+                                    send_error(
+                                        &output_tx,
+                                        &open.request_id,
+                                        "invalid_argument",
+                                        &error.to_string(),
+                                    )
+                                    .await;
+                                    continue;
+                                }
+                            };
+                        if !token_ids.is_empty() {
+                            let Some(object) = backend_value.as_object_mut() else {
+                                send_error(
+                                    &output_tx,
+                                    &open.request_id,
+                                    "invalid_argument",
+                                    "backend request must be a JSON object",
+                                )
+                                .await;
+                                continue;
+                            };
+                            object.insert("token_ids".into(), serde_json::json!(token_ids));
+                        }
+                        let backend_request: PreprocessedRequest =
+                            match serde_json::from_value(backend_value) {
                                 Ok(value) => value,
                                 Err(error) => {
                                     send_error(

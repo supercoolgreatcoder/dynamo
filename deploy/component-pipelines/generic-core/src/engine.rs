@@ -249,6 +249,7 @@ impl Prepared {
             .clone()
             .unwrap_or_else(|| crate::config::StreamPolicy {
                 emit: Default::default(),
+                emit_to_client: true,
                 emit_when: None,
                 count_into: None,
                 collect: Default::default(),
@@ -330,6 +331,9 @@ impl Prepared {
                         .entry(name.clone())
                         .or_default()
                         .push(scope.eval(expr)?);
+                }
+                if !policy.emit_to_client {
+                    continue;
                 }
                 let out = if policy.emit.is_empty() {
                     // No projection: the item IS the output. Taking it leaves `scope.item` null,

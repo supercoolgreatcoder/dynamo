@@ -672,6 +672,7 @@ mod tests {
             ("dynamo.components.v1.Selector", "SelectBatch"),
             ("dynamo.components.v1.WorkerBridge", "Process"),
             ("dynamo.components.v1.ChatWorkerBridge", "Generate"),
+            ("dynamo.components.v1.ChatWorkerBridge", "GenerateRaw"),
             ("dynamo.components.v1.Postprocessor", "Process"),
         ] {
             transport.validate_binding(service, method).unwrap();

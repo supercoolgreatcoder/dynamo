@@ -1,0 +1,84 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# First P/D graph: prefill uses a Kubernetes Service; decode is selected from
+# the InferencePool-backed Dynamo selector. The prefill handoff stays internal.
+api:
+  openapi: ../specs/openai-chat.yaml
+  operationId: createChatCompletion
+components:
+  preprocessor:
+    openapi: ../specs/preprocessor.yaml
+    baseUrl: http://dynamo-preprocessor:50051
+  selector:
+    openapi: ../specs/selector.yaml
+    baseUrl: http://dynamo-selector:50051
+  prefill:
+    openapi: ../specs/chat-worker.yaml
+    baseUrl: http://dynamo-prefill:50051
+  decode:
+    openapi: ../specs/chat-worker.yaml
+    discovery: {group: decode}
+steps:
+  - id: prepare
+    call:
+      component: preprocessor
+      operationId: prepare
+      timeoutMs: 10000
+      input:
+        item_id: "$.request.id"
+        openai_request_json: "$.request.body"
+        preserve_omitted_max_tokens: false
+        lora_name: ""
+        deadline_unix_ms: 0
+        packed_tokens_only: true
+      output:
+        normalized_request: "$.response.normalized_openai_request_json"
+        backend_request: "$.response.backend_request_json"
+        selector_request: "$.response.selector_request_json"
+        token_ids_le: "$.response.token_ids_le"
+      batch: {maxSize: 32, lingerUs: 100}
+  - id: prefill
+    call:
+      component: prefill
+      operationId: generateRaw
+      timeoutMs: 120000
+      input:
+        request_id: "$.request.id"
+        backend_request_json: "$.vars.backend_request"
+        token_ids_le: "$.vars.token_ids_le"
+        deadline_unix_ms: 0
+      stream:
+        emitToClient: false
+        emitWhen: {path: "$.item.data.disaggregated_params", exists: true}
+        collect:
+          handoffs: "$.item.data.disaggregated_params"
+      output:
+        handoff: "$.response.handoffs[-1]"
+  - id: select_decode
+    call:
+      component: selector
+      operationId: select
+      timeoutMs: 2000
+      input:
+        item_id: "$.request.id"
+        payload_json: "$.vars.selector_request"
+        token_ids_le: "$.vars.token_ids_le"
+        deadline_unix_ms: 0
+      output:
+        worker_endpoint: "$.response.payload_json.endpoint"
+  - id: decode
+    call:
+      component: decode
+      operationId: generate
+      target: "$.vars.worker_endpoint"
+      timeoutMs: 120000
+      input:
+        request_id: "$.request.id"
+        backend_request_json: "$.vars.backend_request"
+        normalized_openai_request_json: "$.vars.normalized_request"
+        token_ids_le: "$.vars.token_ids_le"
+        prefill_result_json: "$.vars.handoff"
+        deadline_unix_ms: 0
+      stream: {}
+      respond: true
