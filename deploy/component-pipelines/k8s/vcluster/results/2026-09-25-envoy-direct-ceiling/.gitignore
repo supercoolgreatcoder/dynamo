@@ -1,0 +1,3 @@
+# AIPerf's human-readable table has generated trailing spaces; JSON and CSV
+# summaries retain the underlying metrics without formatting artifacts.
+raw_aiperf/**/profile_export_console.txt
