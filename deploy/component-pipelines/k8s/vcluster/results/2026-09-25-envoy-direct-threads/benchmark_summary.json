@@ -1,0 +1,268 @@
+{
+  "series_id": "nix-component-pipeline-mocker-parity-2026-09-24",
+  "metric": "aggregate successful request throughput",
+  "unit": "requests/second",
+  "runs": [
+    {
+      "job": "nixv2-isl4000-envoy-generic-r10",
+      "clients": 6,
+      "aiperf_version": "0.12.0",
+      "endpoint": "http://envoy-independent:8080/v1/chat/completions",
+      "dataset": {
+        "name": "main",
+        "type": "file",
+        "path": "/shared/aiperf/static-qwen2.5-0.5b/isl4000-claude-sonnet-raw.jsonl",
+        "format": "raw_payload",
+        "random_seed": 42
+      },
+      "phase": {
+        "name": "profiling",
+        "kind": "profiling",
+        "type": "concurrency",
+        "duration": 45.0,
+        "concurrency": 128,
+        "grace_period": 30.0
+      },
+      "aggregate_rps": 9680.974715360951,
+      "successful_requests": 436308,
+      "failed_requests": 0,
+      "cancelled": false,
+      "effective_concurrency": 567.8176490093908,
+      "mean_request_latency_ms": 58.62044473880377,
+      "error_summary": [],
+      "workload": "isl4000",
+      "arm": "envoy-generic",
+      "trial": "r10"
+    },
+    {
+      "job": "nixv2-isl4000-envoy-generic-r8",
+      "clients": 6,
+      "aiperf_version": "0.12.0",
+      "endpoint": "http://envoy-independent:8080/v1/chat/completions",
+      "dataset": {
+        "name": "main",
+        "type": "file",
+        "path": "/shared/aiperf/static-qwen2.5-0.5b/isl4000-claude-sonnet-raw.jsonl",
+        "format": "raw_payload",
+        "random_seed": 42
+      },
+      "phase": {
+        "name": "profiling",
+        "kind": "profiling",
+        "type": "concurrency",
+        "duration": 45.0,
+        "concurrency": 128,
+        "grace_period": 30.0
+      },
+      "aggregate_rps": 9708.792418433492,
+      "successful_requests": 437555,
+      "failed_requests": 0,
+      "cancelled": false,
+      "effective_concurrency": 570.6954015772477,
+      "mean_request_latency_ms": 58.74899585120499,
+      "error_summary": [],
+      "workload": "isl4000",
+      "arm": "envoy-generic",
+      "trial": "r8"
+    },
+    {
+      "job": "nixv2-isl4000-envoy-generic-r9",
+      "clients": 6,
+      "aiperf_version": "0.12.0",
+      "endpoint": "http://envoy-independent:8080/v1/chat/completions",
+      "dataset": {
+        "name": "main",
+        "type": "file",
+        "path": "/shared/aiperf/static-qwen2.5-0.5b/isl4000-claude-sonnet-raw.jsonl",
+        "format": "raw_payload",
+        "random_seed": 42
+      },
+      "phase": {
+        "name": "profiling",
+        "kind": "profiling",
+        "type": "concurrency",
+        "duration": 45.0,
+        "concurrency": 128,
+        "grace_period": 30.0
+      },
+      "aggregate_rps": 9644.893136358765,
+      "successful_requests": 434671,
+      "failed_requests": 0,
+      "cancelled": false,
+      "effective_concurrency": 584.1276590958324,
+      "mean_request_latency_ms": 60.53152193490019,
+      "error_summary": [],
+      "workload": "isl4000",
+      "arm": "envoy-generic",
+      "trial": "r9"
+    },
+    {
+      "job": "nixv2-mooncake-envoy-generic-r4",
+      "clients": 6,
+      "aiperf_version": "0.12.0",
+      "endpoint": "http://envoy-independent:8080/v1/chat/completions",
+      "dataset": {
+        "name": "main",
+        "type": "file",
+        "path": "/shared/aiperf/mooncake-qwen2.5-0.5b/mooncake-512-context.jsonl",
+        "format": "mooncake_trace",
+        "random_seed": 42,
+        "block_size": 512
+      },
+      "phase": {
+        "name": "profiling",
+        "kind": "profiling",
+        "type": "fixed_schedule",
+        "requests": 22699,
+        "duration": 45.0,
+        "concurrency": 128,
+        "grace_period": 30.0
+      },
+      "aggregate_rps": 3023.1082552607495,
+      "successful_requests": 136075,
+      "failed_requests": 0,
+      "cancelled": false,
+      "effective_concurrency": 60.820961391210375,
+      "mean_request_latency_ms": 20.08621471445894,
+      "error_summary": [],
+      "workload": "mooncake",
+      "arm": "envoy-generic",
+      "trial": "r4"
+    },
+    {
+      "job": "nixv2-short-envoy-generic-r4",
+      "clients": 6,
+      "aiperf_version": "0.12.0",
+      "endpoint": "http://envoy-independent:8080/v1/chat/completions",
+      "dataset": {
+        "name": "main",
+        "type": "file",
+        "path": "/shared/aiperf/static-qwen2.5-0.5b/short-claude-sonnet-raw.jsonl",
+        "format": "raw_payload",
+        "random_seed": 42
+      },
+      "phase": {
+        "name": "profiling",
+        "kind": "profiling",
+        "type": "concurrency",
+        "duration": 45.0,
+        "concurrency": 128,
+        "grace_period": 30.0
+      },
+      "aggregate_rps": 11848.855641629347,
+      "successful_requests": 534256,
+      "failed_requests": 0,
+      "cancelled": false,
+      "effective_concurrency": 285.51862331503924,
+      "mean_request_latency_ms": 24.078814156050658,
+      "error_summary": [],
+      "workload": "short",
+      "arm": "envoy-generic",
+      "trial": "r4"
+    },
+    {
+      "job": "nixv2-short-envoy-generic-r5",
+      "clients": 6,
+      "aiperf_version": "0.12.0",
+      "endpoint": "http://envoy-independent:8080/v1/chat/completions",
+      "dataset": {
+        "name": "main",
+        "type": "file",
+        "path": "/shared/aiperf/static-qwen2.5-0.5b/short-claude-sonnet-raw.jsonl",
+        "format": "raw_payload",
+        "random_seed": 42
+      },
+      "phase": {
+        "name": "profiling",
+        "kind": "profiling",
+        "type": "concurrency",
+        "duration": 45.0,
+        "concurrency": 128,
+        "grace_period": 30.0
+      },
+      "aggregate_rps": 12110.201012161098,
+      "successful_requests": 545909,
+      "failed_requests": 0,
+      "cancelled": false,
+      "effective_concurrency": 289.43786481440316,
+      "mean_request_latency_ms": 23.881510561795096,
+      "error_summary": [],
+      "workload": "short",
+      "arm": "envoy-generic",
+      "trial": "r5"
+    },
+    {
+      "job": "nixv2-short-envoy-generic-r6",
+      "clients": 6,
+      "aiperf_version": "0.12.0",
+      "endpoint": "http://envoy-independent:8080/v1/chat/completions",
+      "dataset": {
+        "name": "main",
+        "type": "file",
+        "path": "/shared/aiperf/static-qwen2.5-0.5b/short-claude-sonnet-raw.jsonl",
+        "format": "raw_payload",
+        "random_seed": 42
+      },
+      "phase": {
+        "name": "profiling",
+        "kind": "profiling",
+        "type": "concurrency",
+        "duration": 45.0,
+        "concurrency": 128,
+        "grace_period": 30.0
+      },
+      "aggregate_rps": 11970.059804946297,
+      "successful_requests": 539804,
+      "failed_requests": 0,
+      "cancelled": false,
+      "effective_concurrency": 293.978338574213,
+      "mean_request_latency_ms": 24.541982578854544,
+      "error_summary": [],
+      "workload": "short",
+      "arm": "envoy-generic",
+      "trial": "r6"
+    }
+  ],
+  "cells": [
+    {
+      "workload": "isl4000",
+      "arm": "envoy-generic",
+      "valid_jobs": [
+        "nixv2-isl4000-envoy-generic-r10",
+        "nixv2-isl4000-envoy-generic-r8",
+        "nixv2-isl4000-envoy-generic-r9"
+      ],
+      "invalid_jobs": [],
+      "valid_runs": 3,
+      "median_rps": 9680.974715360951,
+      "min_rps": 9644.893136358765,
+      "max_rps": 9708.792418433492
+    },
+    {
+      "workload": "mooncake",
+      "arm": "envoy-generic",
+      "valid_jobs": [
+        "nixv2-mooncake-envoy-generic-r4"
+      ],
+      "invalid_jobs": [],
+      "valid_runs": 1,
+      "median_rps": 3023.1082552607495,
+      "min_rps": 3023.1082552607495,
+      "max_rps": 3023.1082552607495
+    },
+    {
+      "workload": "short",
+      "arm": "envoy-generic",
+      "valid_jobs": [
+        "nixv2-short-envoy-generic-r4",
+        "nixv2-short-envoy-generic-r5",
+        "nixv2-short-envoy-generic-r6"
+      ],
+      "invalid_jobs": [],
+      "valid_runs": 3,
+      "median_rps": 11970.059804946297,
+      "min_rps": 11848.855641629347,
+      "max_rps": 12110.201012161098
+    }
+  ]
+}

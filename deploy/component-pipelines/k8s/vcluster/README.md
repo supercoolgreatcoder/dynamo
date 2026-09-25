@@ -11,11 +11,11 @@ to the host-cluster context.
 
 The preferred source-native build is `gateway-pipeline#component-pipeline-v2` in the
 `dynamo-nix-envs` repository, branch `feat/dynamo-component-pipeline-builds`
-(tested commit `e62908a`). It assembles the thin Dynamo facade, patched Agentgateway
+(tested commit `672d85e`). It assembles the thin Dynamo facade, patched Agentgateway
 host, patched Envoy executable, and Envoy dynamic module into one Nix-store output.
 `package.nix` is the older prototype packaging reference. The source pins and
 build instructions are in the envs flake's `gateway-pipeline/README.md`; the
-component code and patch sources are pinned to this Dynamo branch at `e007954067`.
+component code and patch sources are pinned to this Dynamo branch at `f8a7d0f0`.
 The selector itself uses the
 vCluster Kubernetes API to watch `InferencePool` objects and annotated worker Pods.
 It does not connect to the Dynamo runtime.
@@ -192,11 +192,22 @@ those endpoints through CDS/xDS so Pod churn updates Envoy and selector discover
 atomically; hard-coded Pod IPs are intentionally not checked into this repository.
 
 Kubernetes Services load-balance TCP connections, while gRPC multiplexes many streams
-over each HTTP/2 connection. Set `DYN_GRPC_CHANNELS_PER_ENDPOINT` on the AGW static,
-AGW generic, and independent Envoy hosts when a facade Service has multiple replicas.
-The default is one channel and the implementation clamps the value to 1–256; record the
-chosen channel and replica counts with each benchmark. This knob is unnecessary
-for Envoy callouts because Envoy owns and balances those upstream HTTP/2 connections.
+over each HTTP/2 connection. Set `DYN_GRPC_CHANNELS_PER_ENDPOINT` on the AGW static
+and AGW generic hosts when a facade Service has multiple replicas. For independent
+Envoy, set `grpc_conns` in the dynamic-module `filter_config` instead: the host
+calls `GrpcTransport::with_connections` and ignores that environment variable.
+The channel pool is clamped to 1–256. Record the actual module startup log and
+replica counts with each benchmark. This knob is unnecessary for Envoy callouts
+because Envoy owns and balances those upstream HTTP/2 connections.
+
+Also record `GENERIC_PIPELINE_THREADS` and Envoy's `--concurrency` separately.
+The original Nix-built mocker comparison gave Envoy direct four Tokio threads
+and six Envoy workers but Envoy callouts eight of each. Matching the direct
+Tokio budget to eight raised its ISL4000 median from 5,820 to 9,681 RPS;
+raising its Envoy workers from six to eight did not materially improve a
+follow-up diagnostic. The [thread-budget result](results/2026-09-25-envoy-direct-threads/README.md)
+includes the frozen short, ISL4000, and Mooncake checks. Do not infer a
+transport penalty from a comparison with unequal module runtime threads.
 
 GPU-backed vLLM or SGLang correctness testing also remains inside the vCluster. If its
 virtual nodes do not advertise GPU resources, that test is unavailable there and must
@@ -224,6 +235,13 @@ The retained evidence is organized as follows:
 - `results/2026-09-23-mooncake-single-gateway-ceiling/` contains the plans,
   normalized analyses, and 78 raw AIPerf exports used to isolate the ceiling of
   one Envoy-callout gateway while scaling the other components.
+- `results/2026-09-24-nix-build-mocker-parity/` retains the source-pinned
+  four-gateway/three-workload matrix and stock-frontend reference.
+- `results/2026-09-25-agw-static-packed-ab/` records the packed-token static
+  gateway improvement, with no short or Mooncake regression.
+- `results/2026-09-25-envoy-direct-threads/` records Envoy-direct parity after
+  matching the module runtime thread budget; adjacent profile and channel
+  probe directories retain the diagnostic evidence and failed hypotheses.
 
 The repository intentionally retains normalized and raw benchmark evidence, but not
 machine-local `result` symlinks or Nix store closures. Rebuild the refactored bundle
