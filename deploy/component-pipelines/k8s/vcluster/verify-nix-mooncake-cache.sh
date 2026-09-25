@@ -6,11 +6,18 @@
 # requires rerunning or overwriting a completed AIPerf measurement.
 set -euo pipefail
 
-if [ "$#" -ne 1 ] || ! [[ "$1" =~ ^ceilv2-mooncake-envoy-callouts-c12-r[1-9][0-9]*$ ]]; then
-  echo "usage: $0 ceilv2-mooncake-envoy-callouts-c12-rN" >&2
+if [ "$#" -ne 1 ] || ! [[ "$1" =~ ^(ceilv2-mooncake-envoy-callouts-c12|ceilfix-mooncake-envoy-callouts-c(12|18|24))-r[1-9][0-9]*$ ]]; then
+  echo "usage: $0 ceilv2-mooncake-envoy-callouts-c12-rN | ceilfix-mooncake-envoy-callouts-c{12|18|24}-rN" >&2
   exit 2
 fi
 job=$1
+if [[ "$job" =~ ^ceilfix-mooncake-envoy-callouts-c(12|18|24)- ]]; then
+  expected_clients=${BASH_REMATCH[1]}
+  fixed_reader=true
+else
+  expected_clients=12
+  fixed_reader=false
+fi
 : "${VCLUSTER_KUBECONFIG:?}"
 : "${VCLUSTER_EXPECTED_SERVER:?}"
 : "${VCLUSTER_NAMESPACE:?}"
@@ -22,7 +29,7 @@ test "$actual_server" = "$VCLUSTER_EXPECTED_SERVER" || {
 }
 execution="$RESULT_DIR/execution-$job.json"
 test -s "$execution"
-jq -e '.job.succeeded == 12 and (.pods | length) == 12' "$execution" >/dev/null
+jq -e --argjson expected "$expected_clients" '.job.succeeded == $expected and (.pods | length) == $expected' "$execution" >/dev/null
 vc=(kubectl --kubeconfig "$VCLUSTER_KUBECONFIG" -n "$VCLUSTER_NAMESPACE")
 out="$RESULT_DIR/cache-$job.tsv"
 tmp=$(mktemp "$RESULT_DIR/cache-$job.XXXXXX")
@@ -38,12 +45,20 @@ while IFS= read -r pod; do
     echo "cache log did not prove tokenizer/composer skip for $pod" >&2
     exit 1
   }
+  if [ "$fixed_reader" = true ]; then
+    "${vc[@]}" get pod "$pod" -o json |
+      jq -e 'any(.spec.containers[0].env[]?; .name == "PYTHONPATH" and .value == "/opt/aiperf-mmap-patch") and
+        any(.spec.volumes[]?; .name == "aiperf-mmap-patch" and .configMap.name == "aiperf-mmap-slice-f03b6507")' >/dev/null || {
+        echo "fixed reader not mounted into $pod" >&2
+        exit 1
+      }
+  fi
   printf '%s\t%s\n' "$pod" "$hit" >> "$tmp"
 done < <(jq -r '.pods[].name' "$execution")
-test "$(wc -l < "$tmp")" -eq 12
+test "$(wc -l < "$tmp")" -eq "$expected_clients"
 if [ -s "$out" ]; then
   echo "refusing to overwrite existing nonempty cache evidence: $out" >&2
   exit 2
 fi
 mv "$tmp" "$out"
-echo "proved 12 AIPerf mmap cache HITs without tokenizer/composer work: $out"
+echo "proved $expected_clients AIPerf mmap cache HITs without tokenizer/composer work: $out"
