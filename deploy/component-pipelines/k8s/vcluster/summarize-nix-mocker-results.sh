@@ -8,13 +8,21 @@ shopt -s nullglob
 
 : "${RESULT_DIR:?set the local result directory}"
 series_id=${SERIES_ID:-nix-component-pipeline-mocker-parity-2026-09-24}
+execution_file=${EXECUTION_FILE:-benchmark_execution.json}
+summary_file=${SUMMARY_FILE:-benchmark_summary.json}
 [[ $series_id =~ ^[a-z0-9][-a-z0-9]*$ ]] || {
   echo "SERIES_ID must be a DNS-safe series name" >&2
   exit 2
 }
-test -f "$RESULT_DIR/benchmark_execution.json"
-test ! -e "$RESULT_DIR/benchmark_summary.json" || {
-  echo "refusing to overwrite benchmark_summary.json" >&2
+for basename in "$execution_file" "$summary_file"; do
+  [[ $basename =~ ^[a-z0-9][a-z0-9_.-]*\.json$ ]] || {
+    echo "execution and summary files must be JSON basenames" >&2
+    exit 2
+  }
+done
+test -f "$RESULT_DIR/$execution_file"
+test ! -e "$RESULT_DIR/$summary_file" || {
+  echo "refusing to overwrite $summary_file" >&2
   exit 2
 }
 
@@ -83,6 +91,6 @@ jq -s --arg series_id "$series_id" '
       )
     )
   }
-' "$run_records" > "$RESULT_DIR/benchmark_summary.json"
+' "$run_records" > "$RESULT_DIR/$summary_file"
 
-echo "normalized $(jq '.runs | length' "$RESULT_DIR/benchmark_summary.json") Jobs into benchmark_summary.json"
+echo "normalized $(jq '.runs | length' "$RESULT_DIR/$summary_file") Jobs into $summary_file"

@@ -1,0 +1,1414 @@
+{
+  "apiVersion": "v1",
+  "kind": "List",
+  "items": [
+    {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "metadata": {
+        "name": "agw-static",
+        "namespace": "dynamo-components-v2"
+      },
+      "spec": {
+        "progressDeadlineSeconds": 600,
+        "replicas": 0,
+        "revisionHistoryLimit": 10,
+        "selector": {
+          "matchLabels": {
+            "app": "agw-static"
+          }
+        },
+        "strategy": {
+          "rollingUpdate": {
+            "maxSurge": "25%",
+            "maxUnavailable": "25%"
+          },
+          "type": "RollingUpdate"
+        },
+        "template": {
+          "metadata": {
+            "annotations": {
+              "kubectl.kubernetes.io/restartedAt": "2026-09-23T02:10:22Z"
+            },
+            "labels": {
+              "app": "agw-static"
+            }
+          },
+          "spec": {
+            "automountServiceAccountToken": false,
+            "containers": [
+              {
+                "args": [
+                  "-f",
+                  "/config/config.yaml"
+                ],
+                "command": [
+                  "/nix/store/d9n60x9aylvjvj9j56654640xshsai1x-dynamo-component-pipelines-accf6af699/bin/agentgateway"
+                ],
+                "env": [
+                  {
+                    "name": "DYN_GRPC_CHANNELS_PER_ENDPOINT",
+                    "value": "32"
+                  },
+                  {
+                    "name": "DYN_PREPROCESS_BATCH_MAX",
+                    "value": "32"
+                  },
+                  {
+                    "name": "DYN_PREPROCESS_BATCH_LINGER_US",
+                    "value": "200"
+                  }
+                ],
+                "image": "busybox:1.36",
+                "imagePullPolicy": "IfNotPresent",
+                "name": "gateway",
+                "ports": [
+                  {
+                    "containerPort": 8080,
+                    "protocol": "TCP"
+                  },
+                  {
+                    "containerPort": 15021,
+                    "protocol": "TCP"
+                  }
+                ],
+                "readinessProbe": {
+                  "failureThreshold": 3,
+                  "periodSeconds": 1,
+                  "successThreshold": 1,
+                  "tcpSocket": {
+                    "port": 8080
+                  },
+                  "timeoutSeconds": 1
+                },
+                "resources": {},
+                "terminationMessagePath": "/dev/termination-log",
+                "terminationMessagePolicy": "File",
+                "volumeMounts": [
+                  {
+                    "mountPath": "/nix/store",
+                    "name": "nix",
+                    "readOnly": true,
+                    "subPath": "store"
+                  },
+                  {
+                    "mountPath": "/config",
+                    "name": "config",
+                    "readOnly": true
+                  }
+                ]
+              }
+            ],
+            "dnsPolicy": "ClusterFirst",
+            "nodeSelector": {
+              "kubernetes.io/hostname": "cluster-0967a26d-pool-1f83edbe-mj5s4-4sr9z"
+            },
+            "restartPolicy": "Always",
+            "schedulerName": "default-scheduler",
+            "securityContext": {},
+            "terminationGracePeriodSeconds": 30,
+            "volumes": [
+              {
+                "name": "nix",
+                "nfs": {
+                  "path": "/unikorn-identity-03cfadd31877-551/pvc-19aeb650-5f77-45c4-8b8b-0a3b88542f39",
+                  "readOnly": true,
+                  "server": "192.168.0.220"
+                }
+              },
+              {
+                "configMap": {
+                  "defaultMode": 420,
+                  "name": "agw-static"
+                },
+                "name": "config"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "metadata": {
+        "name": "agw-generic",
+        "namespace": "dynamo-components-v2"
+      },
+      "spec": {
+        "progressDeadlineSeconds": 600,
+        "replicas": 0,
+        "revisionHistoryLimit": 10,
+        "selector": {
+          "matchLabels": {
+            "app": "agw-generic"
+          }
+        },
+        "strategy": {
+          "rollingUpdate": {
+            "maxSurge": "25%",
+            "maxUnavailable": "25%"
+          },
+          "type": "RollingUpdate"
+        },
+        "template": {
+          "metadata": {
+            "annotations": {
+              "kubectl.kubernetes.io/restartedAt": "2026-09-23T05:36:41Z"
+            },
+            "labels": {
+              "app": "agw-generic"
+            }
+          },
+          "spec": {
+            "automountServiceAccountToken": false,
+            "containers": [
+              {
+                "args": [
+                  "-f",
+                  "/config/config.yaml"
+                ],
+                "command": [
+                  "/nix/store/d9n60x9aylvjvj9j56654640xshsai1x-dynamo-component-pipelines-accf6af699/bin/agentgateway"
+                ],
+                "env": [
+                  {
+                    "name": "DYN_GRPC_CHANNELS_PER_ENDPOINT",
+                    "value": "4"
+                  }
+                ],
+                "image": "busybox:1.36",
+                "imagePullPolicy": "IfNotPresent",
+                "name": "gateway",
+                "ports": [
+                  {
+                    "containerPort": 8080,
+                    "protocol": "TCP"
+                  },
+                  {
+                    "containerPort": 15021,
+                    "protocol": "TCP"
+                  }
+                ],
+                "readinessProbe": {
+                  "failureThreshold": 3,
+                  "periodSeconds": 1,
+                  "successThreshold": 1,
+                  "tcpSocket": {
+                    "port": 8080
+                  },
+                  "timeoutSeconds": 1
+                },
+                "resources": {},
+                "terminationMessagePath": "/dev/termination-log",
+                "terminationMessagePolicy": "File",
+                "volumeMounts": [
+                  {
+                    "mountPath": "/nix/store",
+                    "name": "nix",
+                    "readOnly": true,
+                    "subPath": "store"
+                  },
+                  {
+                    "mountPath": "/config",
+                    "name": "config",
+                    "readOnly": true
+                  },
+                  {
+                    "mountPath": "/etc/dynamo-pipeline",
+                    "name": "pipeline",
+                    "readOnly": true
+                  }
+                ]
+              }
+            ],
+            "dnsPolicy": "ClusterFirst",
+            "nodeSelector": {
+              "kubernetes.io/hostname": "cluster-0967a26d-pool-1f83edbe-mj5s4-4sr9z"
+            },
+            "restartPolicy": "Always",
+            "schedulerName": "default-scheduler",
+            "securityContext": {},
+            "terminationGracePeriodSeconds": 30,
+            "volumes": [
+              {
+                "name": "nix",
+                "nfs": {
+                  "path": "/unikorn-identity-03cfadd31877-551/pvc-19aeb650-5f77-45c4-8b8b-0a3b88542f39",
+                  "readOnly": true,
+                  "server": "192.168.0.220"
+                }
+              },
+              {
+                "configMap": {
+                  "defaultMode": 420,
+                  "name": "agw-generic"
+                },
+                "name": "config"
+              },
+              {
+                "configMap": {
+                  "defaultMode": 420,
+                  "items": [
+                    {
+                      "key": "aggregate.yaml",
+                      "path": "graphs/aggregate.yaml"
+                    },
+                    {
+                      "key": "components_descriptor.bin",
+                      "path": "components_descriptor.bin"
+                    },
+                    {
+                      "key": "openai-chat.yaml",
+                      "path": "specs/openai-chat.yaml"
+                    },
+                    {
+                      "key": "preprocessor.yaml",
+                      "path": "specs/preprocessor.yaml"
+                    },
+                    {
+                      "key": "selector.yaml",
+                      "path": "specs/selector.yaml"
+                    },
+                    {
+                      "key": "chat-worker.yaml",
+                      "path": "specs/chat-worker.yaml"
+                    }
+                  ],
+                  "name": "component-pipeline"
+                },
+                "name": "pipeline"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "metadata": {
+        "name": "envoy-independent",
+        "namespace": "dynamo-components-v2"
+      },
+      "spec": {
+        "progressDeadlineSeconds": 600,
+        "replicas": 0,
+        "revisionHistoryLimit": 10,
+        "selector": {
+          "matchLabels": {
+            "app": "envoy-independent"
+          }
+        },
+        "strategy": {
+          "rollingUpdate": {
+            "maxSurge": "25%",
+            "maxUnavailable": "25%"
+          },
+          "type": "RollingUpdate"
+        },
+        "template": {
+          "metadata": {
+            "annotations": {
+              "kubectl.kubernetes.io/restartedAt": "2026-09-25T05:35:03Z"
+            },
+            "labels": {
+              "app": "envoy-independent"
+            }
+          },
+          "spec": {
+            "automountServiceAccountToken": false,
+            "containers": [
+              {
+                "args": [
+                  "-c",
+                  "/config/envoy.yaml",
+                  "--concurrency",
+                  "6",
+                  "--log-level",
+                  "warning"
+                ],
+                "command": [
+                  "/nix/store/d9n60x9aylvjvj9j56654640xshsai1x-dynamo-component-pipelines-accf6af699/bin/envoy-static"
+                ],
+                "env": [
+                  {
+                    "name": "ENVOY_DYNAMIC_MODULES_SEARCH_PATH",
+                    "value": "/nix/store/d9n60x9aylvjvj9j56654640xshsai1x-dynamo-component-pipelines-accf6af699/lib"
+                  },
+                  {
+                    "name": "DYN_GRPC_CHANNELS_PER_ENDPOINT",
+                    "value": "4"
+                  },
+                  {
+                    "name": "GENERIC_PIPELINE_THREADS",
+                    "value": "8"
+                  }
+                ],
+                "image": "busybox:1.36",
+                "imagePullPolicy": "IfNotPresent",
+                "name": "envoy",
+                "ports": [
+                  {
+                    "containerPort": 8080,
+                    "protocol": "TCP"
+                  },
+                  {
+                    "containerPort": 9901,
+                    "protocol": "TCP"
+                  }
+                ],
+                "readinessProbe": {
+                  "failureThreshold": 3,
+                  "httpGet": {
+                    "path": "/ready",
+                    "port": 9901,
+                    "scheme": "HTTP"
+                  },
+                  "periodSeconds": 1,
+                  "successThreshold": 1,
+                  "timeoutSeconds": 1
+                },
+                "resources": {},
+                "terminationMessagePath": "/dev/termination-log",
+                "terminationMessagePolicy": "File",
+                "volumeMounts": [
+                  {
+                    "mountPath": "/nix/store",
+                    "name": "nix",
+                    "readOnly": true,
+                    "subPath": "store"
+                  },
+                  {
+                    "mountPath": "/config",
+                    "name": "config",
+                    "readOnly": true
+                  },
+                  {
+                    "mountPath": "/etc/dynamo-pipeline",
+                    "name": "pipeline",
+                    "readOnly": true
+                  }
+                ]
+              }
+            ],
+            "dnsPolicy": "ClusterFirst",
+            "nodeSelector": {
+              "kubernetes.io/hostname": "cluster-0967a26d-pool-1f83edbe-mj5s4-4sr9z"
+            },
+            "restartPolicy": "Always",
+            "schedulerName": "default-scheduler",
+            "securityContext": {},
+            "terminationGracePeriodSeconds": 30,
+            "volumes": [
+              {
+                "name": "nix",
+                "nfs": {
+                  "path": "/unikorn-identity-03cfadd31877-551/pvc-19aeb650-5f77-45c4-8b8b-0a3b88542f39",
+                  "readOnly": true,
+                  "server": "192.168.0.220"
+                }
+              },
+              {
+                "configMap": {
+                  "defaultMode": 420,
+                  "name": "envoy-independent"
+                },
+                "name": "config"
+              },
+              {
+                "configMap": {
+                  "defaultMode": 420,
+                  "items": [
+                    {
+                      "key": "aggregate.yaml",
+                      "path": "graphs/aggregate.yaml"
+                    },
+                    {
+                      "key": "components_descriptor.bin",
+                      "path": "components_descriptor.bin"
+                    },
+                    {
+                      "key": "openai-chat.yaml",
+                      "path": "specs/openai-chat.yaml"
+                    },
+                    {
+                      "key": "preprocessor.yaml",
+                      "path": "specs/preprocessor.yaml"
+                    },
+                    {
+                      "key": "selector.yaml",
+                      "path": "specs/selector.yaml"
+                    },
+                    {
+                      "key": "chat-worker.yaml",
+                      "path": "specs/chat-worker.yaml"
+                    }
+                  ],
+                  "name": "component-pipeline"
+                },
+                "name": "pipeline"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "metadata": {
+        "name": "envoy-callouts",
+        "namespace": "dynamo-components-v2"
+      },
+      "spec": {
+        "progressDeadlineSeconds": 600,
+        "replicas": 0,
+        "revisionHistoryLimit": 10,
+        "selector": {
+          "matchLabels": {
+            "app": "envoy-callouts"
+          }
+        },
+        "strategy": {
+          "rollingUpdate": {
+            "maxSurge": "25%",
+            "maxUnavailable": "25%"
+          },
+          "type": "RollingUpdate"
+        },
+        "template": {
+          "metadata": {
+            "annotations": {
+              "kubectl.kubernetes.io/restartedAt": "2026-09-23T18:07:02Z"
+            },
+            "labels": {
+              "app": "envoy-callouts"
+            }
+          },
+          "spec": {
+            "automountServiceAccountToken": false,
+            "containers": [
+              {
+                "args": [
+                  "-c",
+                  "/config/envoy.yaml",
+                  "--concurrency",
+                  "8",
+                  "--log-level",
+                  "warning"
+                ],
+                "command": [
+                  "/nix/store/d9n60x9aylvjvj9j56654640xshsai1x-dynamo-component-pipelines-accf6af699/bin/envoy-static"
+                ],
+                "env": [
+                  {
+                    "name": "ENVOY_DYNAMIC_MODULES_SEARCH_PATH",
+                    "value": "/nix/store/d9n60x9aylvjvj9j56654640xshsai1x-dynamo-component-pipelines-accf6af699/lib"
+                  },
+                  {
+                    "name": "DYN_GRPC_CHANNELS_PER_ENDPOINT",
+                    "value": "4"
+                  },
+                  {
+                    "name": "GENERIC_PIPELINE_THREADS",
+                    "value": "8"
+                  }
+                ],
+                "image": "busybox:1.36",
+                "imagePullPolicy": "IfNotPresent",
+                "name": "envoy",
+                "ports": [
+                  {
+                    "containerPort": 8080,
+                    "protocol": "TCP"
+                  },
+                  {
+                    "containerPort": 9901,
+                    "protocol": "TCP"
+                  }
+                ],
+                "readinessProbe": {
+                  "failureThreshold": 3,
+                  "httpGet": {
+                    "path": "/ready",
+                    "port": 9901,
+                    "scheme": "HTTP"
+                  },
+                  "periodSeconds": 1,
+                  "successThreshold": 1,
+                  "timeoutSeconds": 1
+                },
+                "resources": {},
+                "terminationMessagePath": "/dev/termination-log",
+                "terminationMessagePolicy": "File",
+                "volumeMounts": [
+                  {
+                    "mountPath": "/nix/store",
+                    "name": "nix",
+                    "readOnly": true,
+                    "subPath": "store"
+                  },
+                  {
+                    "mountPath": "/config",
+                    "name": "config",
+                    "readOnly": true
+                  },
+                  {
+                    "mountPath": "/etc/dynamo-pipeline",
+                    "name": "pipeline",
+                    "readOnly": true
+                  }
+                ]
+              }
+            ],
+            "dnsPolicy": "ClusterFirst",
+            "nodeSelector": {
+              "kubernetes.io/hostname": "cluster-0967a26d-pool-1f83edbe-mj5s4-4sr9z"
+            },
+            "restartPolicy": "Always",
+            "schedulerName": "default-scheduler",
+            "securityContext": {},
+            "terminationGracePeriodSeconds": 30,
+            "volumes": [
+              {
+                "name": "nix",
+                "nfs": {
+                  "path": "/unikorn-identity-03cfadd31877-551/pvc-19aeb650-5f77-45c4-8b8b-0a3b88542f39",
+                  "readOnly": true,
+                  "server": "192.168.0.220"
+                }
+              },
+              {
+                "configMap": {
+                  "defaultMode": 420,
+                  "name": "envoy-callouts"
+                },
+                "name": "config"
+              },
+              {
+                "configMap": {
+                  "defaultMode": 420,
+                  "items": [
+                    {
+                      "key": "aggregate.yaml",
+                      "path": "graphs/aggregate.yaml"
+                    },
+                    {
+                      "key": "components_descriptor.bin",
+                      "path": "components_descriptor.bin"
+                    },
+                    {
+                      "key": "openai-chat.yaml",
+                      "path": "specs/openai-chat.yaml"
+                    },
+                    {
+                      "key": "preprocessor.yaml",
+                      "path": "specs/preprocessor.yaml"
+                    },
+                    {
+                      "key": "selector.yaml",
+                      "path": "specs/selector.yaml"
+                    },
+                    {
+                      "key": "chat-worker.yaml",
+                      "path": "specs/chat-worker.yaml"
+                    }
+                  ],
+                  "name": "component-pipeline"
+                },
+                "name": "pipeline"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "metadata": {
+        "name": "dynamo-preprocessor",
+        "namespace": "dynamo-components-v2"
+      },
+      "spec": {
+        "progressDeadlineSeconds": 600,
+        "replicas": 4,
+        "revisionHistoryLimit": 10,
+        "selector": {
+          "matchLabels": {
+            "app": "dynamo-preprocessor"
+          }
+        },
+        "strategy": {
+          "type": "Recreate"
+        },
+        "template": {
+          "metadata": {
+            "annotations": {
+              "kubectl.kubernetes.io/restartedAt": "2026-09-23T18:06:27Z"
+            },
+            "labels": {
+              "app": "dynamo-preprocessor"
+            }
+          },
+          "spec": {
+            "affinity": {
+              "nodeAffinity": {
+                "requiredDuringSchedulingIgnoredDuringExecution": {
+                  "nodeSelectorTerms": [
+                    {
+                      "matchExpressions": [
+                        {
+                          "key": "kubernetes.io/hostname",
+                          "operator": "In",
+                          "values": [
+                            "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4",
+                            "cluster-0967a26d-pool-1f83edbe-mj5s4-trdbv"
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            "automountServiceAccountToken": false,
+            "containers": [
+              {
+                "args": [
+                  "--listen",
+                  "0.0.0.0:50051",
+                  "preprocessor",
+                  "--model-path",
+                  "/nix/store/wjq1b3wfjpzak4yd4rmj9arwqk1gkiir-qwen-tokenizer",
+                  "--max-batch-items",
+                  "128",
+                  "--max-batch-bytes",
+                  "67108864",
+                  "--max-concurrency",
+                  "4"
+                ],
+                "command": [
+                  "/nix/store/d9n60x9aylvjvj9j56654640xshsai1x-dynamo-component-pipelines-accf6af699/bin/dynamo-component-facade"
+                ],
+                "env": [
+                  {
+                    "name": "RUST_LOG",
+                    "value": "warn"
+                  },
+                  {
+                    "name": "TOKIO_WORKER_THREADS",
+                    "value": "4"
+                  },
+                  {
+                    "name": "DYN_TOKENIZER_CACHE_BYTES",
+                    "value": "67108864"
+                  },
+                  {
+                    "name": "DYN_TOKENIZER",
+                    "value": "fastokens"
+                  },
+                  {
+                    "name": "DYN_TOKENIZER_FALLBACK",
+                    "value": "0"
+                  }
+                ],
+                "image": "busybox:1.36.1",
+                "imagePullPolicy": "IfNotPresent",
+                "name": "facade",
+                "ports": [
+                  {
+                    "containerPort": 50051,
+                    "protocol": "TCP"
+                  }
+                ],
+                "readinessProbe": {
+                  "failureThreshold": 3,
+                  "periodSeconds": 1,
+                  "successThreshold": 1,
+                  "tcpSocket": {
+                    "port": 50051
+                  },
+                  "timeoutSeconds": 1
+                },
+                "resources": {},
+                "terminationMessagePath": "/dev/termination-log",
+                "terminationMessagePolicy": "File",
+                "volumeMounts": [
+                  {
+                    "mountPath": "/nix/store",
+                    "name": "nix",
+                    "readOnly": true,
+                    "subPath": "store"
+                  },
+                  {
+                    "mountPath": "/model",
+                    "name": "model",
+                    "readOnly": true
+                  }
+                ]
+              }
+            ],
+            "dnsPolicy": "ClusterFirst",
+            "nodeSelector": {
+              "topology.unikorn-cloud.org/node-pool": "cpu-pool"
+            },
+            "restartPolicy": "Always",
+            "schedulerName": "default-scheduler",
+            "securityContext": {},
+            "terminationGracePeriodSeconds": 30,
+            "topologySpreadConstraints": [
+              {
+                "labelSelector": {
+                  "matchLabels": {
+                    "app": "dynamo-preprocessor"
+                  }
+                },
+                "maxSkew": 1,
+                "topologyKey": "kubernetes.io/hostname",
+                "whenUnsatisfiable": "DoNotSchedule"
+              }
+            ],
+            "volumes": [
+              {
+                "name": "nix",
+                "nfs": {
+                  "path": "/unikorn-identity-03cfadd31877-551/pvc-19aeb650-5f77-45c4-8b8b-0a3b88542f39",
+                  "readOnly": true,
+                  "server": "192.168.0.220"
+                }
+              },
+              {
+                "configMap": {
+                  "defaultMode": 420,
+                  "name": "benchmark-model"
+                },
+                "name": "model"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "metadata": {
+        "name": "dynamo-selector",
+        "namespace": "dynamo-components-v2"
+      },
+      "spec": {
+        "progressDeadlineSeconds": 600,
+        "replicas": 1,
+        "revisionHistoryLimit": 10,
+        "selector": {
+          "matchLabels": {
+            "app": "dynamo-selector"
+          }
+        },
+        "strategy": {
+          "rollingUpdate": {
+            "maxSurge": "25%",
+            "maxUnavailable": "25%"
+          },
+          "type": "RollingUpdate"
+        },
+        "template": {
+          "metadata": {
+            "annotations": {
+              "kubectl.kubernetes.io/restartedAt": "2026-09-23T18:07:01Z"
+            },
+            "labels": {
+              "app": "dynamo-selector"
+            }
+          },
+          "spec": {
+            "containers": [
+              {
+                "args": [
+                  "--listen",
+                  "0.0.0.0:50051",
+                  "selector",
+                  "--discovery-config",
+                  "/config/discovery.json"
+                ],
+                "command": [
+                  "/nix/store/d9n60x9aylvjvj9j56654640xshsai1x-dynamo-component-pipelines-accf6af699/bin/dynamo-component-facade"
+                ],
+                "env": [
+                  {
+                    "name": "RUST_LOG",
+                    "value": "warn"
+                  }
+                ],
+                "image": "busybox:1.36",
+                "imagePullPolicy": "IfNotPresent",
+                "name": "facade",
+                "ports": [
+                  {
+                    "containerPort": 50051,
+                    "protocol": "TCP"
+                  }
+                ],
+                "readinessProbe": {
+                  "failureThreshold": 3,
+                  "periodSeconds": 1,
+                  "successThreshold": 1,
+                  "tcpSocket": {
+                    "port": 50051
+                  },
+                  "timeoutSeconds": 1
+                },
+                "resources": {},
+                "terminationMessagePath": "/dev/termination-log",
+                "terminationMessagePolicy": "File",
+                "volumeMounts": [
+                  {
+                    "mountPath": "/nix/store",
+                    "name": "nix",
+                    "readOnly": true,
+                    "subPath": "store"
+                  },
+                  {
+                    "mountPath": "/config",
+                    "name": "config",
+                    "readOnly": true
+                  }
+                ]
+              }
+            ],
+            "dnsPolicy": "ClusterFirst",
+            "nodeSelector": {
+              "kubernetes.io/hostname": "cluster-0967a26d-pool-1f83edbe-mj5s4-bf5w2"
+            },
+            "restartPolicy": "Always",
+            "schedulerName": "default-scheduler",
+            "securityContext": {},
+            "serviceAccount": "component-selector",
+            "serviceAccountName": "component-selector",
+            "terminationGracePeriodSeconds": 30,
+            "volumes": [
+              {
+                "name": "nix",
+                "nfs": {
+                  "path": "/unikorn-identity-03cfadd31877-551/pvc-19aeb650-5f77-45c4-8b8b-0a3b88542f39",
+                  "readOnly": true,
+                  "server": "192.168.0.220"
+                }
+              },
+              {
+                "configMap": {
+                  "defaultMode": 420,
+                  "name": "selector-discovery"
+                },
+                "name": "config"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "metadata": {
+        "name": "dynamo-benchmark-worker",
+        "namespace": "dynamo-components-v2"
+      },
+      "spec": {
+        "progressDeadlineSeconds": 600,
+        "replicas": 16,
+        "revisionHistoryLimit": 10,
+        "selector": {
+          "matchLabels": {
+            "app": "dynamo-benchmark-worker"
+          }
+        },
+        "strategy": {
+          "rollingUpdate": {
+            "maxSurge": "25%",
+            "maxUnavailable": "25%"
+          },
+          "type": "RollingUpdate"
+        },
+        "template": {
+          "metadata": {
+            "annotations": {
+              "dynamo.nvidia.com/worker-metadata": "{\"schema_version\":\"v1\",\"model_name\":\"Qwen/Qwen2.5-0.5B-Instruct\",\"routing_group\":\"default\",\"block_size\":512,\"total_kv_blocks\":32768,\"max_num_batched_tokens\":8192,\"router_hint_worker_type\":\"aggregated\"}",
+              "kubectl.kubernetes.io/restartedAt": "2026-09-23T14:49:14Z"
+            },
+            "labels": {
+              "app": "dynamo-benchmark-worker"
+            }
+          },
+          "spec": {
+            "affinity": {
+              "nodeAffinity": {
+                "requiredDuringSchedulingIgnoredDuringExecution": {
+                  "nodeSelectorTerms": [
+                    {
+                      "matchExpressions": [
+                        {
+                          "key": "kubernetes.io/hostname",
+                          "operator": "In",
+                          "values": [
+                            "cluster-0967a26d-pool-1f83edbe-mj5s4-79r2b",
+                            "cluster-0967a26d-pool-1f83edbe-mj5s4-bf5w2",
+                            "cluster-0967a26d-pool-1f83edbe-mj5s4-nwjkn"
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            "automountServiceAccountToken": false,
+            "containers": [
+              {
+                "args": [
+                  "--listen",
+                  "0.0.0.0:50051",
+                  "benchmark-worker",
+                  "--model-path",
+                  "/nix/store/wjq1b3wfjpzak4yd4rmj9arwqk1gkiir-qwen-tokenizer",
+                  "--max-batch-items",
+                  "128",
+                  "--max-batch-bytes",
+                  "67108864",
+                  "--max-concurrency",
+                  "1024"
+                ],
+                "command": [
+                  "/nix/store/d9n60x9aylvjvj9j56654640xshsai1x-dynamo-component-pipelines-accf6af699/bin/dynamo-component-facade"
+                ],
+                "env": [
+                  {
+                    "name": "RUST_LOG",
+                    "value": "warn"
+                  }
+                ],
+                "image": "busybox:1.36",
+                "imagePullPolicy": "IfNotPresent",
+                "name": "facade",
+                "ports": [
+                  {
+                    "containerPort": 50051,
+                    "protocol": "TCP"
+                  }
+                ],
+                "readinessProbe": {
+                  "failureThreshold": 3,
+                  "periodSeconds": 1,
+                  "successThreshold": 1,
+                  "tcpSocket": {
+                    "port": 50051
+                  },
+                  "timeoutSeconds": 1
+                },
+                "resources": {},
+                "terminationMessagePath": "/dev/termination-log",
+                "terminationMessagePolicy": "File",
+                "volumeMounts": [
+                  {
+                    "mountPath": "/nix/store",
+                    "name": "nix",
+                    "readOnly": true,
+                    "subPath": "store"
+                  },
+                  {
+                    "mountPath": "/model",
+                    "name": "model",
+                    "readOnly": true
+                  }
+                ]
+              }
+            ],
+            "dnsPolicy": "ClusterFirst",
+            "nodeSelector": {
+              "topology.unikorn-cloud.org/node-pool": "cpu-pool"
+            },
+            "restartPolicy": "Always",
+            "schedulerName": "default-scheduler",
+            "securityContext": {},
+            "terminationGracePeriodSeconds": 30,
+            "topologySpreadConstraints": [
+              {
+                "labelSelector": {
+                  "matchLabels": {
+                    "app": "dynamo-benchmark-worker"
+                  }
+                },
+                "maxSkew": 1,
+                "topologyKey": "kubernetes.io/hostname",
+                "whenUnsatisfiable": "DoNotSchedule"
+              }
+            ],
+            "volumes": [
+              {
+                "name": "nix",
+                "nfs": {
+                  "path": "/unikorn-identity-03cfadd31877-551/pvc-19aeb650-5f77-45c4-8b8b-0a3b88542f39",
+                  "readOnly": true,
+                  "server": "192.168.0.220"
+                }
+              },
+              {
+                "configMap": {
+                  "defaultMode": 420,
+                  "name": "benchmark-model"
+                },
+                "name": "model"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Service",
+      "metadata": {
+        "name": "agw-static",
+        "namespace": "dynamo-components-v2"
+      },
+      "spec": {
+        "internalTrafficPolicy": "Cluster",
+        "ports": [
+          {
+            "port": 8080,
+            "protocol": "TCP",
+            "targetPort": 8080
+          }
+        ],
+        "selector": {
+          "app": "agw-static"
+        },
+        "sessionAffinity": "None",
+        "type": "ClusterIP"
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Service",
+      "metadata": {
+        "name": "agw-generic",
+        "namespace": "dynamo-components-v2"
+      },
+      "spec": {
+        "internalTrafficPolicy": "Cluster",
+        "ports": [
+          {
+            "port": 8080,
+            "protocol": "TCP",
+            "targetPort": 8080
+          }
+        ],
+        "selector": {
+          "app": "agw-generic"
+        },
+        "sessionAffinity": "None",
+        "type": "ClusterIP"
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Service",
+      "metadata": {
+        "name": "envoy-independent",
+        "namespace": "dynamo-components-v2"
+      },
+      "spec": {
+        "internalTrafficPolicy": "Cluster",
+        "ports": [
+          {
+            "port": 8080,
+            "protocol": "TCP",
+            "targetPort": 8080
+          }
+        ],
+        "selector": {
+          "app": "envoy-independent"
+        },
+        "sessionAffinity": "None",
+        "type": "ClusterIP"
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Service",
+      "metadata": {
+        "name": "envoy-callouts",
+        "namespace": "dynamo-components-v2"
+      },
+      "spec": {
+        "internalTrafficPolicy": "Cluster",
+        "ports": [
+          {
+            "port": 8080,
+            "protocol": "TCP",
+            "targetPort": 8080
+          }
+        ],
+        "selector": {
+          "app": "envoy-callouts"
+        },
+        "sessionAffinity": "None",
+        "type": "ClusterIP"
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Service",
+      "metadata": {
+        "name": "dynamo-preprocessor",
+        "namespace": "dynamo-components-v2"
+      },
+      "spec": {
+        "internalTrafficPolicy": "Cluster",
+        "ports": [
+          {
+            "port": 50051,
+            "protocol": "TCP",
+            "targetPort": 50051
+          }
+        ],
+        "selector": {
+          "app": "dynamo-preprocessor"
+        },
+        "sessionAffinity": "None",
+        "type": "ClusterIP"
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Service",
+      "metadata": {
+        "name": "dynamo-selector",
+        "namespace": "dynamo-components-v2"
+      },
+      "spec": {
+        "internalTrafficPolicy": "Cluster",
+        "ports": [
+          {
+            "port": 50051,
+            "protocol": "TCP",
+            "targetPort": 50051
+          }
+        ],
+        "selector": {
+          "app": "dynamo-selector"
+        },
+        "sessionAffinity": "None",
+        "type": "ClusterIP"
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Service",
+      "metadata": {
+        "name": "dynamo-worker",
+        "namespace": "dynamo-components-v2"
+      },
+      "spec": {
+        "internalTrafficPolicy": "Cluster",
+        "ports": [
+          {
+            "port": 50051,
+            "protocol": "TCP",
+            "targetPort": 50051
+          }
+        ],
+        "selector": {
+          "app": "dynamo-benchmark-worker"
+        },
+        "sessionAffinity": "None",
+        "type": "ClusterIP"
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "ConfigMap",
+      "metadata": {
+        "name": "component-pipeline",
+        "namespace": "dynamo-components-v2"
+      },
+      "data": {
+        "aggregate.yaml": "# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.\n# SPDX-License-Identifier: Apache-2.0\n\napi:\n  openapi: ../specs/openai-chat.yaml\n  operationId: createChatCompletion\ncomponents:\n  preprocessor:\n    openapi: ../specs/preprocessor.yaml\n    baseUrl: http://dynamo-preprocessor:50051\n  selector:\n    openapi: ../specs/selector.yaml\n    baseUrl: http://dynamo-selector:50051\n  workers:\n    openapi: ../specs/chat-worker.yaml\n    discovery: {group: aggregate}\nsteps:\n  - id: prepare\n    call:\n      component: preprocessor\n      operationId: prepare\n      timeoutMs: 10000\n      input:\n        item_id: \"$.request.id\"\n        openai_request_json: \"$.request.body\"\n        preserve_omitted_max_tokens: false\n        lora_name: \"\"\n        deadline_unix_ms: 0\n        packed_tokens_only: true\n      output:\n        normalized_request: \"$.response.normalized_openai_request_json\"\n        backend_request: \"$.response.backend_request_json\"\n        selector_request: \"$.response.selector_request_json\"\n        token_ids_le: \"$.response.token_ids_le\"\n      batch: {maxSize: 32, lingerUs: 100}\n  - id: select\n    call:\n      component: selector\n      operationId: select\n      timeoutMs: 2000\n      input:\n        item_id: \"$.request.id\"\n        payload_json: \"$.vars.selector_request\"\n        token_ids_le: \"$.vars.token_ids_le\"\n        deadline_unix_ms: 0\n      output:\n        worker_endpoint: \"$.response.payload_json.endpoint\"\n  - id: generate\n    call:\n      component: workers\n      operationId: generate\n      target: \"$.vars.worker_endpoint\"\n      timeoutMs: 120000\n      input:\n        request_id: \"$.request.id\"\n        backend_request_json: \"$.vars.backend_request\"\n        normalized_openai_request_json: \"$.vars.normalized_request\"\n        token_ids_le: \"$.vars.token_ids_le\"\n        deadline_unix_ms: 0\n      stream: {}\n      respond: true\n",
+        "chat-worker.yaml": "# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.\n# SPDX-License-Identifier: Apache-2.0\n\nopenapi: 3.0.3\ninfo: {title: Dynamo canonical worker/postprocessor bridge, version: \"1.0\"}\npaths:\n  /generate:\n    post:\n      operationId: generate\n      x-streaming: true\n      x-grpc: {service: dynamo.components.v1.ChatWorkerBridge, method: Generate}\n      x-grpc-json-bytes: true\n      x-grpc-response-body: openai_chunk_json\n      requestBody:\n        required: true\n        content:\n          application/json:\n            schema:\n              type: object\n              required: [request_id, backend_request_json, normalized_openai_request_json]\n              properties:\n                request_id: {type: string}\n                backend_request_json: {type: object}\n                normalized_openai_request_json: {type: object}\n                token_ids: {type: array, items: {type: integer}}\n                token_ids_le: {type: string}\n                prompt_injected_reasoning: {type: boolean}\n                uses_tool_call_structural_tag: {type: boolean}\n                prompt_tokens: {type: integer}\n                image_tokens: {type: integer}\n                image_count: {type: integer}\n                video_count: {type: integer}\n                audio_count: {type: integer}\n                deadline_unix_ms: {type: integer}\n      responses:\n        \"200\":\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  id: {type: string}\n                  object: {type: string}\n                  created: {type: integer}\n                  model: {type: string}\n                  choices: {type: array}\n                  usage: {type: object}\n",
+        "openai-chat.yaml": "# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.\n# SPDX-License-Identifier: Apache-2.0\n\nopenapi: 3.0.3\ninfo: {title: OpenAI chat completions, version: \"1.0\"}\npaths:\n  /v1/chat/completions:\n    post:\n      operationId: createChatCompletion\n      x-streaming: true\n      requestBody:\n        required: true\n        content:\n          application/json:\n            schema:\n              type: object\n              required: [model, messages]\n              properties:\n                model: {type: string}\n                messages: {type: array, items: {type: object}}\n                stream: {type: boolean}\n                max_completion_tokens: {type: integer}\n      responses:\n        \"200\":\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  id: {type: string}\n                  object: {type: string}\n                  created: {type: integer}\n                  model: {type: string}\n                  choices: {type: array}\n                  usage: {type: object}\n",
+        "preprocessor.yaml": "# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.\n# SPDX-License-Identifier: Apache-2.0\n\nopenapi: 3.0.3\ninfo: {title: Dynamo canonical preprocessor facade, version: \"1.0\"}\npaths:\n  /prepare:\n    post:\n      operationId: prepare\n      x-grpc: {service: dynamo.components.v1.Preprocessor, method: Prepare}\n      x-grpc-json-bytes: true\n      x-batch:\n        intoField: items\n        responseField: items\n        operationId: prepareBatch\n      requestBody:\n        required: true\n        content:\n          application/json:\n            schema:\n              type: object\n              required: [item_id, openai_request_json]\n              properties:\n                item_id: {type: string}\n                openai_request_json: {type: object}\n                preserve_omitted_max_tokens: {type: boolean}\n                lora_name: {type: string}\n                deadline_unix_ms: {type: integer}\n                packed_tokens_only: {type: boolean}\n      responses:\n        \"200\":\n          content:\n            application/json:\n              schema: &prepared\n                type: object\n                properties:\n                  item_id: {type: string}\n                  normalized_openai_request_json: {type: object}\n                  backend_request_json: {type: object}\n                  selector_request_json: {type: object}\n                  token_ids: {type: array, items: {type: integer}}\n                  token_ids_le: {type: string}\n                  annotations: {type: object}\n                  prompt_injected_reasoning: {type: boolean}\n                  uses_tool_call_structural_tag: {type: boolean}\n                  prompt_tokens: {type: integer}\n                  image_tokens: {type: integer}\n                  image_count: {type: integer}\n                  video_count: {type: integer}\n                  audio_count: {type: integer}\n                  error: {type: object}\n  /prepare_batch:\n    post:\n      operationId: prepareBatch\n      x-grpc: {service: dynamo.components.v1.Preprocessor, method: PrepareBatch}\n      x-grpc-json-bytes: true\n      requestBody:\n        required: true\n        content:\n          application/json:\n            schema:\n              type: object\n              required: [items]\n              properties:\n                items: {type: array, items: {type: object}}\n      responses:\n        \"200\":\n          content:\n            application/json:\n              schema:\n                type: object\n                required: [items]\n                properties:\n                  items: {type: array, items: *prepared}\n",
+        "selector.yaml": "# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.\n# SPDX-License-Identifier: Apache-2.0\n\nopenapi: 3.0.3\ninfo: {title: Dynamo canonical selector facade, version: \"1.0\"}\npaths:\n  /select:\n    post:\n      operationId: select\n      x-grpc: {service: dynamo.components.v1.Selector, method: Select}\n      x-grpc-json-bytes: true\n      x-batch:\n        intoField: items\n        responseField: items\n        operationId: selectBatch\n      requestBody:\n        required: true\n        content:\n          application/json:\n            schema:\n              type: object\n              required: [item_id, payload_json]\n              properties:\n                item_id: {type: string}\n                payload_json: {type: object}\n                token_ids: {type: array, items: {type: integer}}\n                token_ids_le: {type: string}\n                deadline_unix_ms: {type: integer}\n      responses:\n        \"200\":\n          content:\n            application/json:\n              schema: &result\n                type: object\n                properties:\n                  item_id: {type: string}\n                  payload_json: {type: object}\n                  error: {type: object}\n  /select_batch:\n    post:\n      operationId: selectBatch\n      x-grpc: {service: dynamo.components.v1.Selector, method: SelectBatch}\n      x-grpc-json-bytes: true\n      requestBody:\n        required: true\n        content:\n          application/json:\n            schema:\n              type: object\n              required: [items]\n              properties:\n                items: {type: array, items: {type: object}}\n      responses:\n        \"200\":\n          content:\n            application/json:\n              schema:\n                type: object\n                required: [items]\n                properties:\n                  items: {type: array, items: *result}\n"
+      },
+      "binaryData": {
+        "components_descriptor.bin": "Cql1CiVkeW5hbW8vY29tcG9uZW50cy92MS9jb21wb25lbnRzLnByb3RvEhRkeW5hbW8uY29tcG9uZW50cy52MSJXCglJdGVtRXJyb3ISEgoEa2luZBgBIAEoCVIEa2luZBIYCgdtZXNzYWdlGAIgASgJUgdtZXNzYWdlEhwKCXJldHJ5YWJsZRgDIAEoCFIJcmV0cnlhYmxlIo0CCg5QcmVwcm9jZXNzSXRlbRIXCgdpdGVtX2lkGAEgASgJUgZpdGVtSWQSLgoTb3BlbmFpX3JlcXVlc3RfanNvbhgCIAEoDFIRb3BlbmFpUmVxdWVzdEpzb24SPQobcHJlc2VydmVfb21pdHRlZF9tYXhfdG9rZW5zGAMgASgIUhhwcmVzZXJ2ZU9taXR0ZWRNYXhUb2tlbnMSGwoJbG9yYV9uYW1lGAQgASgJUghsb3JhTmFtZRIoChBkZWFkbGluZV91bml4X21zGAUgASgDUg5kZWFkbGluZVVuaXhNcxIsChJwYWNrZWRfdG9rZW5zX29ubHkYBiABKAhSEHBhY2tlZFRva2Vuc09ubHkiVAoWUHJlcHJvY2Vzc0JhdGNoUmVxdWVzdBI6CgVpdGVtcxgBIAMoCzIkLmR5bmFtby5jb21wb25lbnRzLnYxLlByZXByb2Nlc3NJdGVtUgVpdGVtcyLdBgoMUHJlcGFyZWRJdGVtEhcKB2l0ZW1faWQYASABKAlSBml0ZW1JZBJDCh5ub3JtYWxpemVkX29wZW5haV9yZXF1ZXN0X2pzb24YAiABKAxSG25vcm1hbGl6ZWRPcGVuYWlSZXF1ZXN0SnNvbhIwChRiYWNrZW5kX3JlcXVlc3RfanNvbhgDIAEoDFISYmFja2VuZFJlcXVlc3RKc29uElUKC2Fubm90YXRpb25zGAQgAygLMjMuZHluYW1vLmNvbXBvbmVudHMudjEuUHJlcGFyZWRJdGVtLkFubm90YXRpb25zRW50cnlSC2Fubm90YXRpb25zEjoKGXByb21wdF9pbmplY3RlZF9yZWFzb25pbmcYBSABKAhSF3Byb21wdEluamVjdGVkUmVhc29uaW5nEj0KG2d1aWRlZF90b29sX2NvbnN0cmFpbnRfanNvbhgGIAEoDFIYZ3VpZGVkVG9vbENvbnN0cmFpbnRKc29uEiYKDGltYWdlX3Rva2VucxgHIAEoBEgAUgtpbWFnZVRva2Vuc4gBARI1CgVlcnJvchgIIAEoCzIfLmR5bmFtby5jb21wb25lbnRzLnYxLkl0ZW1FcnJvclIFZXJyb3ISQAoddXNlc190b29sX2NhbGxfc3RydWN0dXJhbF90YWcYCSABKAhSGXVzZXNUb29sQ2FsbFN0cnVjdHVyYWxUYWcSIwoNcHJvbXB0X3Rva2VucxgKIAEoBFIMcHJvbXB0VG9rZW5zEh8KC2ltYWdlX2NvdW50GAsgASgEUgppbWFnZUNvdW50Eh8KC3ZpZGVvX2NvdW50GAwgASgEUgp2aWRlb0NvdW50Eh8KC2F1ZGlvX2NvdW50GA0gASgEUgphdWRpb0NvdW50EjIKFXNlbGVjdG9yX3JlcXVlc3RfanNvbhgOIAEoDFITc2VsZWN0b3JSZXF1ZXN0SnNvbhIbCgl0b2tlbl9pZHMYDyADKA1SCHRva2VuSWRzEiAKDHRva2VuX2lkc19sZRgQIAEoDFIKdG9rZW5JZHNMZRo+ChBBbm5vdGF0aW9uc0VudHJ5EhAKA2tleRgBIAEoCVIDa2V5EhQKBXZhbHVlGAIgASgJUgV2YWx1ZToCOAFCDwoNX2ltYWdlX3Rva2VucyJTChdQcmVwcm9jZXNzQmF0Y2hSZXNwb25zZRI4CgVpdGVtcxgBIAMoCzIiLmR5bmFtby5jb21wb25lbnRzLnYxLlByZXBhcmVkSXRlbVIFaXRlbXMirwEKCEpzb25JdGVtEhcKB2l0ZW1faWQYASABKAlSBml0ZW1JZBIhCgxwYXlsb2FkX2pzb24YAiABKAxSC3BheWxvYWRKc29uEigKEGRlYWRsaW5lX3VuaXhfbXMYAyABKANSDmRlYWRsaW5lVW5peE1zEhsKCXRva2VuX2lkcxgEIAMoDVIIdG9rZW5JZHMSIAoMdG9rZW5faWRzX2xlGAUgASgMUgp0b2tlbklkc0xlIkgKEEpzb25CYXRjaFJlcXVlc3QSNAoFaXRlbXMYASADKAsyHi5keW5hbW8uY29tcG9uZW50cy52MS5Kc29uSXRlbVIFaXRlbXMifwoKSnNvblJlc3VsdBIXCgdpdGVtX2lkGAEgASgJUgZpdGVtSWQSIQoMcGF5bG9hZF9qc29uGAIgASgMUgtwYXlsb2FkSnNvbhI1CgVlcnJvchgDIAEoCzIfLmR5bmFtby5jb21wb25lbnRzLnYxLkl0ZW1FcnJvclIFZXJyb3IiSwoRSnNvbkJhdGNoUmVzcG9uc2USNgoFaXRlbXMYASADKAsyIC5keW5hbW8uY29tcG9uZW50cy52MS5Kc29uUmVzdWx0UgVpdGVtcyKsAgoOV29ya2VyTXV0YXRpb24SFwoHaXRlbV9pZBgBIAEoCVIGaXRlbUlkEkwKCW9wZXJhdGlvbhgCIAEoDjIuLmR5bmFtby5jb21wb25lbnRzLnYxLldvcmtlck11dGF0aW9uLk9wZXJhdGlvblIJb3BlcmF0aW9uEhsKCXdvcmtlcl9pZBgDIAEoBFIId29ya2VySWQSIQoMcGF5bG9hZF9qc29uGAQgASgMUgtwYXlsb2FkSnNvbhIoChBkZWFkbGluZV91bml4X21zGAUgASgDUg5kZWFkbGluZVVuaXhNcyJJCglPcGVyYXRpb24SGQoVT1BFUkFUSU9OX1VOU1BFQ0lGSUVEEAASCgoGVVBTRVJUEAESCQoFUEFUQ0gQAhIKCgZERUxFVEUQAyJYChpXb3JrZXJNdXRhdGlvbkJhdGNoUmVxdWVzdBI6CgVpdGVtcxgBIAMoCzIkLmR5bmFtby5jb21wb25lbnRzLnYxLldvcmtlck11dGF0aW9uUgVpdGVtcyLpAgoQUmVzZXJ2YXRpb25FdmVudBIXCgdpdGVtX2lkGAEgASgJUgZpdGVtSWQSTgoJb3BlcmF0aW9uGAIgASgOMjAuZHluYW1vLmNvbXBvbmVudHMudjEuUmVzZXJ2YXRpb25FdmVudC5PcGVyYXRpb25SCW9wZXJhdGlvbhIlCg5yZXNlcnZhdGlvbl9pZBgDIAEoCVINcmVzZXJ2YXRpb25JZBIqCg5kZWNheV9mcmFjdGlvbhgEIAEoAUgAUg1kZWNheUZyYWN0aW9uiAEBEigKEGRlYWRsaW5lX3VuaXhfbXMYBSABKANSDmRlYWRsaW5lVW5peE1zIlwKCU9wZXJhdGlvbhIZChVPUEVSQVRJT05fVU5TUEVDSUZJRUQQABIUChBQUkVGSUxMX0NPTVBMRVRFEAESFAoQQUREX09VVFBVVF9CTE9DSxACEggKBEZSRUUQA0IRCg9fZGVjYXlfZnJhY3Rpb24iXAocUmVzZXJ2YXRpb25FdmVudEJhdGNoUmVxdWVzdBI8CgVpdGVtcxgBIAMoCzImLmR5bmFtby5jb21wb25lbnRzLnYxLlJlc2VydmF0aW9uRXZlbnRSBWl0ZW1zIg4KDFJlYWR5UmVxdWVzdCKHAQoKV29ya2VyT3BlbhIdCgpyZXF1ZXN0X2lkGAEgASgJUglyZXF1ZXN0SWQSMAoUYmFja2VuZF9yZXF1ZXN0X2pzb24YAiABKAxSEmJhY2tlbmRSZXF1ZXN0SnNvbhIoChBkZWFkbGluZV91bml4X21zGAMgASgDUg5kZWFkbGluZVVuaXhNcyItCgxXb3JrZXJDYW5jZWwSHQoKcmVxdWVzdF9pZBgBIAEoCVIJcmVxdWVzdElkIowBCgtXb3JrZXJJbnB1dBI2CgRvcGVuGAEgASgLMiAuZHluYW1vLmNvbXBvbmVudHMudjEuV29ya2VyT3BlbkgAUgRvcGVuEjwKBmNhbmNlbBgCIAEoCzIiLmR5bmFtby5jb21wb25lbnRzLnYxLldvcmtlckNhbmNlbEgAUgZjYW5jZWxCBwoFZnJhbWUiwQEKDFdvcmtlck91dHB1dBIdCgpyZXF1ZXN0X2lkGAEgASgJUglyZXF1ZXN0SWQSPwocYW5ub3RhdGVkX2JhY2tlbmRfY2h1bmtfanNvbhgCIAEoDFIZYW5ub3RhdGVkQmFja2VuZENodW5rSnNvbhIaCghmaW5pc2hlZBgDIAEoCFIIZmluaXNoZWQSNQoFZXJyb3IYBCABKAsyHy5keW5hbW8uY29tcG9uZW50cy52MS5JdGVtRXJyb3JSBWVycm9yItEEChFDaGF0V29ya2VyUmVxdWVzdBIdCgpyZXF1ZXN0X2lkGAEgASgJUglyZXF1ZXN0SWQSMAoUYmFja2VuZF9yZXF1ZXN0X2pzb24YAiABKAxSEmJhY2tlbmRSZXF1ZXN0SnNvbhJDCh5ub3JtYWxpemVkX29wZW5haV9yZXF1ZXN0X2pzb24YAyABKAxSG25vcm1hbGl6ZWRPcGVuYWlSZXF1ZXN0SnNvbhI6Chlwcm9tcHRfaW5qZWN0ZWRfcmVhc29uaW5nGAQgASgIUhdwcm9tcHRJbmplY3RlZFJlYXNvbmluZxJACh11c2VzX3Rvb2xfY2FsbF9zdHJ1Y3R1cmFsX3RhZxgFIAEoCFIZdXNlc1Rvb2xDYWxsU3RydWN0dXJhbFRhZxIjCg1wcm9tcHRfdG9rZW5zGAYgASgEUgxwcm9tcHRUb2tlbnMSJgoMaW1hZ2VfdG9rZW5zGAcgASgESABSC2ltYWdlVG9rZW5ziAEBEh8KC2ltYWdlX2NvdW50GAggASgEUgppbWFnZUNvdW50Eh8KC3ZpZGVvX2NvdW50GAkgASgEUgp2aWRlb0NvdW50Eh8KC2F1ZGlvX2NvdW50GAogASgEUgphdWRpb0NvdW50EigKEGRlYWRsaW5lX3VuaXhfbXMYCyABKANSDmRlYWRsaW5lVW5peE1zEhsKCXRva2VuX2lkcxgMIAMoDVIIdG9rZW5JZHMSIAoMdG9rZW5faWRzX2xlGA0gASgMUgp0b2tlbklkc0xlQg8KDV9pbWFnZV90b2tlbnMitAMKD1Bvc3Rwcm9jZXNzT3BlbhIdCgpyZXF1ZXN0X2lkGAEgASgJUglyZXF1ZXN0SWQSQwoebm9ybWFsaXplZF9vcGVuYWlfcmVxdWVzdF9qc29uGAIgASgMUhtub3JtYWxpemVkT3BlbmFpUmVxdWVzdEpzb24SOgoZcHJvbXB0X2luamVjdGVkX3JlYXNvbmluZxgDIAEoCFIXcHJvbXB0SW5qZWN0ZWRSZWFzb25pbmcSQAoddXNlc190b29sX2NhbGxfc3RydWN0dXJhbF90YWcYBCABKAhSGXVzZXNUb29sQ2FsbFN0cnVjdHVyYWxUYWcSIwoNcHJvbXB0X3Rva2VucxgFIAEoBFIMcHJvbXB0VG9rZW5zEiYKDGltYWdlX3Rva2VucxgGIAEoBEgAUgtpbWFnZVRva2Vuc4gBARIfCgtpbWFnZV9jb3VudBgHIAEoBFIKaW1hZ2VDb3VudBIfCgt2aWRlb19jb3VudBgIIAEoBFIKdmlkZW9Db3VudBIfCgthdWRpb19jb3VudBgJIAEoBFIKYXVkaW9Db3VudEIPCg1faW1hZ2VfdG9rZW5zIo4BChBQb3N0cHJvY2Vzc0NodW5rEh0KCnJlcXVlc3RfaWQYASABKAlSCXJlcXVlc3RJZBI/Chxhbm5vdGF0ZWRfYmFja2VuZF9jaHVua19qc29uGAIgASgMUhlhbm5vdGF0ZWRCYWNrZW5kQ2h1bmtKc29uEhoKCGZpbmlzaGVkGAMgASgIUghmaW5pc2hlZCIyChFQb3N0cHJvY2Vzc0NhbmNlbBIdCgpyZXF1ZXN0X2lkGAEgASgJUglyZXF1ZXN0SWQi2wEKEFBvc3Rwcm9jZXNzSW5wdXQSOwoEb3BlbhgBIAEoCzIlLmR5bmFtby5jb21wb25lbnRzLnYxLlBvc3Rwcm9jZXNzT3BlbkgAUgRvcGVuEj4KBWNodW5rGAIgASgLMiYuZHluYW1vLmNvbXBvbmVudHMudjEuUG9zdHByb2Nlc3NDaHVua0gAUgVjaHVuaxJBCgZjYW5jZWwYAyABKAsyJy5keW5hbW8uY29tcG9uZW50cy52MS5Qb3N0cHJvY2Vzc0NhbmNlbEgAUgZjYW5jZWxCBwoFZnJhbWUisQEKEVBvc3Rwcm9jZXNzT3V0cHV0Eh0KCnJlcXVlc3RfaWQYASABKAlSCXJlcXVlc3RJZBIqChFvcGVuYWlfY2h1bmtfanNvbhgCIAEoDFIPb3BlbmFpQ2h1bmtKc29uEhoKCGZpbmlzaGVkGAMgASgIUghmaW5pc2hlZBI1CgVlcnJvchgEIAEoCzIfLmR5bmFtby5jb21wb25lbnRzLnYxLkl0ZW1FcnJvclIFZXJyb3Iy0AEKDFByZXByb2Nlc3NvchJTCgdQcmVwYXJlEiQuZHluYW1vLmNvbXBvbmVudHMudjEuUHJlcHJvY2Vzc0l0ZW0aIi5keW5hbW8uY29tcG9uZW50cy52MS5QcmVwYXJlZEl0ZW0SawoMUHJlcGFyZUJhdGNoEiwuZHluYW1vLmNvbXBvbmVudHMudjEuUHJlcHJvY2Vzc0JhdGNoUmVxdWVzdBotLmR5bmFtby5jb21wb25lbnRzLnYxLlByZXByb2Nlc3NCYXRjaFJlc3BvbnNlMvQGCghTZWxlY3RvchJKCgZTZWxlY3QSHi5keW5hbW8uY29tcG9uZW50cy52MS5Kc29uSXRlbRogLmR5bmFtby5jb21wb25lbnRzLnYxLkpzb25SZXN1bHQSVAoQU2VsZWN0QW5kUmVzZXJ2ZRIeLmR5bmFtby5jb21wb25lbnRzLnYxLkpzb25JdGVtGiAuZHluYW1vLmNvbXBvbmVudHMudjEuSnNvblJlc3VsdBJVChFDcmVhdGVSZXNlcnZhdGlvbhIeLmR5bmFtby5jb21wb25lbnRzLnYxLkpzb25JdGVtGiAuZHluYW1vLmNvbXBvbmVudHMudjEuSnNvblJlc3VsdBJeCgtTZWxlY3RCYXRjaBImLmR5bmFtby5jb21wb25lbnRzLnYxLkpzb25CYXRjaFJlcXVlc3QaJy5keW5hbW8uY29tcG9uZW50cy52MS5Kc29uQmF0Y2hSZXNwb25zZRJoChVTZWxlY3RBbmRSZXNlcnZlQmF0Y2gSJi5keW5hbW8uY29tcG9uZW50cy52MS5Kc29uQmF0Y2hSZXF1ZXN0GicuZHluYW1vLmNvbXBvbmVudHMudjEuSnNvbkJhdGNoUmVzcG9uc2USaQoWQ3JlYXRlUmVzZXJ2YXRpb25CYXRjaBImLmR5bmFtby5jb21wb25lbnRzLnYxLkpzb25CYXRjaFJlcXVlc3QaJy5keW5hbW8uY29tcG9uZW50cy52MS5Kc29uQmF0Y2hSZXNwb25zZRJvChJNdXRhdGVXb3JrZXJzQmF0Y2gSMC5keW5hbW8uY29tcG9uZW50cy52MS5Xb3JrZXJNdXRhdGlvbkJhdGNoUmVxdWVzdBonLmR5bmFtby5jb21wb25lbnRzLnYxLkpzb25CYXRjaFJlc3BvbnNlEnoKG0FwcGx5UmVzZXJ2YXRpb25FdmVudHNCYXRjaBIyLmR5bmFtby5jb21wb25lbnRzLnYxLlJlc2VydmF0aW9uRXZlbnRCYXRjaFJlcXVlc3QaJy5keW5hbW8uY29tcG9uZW50cy52MS5Kc29uQmF0Y2hSZXNwb25zZRJNCgVSZWFkeRIiLmR5bmFtby5jb21wb25lbnRzLnYxLlJlYWR5UmVxdWVzdBogLmR5bmFtby5jb21wb25lbnRzLnYxLkpzb25SZXN1bHQyZAoMV29ya2VyQnJpZGdlElQKB1Byb2Nlc3MSIS5keW5hbW8uY29tcG9uZW50cy52MS5Xb3JrZXJJbnB1dBoiLmR5bmFtby5jb21wb25lbnRzLnYxLldvcmtlck91dHB1dCgBMAEycgoQQ2hhdFdvcmtlckJyaWRnZRJeCghHZW5lcmF0ZRInLmR5bmFtby5jb21wb25lbnRzLnYxLkNoYXRXb3JrZXJSZXF1ZXN0GicuZHluYW1vLmNvbXBvbmVudHMudjEuUG9zdHByb2Nlc3NPdXRwdXQwATJvCg1Qb3N0cHJvY2Vzc29yEl4KB1Byb2Nlc3MSJi5keW5hbW8uY29t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"
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "ConfigMap",
+      "metadata": {
+        "name": "benchmark-model",
+        "namespace": "dynamo-components-v2"
+      },
+      "data": {
+        "config.json": "{\n  \"architectures\": [\n    \"LlamaForCausalLM\"\n  ],\n  \"attention_bias\": false,\n  \"attention_dropout\": 0.0,\n  \"bos_token_id\": 128000,\n  \"eos_token_id\": 128009,\n  \"hidden_act\": \"silu\",\n  \"hidden_size\": 4096,\n  \"initializer_range\": 0.02,\n  \"intermediate_size\": 14336,\n  \"max_position_embeddings\": 8192,\n  \"model_type\": \"llama\",\n  \"num_attention_heads\": 32,\n  \"num_hidden_layers\": 32,\n  \"num_key_value_heads\": 8,\n  \"pretraining_tp\": 1,\n  \"rms_norm_eps\": 1e-05,\n  \"rope_scaling\": null,\n  \"rope_theta\": 500000.0,\n  \"tie_word_embeddings\": false,\n  \"torch_dtype\": \"bfloat16\",\n  \"transformers_version\": \"4.40.0.dev0\",\n  \"use_cache\": true,\n  \"vocab_size\": 128256\n}\n",
+        "generation_config.json": "{\n  \"bos_token_id\": 128000,\n  \"eos_token_id\": [128001, 128009],\n  \"do_sample\": true,\n  \"temperature\": 0.6,\n  \"max_length\": 4096,\n  \"top_p\": 0.9,\n  \"transformers_version\": \"4.40.0.dev0\"\n}\n",
+        "tokenizer.json": "{\n  \"version\": \"1.0\",\n  \"truncation\": null,\n  \"padding\": null,\n  \"added_tokens\": [\n    {\n      \"id\": 128000,\n      \"content\": \"<|begin_of_text|>\",\n      \"single_word\": false,\n      \"lstrip\": false,\n      \"rstrip\": false,\n      \"normalized\": false,\n      \"special\": true\n    },\n    {\n      \"id\": 128001,\n      \"content\": \"<|end_of_text|>\",\n      \"single_word\": false,\n      \"lstrip\": false,\n      \"rstrip\": false,\n      \"normalized\": false,\n      \"special\": true\n    },\n    {\n      \"id\": 128002,\n      \"content\": \"<|reserved_special_token_0|>\",\n      \"single_word\": false,\n      \"lstrip\": false,\n      \"rstrip\": false,\n      \"normalized\": false,\n      \"special\": true\n    },\n    {\n      \"id\": 128003,\n      \"content\": \"<|reserved_special_token_1|>\",\n      \"single_word\": false,\n      \"lstrip\": false,\n      \"rstrip\": false,\n      \"normalized\": false,\n      \"special\": true\n    },\n    {\n      \"id\": 128004,\n      \"content\": \"<|reserved_special_token_2|>\",\n      \"single_word\": false,\n      \"lstrip\": false,\n      \"rstrip\": false,\n      \"normalized\": false,\n      \"special\": true\n    },\n    {\n      \"id\": 128005,\n      \"content\": \"<|reserved_special_token_3|>\",\n      \"single_word\": false,\n      \"lstrip\": false,\n      \"rstrip\": false,\n      \"normalized\": false,\n      \"special\": true\n    },\n    {\n      \"id\": 128006,\n      \"content\": \"<|start_header_id|>\",\n      \"single_word\": false,\n      \"lstrip\": false,\n      \"rstrip\": false,\n      \"normalized\": false,\n      \"special\": true\n    },\n    {\n      \"id\": 128007,\n      \"content\": \"<|end_header_id|>\",\n      \"single_word\": false,\n      \"lstrip\": false,\n      \"rstrip\": false,\n      \"normalized\": false,\n      \"special\": true\n    },\n    {\n      \"id\": 128008,\n      \"content\": \"<|reserved_special_token_4|>\",\n      \"single_word\": false,\n      \"lstrip\": false,\n      \"rstrip\": false,\n      \"normalized\": false,\n      \"special\": true\n    },\n    {\n      \"id\": 128009,\n      \"content\": \"<|eot_id|>\",\n      \"single_word\": false,\n      \"lstrip\": false,\n      \"rstrip\": false,\n      \"normalized\": false,\n      \"special\": true\n    },\n    {\n      \"id\": 128010,\n      \"content\": \"<|reserved_special_token_5|>\",\n      \"single_word\": false,\n      \"lstrip\": false,\n      \"rstrip\": false,\n      \"normalized\": false,\n      \"special\": true\n    }\n  ],\n  \"normalizer\": null,\n  \"pre_tokenizer\": {\n    \"type\": \"Sequence\",\n    \"pretokenizers\": [\n      {\n        \"type\": \"Split\",\n        \"pattern\": {\n          \"Regex\": \"(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\\\\r\\\\n\\\\p{L}\\\\p{N}]?\\\\p{L}+|\\\\p{N}{1,3}| ?[^\\\\s\\\\p{L}\\\\p{N}]+[\\\\r\\\\n]*|\\\\s*[\\\\r\\\\n]+|\\\\s+(?!\\\\S)|\\\\s+\"\n        },\n        \"behavior\": \"Isolated\",\n        \"invert\": false\n      },\n      {\n        \"type\": \"ByteLevel\",\n        \"add_prefix_space\": false,\n        \"trim_offsets\": true,\n        \"use_regex\": false\n      }\n    ]\n  },\n  \"post_processor\": {\n    \"type\": \"Sequence\",\n    \"processors\": [\n      {\n        \"type\": \"ByteLevel\",\n        \"add_prefix_space\": true,\n        \"trim_offsets\": false,\n        \"use_regex\": true\n      },\n      {\n        \"type\": \"TemplateProcessing\",\n        \"single\": [\n          {\n            \"SpecialToken\": {\n              \"id\": \"<|begin_of_text|>\",\n              \"type_id\": 0\n            }\n          },\n          {\n            \"Sequence\": {\n              \"id\": \"A\",\n              \"type_id\": 0\n            }\n          }\n        ],\n        \"pair\": [\n          {\n            \"SpecialToken\": {\n              \"id\": \"<|begin_of_text|>\",\n              \"type_id\": 0\n            }\n          },\n          {\n            \"Sequence\": {\n              \"id\": \"A\",\n              \"type_id\": 0\n            }\n          },\n          {\n            \"SpecialToken\": {\n              \"id\": \"<|begin_of_text|>\",\n              \"type_id\": 1\n            }\n          },\n          {\n            \"Sequence\": {\n              \"id\": \"B\",\n              \"type_id\": 1\n            }\n          }\n        ],\n        \"special_tokens\": {\n          \"<|begin_of_text|>\": {\n            \"id\": \"<|begin_of_text|>\",\n            \"ids\": [\n              128000\n            ],\n            \"tokens\": [\n              \"<|begin_of_text|>\"\n            ]\n          }\n        }\n      }\n    ]\n  },\n  \"decoder\": {\n    \"type\": \"ByteLevel\",\n    \"add_prefix_space\": true,\n    \"trim_offsets\": true,\n    \"use_regex\": true\n  },\n  \"model\": {\n    \"type\": \"BPE\",\n    \"dropout\": null,\n    \"unk_token\": null,\n    \"continuing_subword_prefix\": null,\n    \"end_of_word_suffix\": null,\n    \"fuse_unk\": false,\n    \"byte_fallback\": false,\n    \"ignore_merges\": true,\n    \"vocab\": {},\n    \"merges\": []\n  }\n}",
+        "tokenizer_config.json": "{\n  \"added_tokens_decoder\": {\n    \"128000\": {\n      \"content\": \"<|begin_of_text|>\",\n      \"lstrip\": false,\n      \"normalized\": false,\n      \"rstrip\": false,\n      \"single_word\": false,\n      \"special\": true\n    },\n    \"128001\": {\n      \"content\": \"<|end_of_text|>\",\n      \"lstrip\": false,\n      \"normalized\": false,\n      \"rstrip\": false,\n      \"single_word\": false,\n      \"special\": true\n    },\n    \"128002\": {\n      \"content\": \"<|reserved_special_token_0|>\",\n      \"lstrip\": false,\n      \"normalized\": false,\n      \"rstrip\": false,\n      \"single_word\": false,\n      \"special\": true\n    },\n    \"128003\": {\n      \"content\": \"<|reserved_special_token_1|>\",\n      \"lstrip\": false,\n      \"normalized\": false,\n      \"rstrip\": false,\n      \"single_word\": false,\n      \"special\": true\n    },\n    \"128004\": {\n      \"content\": \"<|reserved_special_token_2|>\",\n      \"lstrip\": false,\n      \"normalized\": false,\n      \"rstrip\": false,\n      \"single_word\": false,\n      \"special\": true\n    },\n    \"128005\": {\n      \"content\": \"<|reserved_special_token_3|>\",\n      \"lstrip\": false,\n      \"normalized\": false,\n      \"rstrip\": false,\n      \"single_word\": false,\n      \"special\": true\n    },\n    \"128006\": {\n      \"content\": \"<|start_header_id|>\",\n      \"lstrip\": false,\n      \"normalized\": false,\n      \"rstrip\": false,\n      \"single_word\": false,\n      \"special\": true\n    },\n    \"128007\": {\n      \"content\": \"<|end_header_id|>\",\n      \"lstrip\": false,\n      \"normalized\": false,\n      \"rstrip\": false,\n      \"single_word\": false,\n      \"special\": true\n    },\n    \"128008\": {\n      \"content\": \"<|reserved_special_token_4|>\",\n      \"lstrip\": false,\n      \"normalized\": false,\n      \"rstrip\": false,\n      \"single_word\": false,\n      \"special\": true\n    },\n    \"128009\": {\n      \"content\": \"<|eot_id|>\",\n      \"lstrip\": false,\n      \"normalized\": false,\n      \"rstrip\": false,\n      \"single_word\": false,\n      \"special\": true\n    }\n  },\n  \"bos_token\": \"<|begin_of_text|>\",\n  \"chat_template\": \"{% set loop_messages = messages %}{% for message in loop_messages %}{% set content = '<|start_header_id|>' + message['role'] + '<|end_header_id|>\\n\\n'+ message['content'] | trim %}{% if loop.first %}{% set content = bos_token + content %}{% endif %}{% if not loop.last %}{% set content = content + '<|eot_id|>'%}{% endif %}{{ content }}{% endfor %}{% if add_generation_prompt %}{{ '<|eot_id|><|start_header_id|>assistant<|end_header_id|>\\n\\n' }}{% endif %}\",\n  \"clean_up_tokenization_spaces\": true,\n  \"eos_token\": \"<|eot_id|>\",\n  \"model_input_names\": [\n    \"input_ids\",\n    \"attention_mask\"\n  ],\n  \"model_max_length\": 1000000000000000019884624838656,\n  \"tokenizer_class\": \"PreTrainedTokenizerFast\"\n}\n"
+      },
+      "binaryData": {}
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "ConfigMap",
+      "metadata": {
+        "name": "selector-discovery",
+        "namespace": "dynamo-components-v2"
+      },
+      "data": {
+        "discovery.json": "{\"pools\":[{\"namespace\":\"dynamo-components-v2\",\"inference_pool_name\":\"benchmark-workers\",\"model_name\":\"Qwen/Qwen2.5-0.5B-Instruct\",\"block_size\":512,\"total_kv_blocks\":32768,\"max_num_batched_tokens\":8192}]}"
+      },
+      "binaryData": {}
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "ConfigMap",
+      "metadata": {
+        "name": "agw-static",
+        "namespace": "dynamo-components-v2"
+      },
+      "data": {
+        "config.yaml": "config:\n  adminAddr: \"off\"\n  statsAddr: \"127.0.0.1:15020\"\n  readinessAddr: \"0.0.0.0:15021\"\n  workerThreads: 12\n  componentPipeline:\n    mode: static\n    preprocessor_endpoint: \"http://dynamo-preprocessor:50051\"\n    selector_endpoint: \"http://dynamo-selector:50051\"\nbinds:\n- port: 8080\n  listeners:\n  - name: components\n    protocol: HTTP\n    routes:\n    - name: chat\n      backends:\n      - host: dynamo-worker:50051\n"
+      },
+      "binaryData": {}
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "ConfigMap",
+      "metadata": {
+        "name": "agw-generic",
+        "namespace": "dynamo-components-v2"
+      },
+      "data": {
+        "config.yaml": "config:\n  adminAddr: \"off\"\n  statsAddr: \"127.0.0.1:15020\"\n  readinessAddr: \"0.0.0.0:15021\"\n  workerThreads: 16\n  componentPipeline:\n    mode: generic\n    pipeline_file: \"/etc/dynamo-pipeline/graphs/aggregate.yaml\"\n    grpc_descriptor_file: \"/etc/dynamo-pipeline/components_descriptor.bin\"\nbinds:\n- port: 8080\n  listeners:\n  - name: components\n    protocol: HTTP\n    routes:\n    - name: chat\n      backends:\n      - host: dynamo-worker:50051\n"
+      },
+      "binaryData": {}
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "ConfigMap",
+      "metadata": {
+        "name": "envoy-independent",
+        "namespace": "dynamo-components-v2"
+      },
+      "data": {
+        "envoy.yaml": "admin: {address: {socket_address: {address: 0.0.0.0, port_value: 9901}}}\nstatic_resources:\n  listeners:\n    - name: inference\n      address: {socket_address: {address: 0.0.0.0, port_value: 8080}}\n      filter_chains:\n        - filters:\n            - name: envoy.filters.network.http_connection_manager\n              typed_config:\n                \"@type\": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager\n                stat_prefix: inference\n                request_timeout: 120s\n                stream_idle_timeout: 120s\n                route_config:\n                  name: r\n                  virtual_hosts:\n                    - name: r\n                      domains: [\"*\"]\n                      routes:\n                        # Never reached for /v1/chat/completions: the dynamic module answers\n                        # the request itself. Present because a route is required, and it\n                        # gives anything else a defined 404 rather than a config error.\n                        - match: {prefix: /}\n                          direct_response: {status: 404, body: {inline_string: \"no route\"}}\n                http_filters:\n                  - name: envoy.filters.http.dynamic_modules\n                    typed_config:\n                      \"@type\": type.googleapis.com/envoy.extensions.filters.http.dynamic_modules.v3.DynamicModuleFilter\n                      dynamic_module_config: {name: generic_pipeline}\n                      filter_name: generic_pipeline\n                      # The SAME pipeline document and descriptor set agentgateway loads,\n                      # mounted from the same ConfigMap. If these diverged, the two hosts\n                      # would be running different orchestrations and the comparison would\n                      # measure that instead of the hosting.\n                      filter_config:\n                        \"@type\": type.googleapis.com/google.protobuf.StringValue\n                        value: |\n                          {\"pipeline_file\":\"/etc/dynamo-pipeline/graphs/aggregate.yaml\",\n                           \"grpc_descriptor_file\":\"/etc/dynamo-pipeline/components_descriptor.bin\",\n                           \"transport_mode\":\"independent\",\n                           \"grpc_conns\":4}\n                  - name: envoy.filters.http.router\n                    typed_config:\n                      \"@type\": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router\n  clusters: []\n"
+      },
+      "binaryData": {}
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "ConfigMap",
+      "metadata": {
+        "name": "envoy-callouts",
+        "namespace": "dynamo-components-v2"
+      },
+      "data": {
+        "envoy.yaml": "# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.\n# SPDX-License-Identifier: Apache-2.0\n\nadmin: {address: {socket_address: {address: 0.0.0.0, port_value: 9901}}}\nstatic_resources:\n  listeners:\n    - name: inference\n      address: {socket_address: {address: 0.0.0.0, port_value: 8080}}\n      filter_chains:\n        - filters:\n            - name: envoy.filters.network.http_connection_manager\n              typed_config:\n                \"@type\": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager\n                stat_prefix: inference\n                request_timeout: 120s\n                stream_idle_timeout: 120s\n                route_config:\n                  name: component_pipeline\n                  virtual_hosts:\n                    - name: component_pipeline\n                      domains: [\"*\"]\n                      routes:\n                        - match: {prefix: /}\n                          direct_response: {status: 404, body: {inline_string: \"no route\"}}\n                http_filters:\n                  - name: envoy.filters.http.dynamic_modules\n                    typed_config:\n                      \"@type\": type.googleapis.com/envoy.extensions.filters.http.dynamic_modules.v3.DynamicModuleFilter\n                      dynamic_module_config: {name: generic_pipeline}\n                      filter_name: generic_pipeline\n                      filter_config:\n                        \"@type\": type.googleapis.com/google.protobuf.StringValue\n                        value: |\n                          {\"pipeline_file\":\"/etc/dynamo-pipeline/graphs/aggregate.yaml\",\n                           \"grpc_descriptor_file\":\"/etc/dynamo-pipeline/components_descriptor.bin\",\n                           \"transport_mode\":\"envoy_callouts\",\n                           \"upstream_clusters\":{\"10.0.25.95:50051\":\"dynamo-worker\",\"10.0.25.9:50051\":\"dynamo-worker\",\"10.0.25.246:50051\":\"dynamo-worker\",\"10.0.29.230:50051\":\"dynamo-worker\",\"10.0.24.174:50051\":\"dynamo-worker\",\"10.0.24.127:50051\":\"dynamo-worker\",\"10.0.29.73:50051\":\"dynamo-worker\",\"10.0.24.15:50051\":\"dynamo-worker\",\"10.0.25.126:50051\":\"dynamo-worker\",\"10.0.24.5:50051\":\"dynamo-worker\",\"10.0.29.163:50051\":\"dynamo-worker\",\"10.0.29.239:50051\":\"dynamo-worker\",\"10.0.29.74:50051\":\"dynamo-worker\",\"10.0.25.86:50051\":\"dynamo-worker\",\"10.0.29.10:50051\":\"dynamo-worker\",\"10.0.29.16:50051\":\"dynamo-worker\"},\n                           \"cluster_from_authority\":true}\n                  - name: envoy.filters.http.router\n                    typed_config:\n                      \"@type\": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router\n  # Worker clusters may instead arrive through CDS. cluster_from_authority makes\n  # a selected endpoint such as http://dynamo-worker:50051 resolve to cluster\n  # `dynamo-worker`; absence fails the request and never falls back to tonic.\n  clusters:\n    - name: dynamo-preprocessor\n      type: STRICT_DNS\n      connect_timeout: 2s\n      typed_extension_protocol_options:\n        envoy.extensions.upstreams.http.v3.HttpProtocolOptions:\n          \"@type\": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions\n          explicit_http_config:\n            http2_protocol_options:\n              initial_stream_window_size: 8388608\n              initial_connection_window_size: 16777216\n              max_concurrent_streams: 4096\n      load_assignment:\n        cluster_name: dynamo-preprocessor\n        endpoints:\n          - lb_endpoints:\n              - endpoint: {address: {socket_address: {address: dynamo-preprocessor, port_value: 50051}}}\n    - name: dynamo-selector\n      type: STRICT_DNS\n      connect_timeout: 2s\n      typed_extension_protocol_options:\n        envoy.extensions.upstreams.http.v3.HttpProtocolOptions:\n          \"@type\": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions\n          explicit_http_config:\n            http2_protocol_options:\n              initial_stream_window_size: 8388608\n              initial_connection_window_size: 16777216\n              max_concurrent_streams: 4096\n      load_assignment:\n        cluster_name: dynamo-selector\n        endpoints:\n          - lb_endpoints:\n              - endpoint: {address: {socket_address: {address: dynamo-selector, port_value: 50051}}}\n    - name: dynamo-worker\n      type: STRICT_DNS\n      connect_timeout: 2s\n      typed_extension_protocol_options:\n        envoy.extensions.upstreams.http.v3.HttpProtocolOptions:\n          \"@type\": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions\n          explicit_http_config:\n            http2_protocol_options:\n              initial_stream_window_size: 8388608\n              initial_connection_window_size: 16777216\n              max_concurrent_streams: 4096\n      load_assignment:\n        cluster_name: dynamo-worker\n        endpoints:\n          - lb_endpoints:\n              - endpoint: {address: {socket_address: {address: dynamo-worker, port_value: 50051}}}\n"
+      },
+      "binaryData": {}
+    },
+    {
+      "apiVersion": "inference.networking.k8s.io/v1",
+      "kind": "InferencePool",
+      "metadata": {
+        "name": "benchmark-workers",
+        "namespace": "dynamo-components-v2"
+      },
+      "spec": {
+        "endpointPickerRef": {
+          "name": "dynamo-selector",
+          "port": {
+            "number": 50051
+          }
+        },
+        "selector": {
+          "matchLabels": {
+            "app": "dynamo-benchmark-worker"
+          }
+        },
+        "targetPorts": [
+          {
+            "number": 50051
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "ServiceAccount",
+      "metadata": {
+        "name": "component-selector",
+        "namespace": "dynamo-components-v2"
+      }
+    },
+    {
+      "apiVersion": "rbac.authorization.k8s.io/v1",
+      "kind": "Role",
+      "metadata": {
+        "name": "component-selector",
+        "namespace": "dynamo-components-v2"
+      },
+      "rules": [
+        {
+          "apiGroups": [
+            ""
+          ],
+          "resources": [
+            "pods"
+          ],
+          "verbs": [
+            "get",
+            "list",
+            "watch"
+          ]
+        },
+        {
+          "apiGroups": [
+            "inference.networking.k8s.io"
+          ],
+          "resources": [
+            "inferencepools"
+          ],
+          "verbs": [
+            "get",
+            "list",
+            "watch"
+          ]
+        }
+      ]
+    },
+    {
+      "apiVersion": "rbac.authorization.k8s.io/v1",
+      "kind": "RoleBinding",
+      "metadata": {
+        "name": "component-selector",
+        "namespace": "dynamo-components-v2"
+      },
+      "roleRef": {
+        "apiGroup": "rbac.authorization.k8s.io",
+        "kind": "Role",
+        "name": "component-selector"
+      },
+      "subjects": [
+        {
+          "kind": "ServiceAccount",
+          "name": "component-selector",
+          "namespace": "dynamo-components-v2"
+        }
+      ]
+    }
+  ]
+}
