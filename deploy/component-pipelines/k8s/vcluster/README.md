@@ -24,6 +24,14 @@ The selector itself uses the
 vCluster Kubernetes API to watch `InferencePool` objects and annotated worker Pods.
 It does not connect to the Dynamo runtime.
 
+The real SGLang split-worker fixture uses a newer facade-only Nix pin:
+`0d7e775709` in the same envs branch (envs commit `42d11d5`). The gateway
+source pin is deliberately unchanged, so upstream facade updates do not
+rebuild the patched gateway unnecessarily. The Nix-built facade is
+`/nix/store/pvwyh2bdw1jvqanwfmb2h6a0ka4ihc9r-dynamo-component-facade-1.6.0-0d7e775709`;
+the complete bundle also builds as
+`/nix/store/dvkffqy8271pmgia5mlgvk5k3yl568da-dynamo-component-pipelines-0d7e775709`.
+
 Build the bundle from a checkout of that envs branch, then publish only its runtime
 closure to the vCluster's existing NFS store export. Use the explicit vCluster
 kubeconfig for every Kubernetes write; the temporary stager is itself a vCluster Pod.
@@ -242,6 +250,34 @@ container builds only writable `/sbin` and `/cuda` compatibility views; engine c
 never copied into the container image. Nix packages `nvcc` separately from the merged
 CUDA toolkit, so `CPATH`, `CPLUS_INCLUDE_PATH`, and `NVCC_PREPEND_FLAGS` explicitly point
 at `/cuda/include` for runtime JIT compilation.
+
+For the new aggregate native-SGLang correctness path, stage the closure of the
+Nix-built facade and the Nix SGLang worker environment on the same vCluster NFS
+store. Set the explicit `VCLUSTER_KUBECONFIG`, exact
+`VCLUSTER_EXPECTED_SERVER`, `VCLUSTER_NAMESPACE`, `FACADE_STORE_PATH`,
+`SGLANG_WORKER_ENV_PATH`, `GATEWAY_BUNDLE_PATH`, and both NFS server/path pairs.
+`ENVSUBST_BIN` may point to a Nix `gettext` executable. Then run:
+
+```bash
+bash deploy/component-pipelines/k8s/vcluster/run-real-sglang-split.sh
+GRPCURL_BIN=/path/to/grpcurl \
+  bash deploy/component-pipelines/k8s/vcluster/smoke-real-sglang-split.sh
+```
+
+The deploy helper refuses a non-matching vCluster API and checks that all
+three immutable Nix executables are staged before it applies anything. It
+creates a separate `real-sglang-split` InferencePool, `real-qwen3-selector`,
+`real-qwen3-preprocessor`, and `real-qwen3-agw-generic`; the mocker pool and
+benchmark gateway remain unchanged. The selector's Pod watch supplies the
+actual worker Pod endpoint. The smoke script compares that endpoint with the
+Ready Pod IP, calls the preprocessor and native worker over gRPC, then asserts
+an OpenAI-compatible streamed response through AGW with a `stop` finish
+reason and `[DONE]`. The model's `chat_template_kwargs.enable_thinking=false`
+keeps this correctness check about the final answer rather than truncated
+thinking tokens. The fixture is aggregate-only; split vLLM and disaggregated
+real-worker verification remain pending. The worker Pod annotation currently
+publishes model identity only; runtime KV capacity still needs a publisher.
+See [the captured real-SGLang run](results/2026-09-25-real-sglang-split/README.md).
 
 The retained evidence is organized as follows:
 
