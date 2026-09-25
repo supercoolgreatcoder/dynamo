@@ -15,7 +15,8 @@ The preferred source-native build is `gateway-pipeline#component-pipeline-v2` in
 host, patched Envoy executable, and Envoy dynamic module into one Nix-store output.
 `package.nix` is the older prototype packaging reference. The source pins and
 build instructions are in the envs flake's `gateway-pipeline/README.md`; the
-component code and patch sources are pinned to this Dynamo branch at `98676215fa`.
+gateway and Envoy patch sources remain pinned to this Dynamo branch at
+`98676215fa`, while the facade has an independent newer pin.
 The standalone Envoy module from the current Nix pin builds and passes a streaming
 smoke test. The complete bundle also builds to
 `/nix/store/g7achknzv9ibixmfdaxgjy4a3pp33dp5-dynamo-component-pipelines-98676215fa`;
@@ -25,12 +26,12 @@ vCluster Kubernetes API to watch `InferencePool` objects and annotated worker Po
 It does not connect to the Dynamo runtime.
 
 The real SGLang split-worker fixture uses a newer facade-only Nix pin:
-`0d7e775709` in the same envs branch (envs commit `42d11d5`). The gateway
+`8468212130` in the same envs branch (envs commit `dd53aa3`). The gateway
 source pin is deliberately unchanged, so upstream facade updates do not
 rebuild the patched gateway unnecessarily. The Nix-built facade is
-`/nix/store/pvwyh2bdw1jvqanwfmb2h6a0ka4ihc9r-dynamo-component-facade-1.6.0-0d7e775709`;
+`/nix/store/gig2imm94kjrv2jbdqkyysfpgqnc1bmv-dynamo-component-facade-1.6.0-8468212130`;
 the complete bundle also builds as
-`/nix/store/dvkffqy8271pmgia5mlgvk5k3yl568da-dynamo-component-pipelines-0d7e775709`.
+`/nix/store/j7n9hn14s34c2595q1nr4h9w0055y24x-dynamo-component-pipelines-8468212130`.
 
 Build the bundle from a checkout of that envs branch, then publish only its runtime
 closure to the vCluster's existing NFS store export. Use the explicit vCluster
@@ -269,14 +270,19 @@ three immutable Nix executables are staged before it applies anything. It
 creates a separate `real-sglang-split` InferencePool, `real-qwen3-selector`,
 `real-qwen3-preprocessor`, and `real-qwen3-agw-generic`; the mocker pool and
 benchmark gateway remain unchanged. The selector's Pod watch supplies the
-actual worker Pod endpoint. The smoke script compares that endpoint with the
-Ready Pod IP, calls the preprocessor and native worker over gRPC, then asserts
+actual worker Pod endpoint. After native engine startup, the facade patches its
+own Pod annotation with the engine's discovered KV block size, block count,
+batch-token limit, model name, and stable Pod UID. It fails closed if this
+opt-in publication fails; the fixture grants only Pod get/patch to its worker
+ServiceAccount. The smoke script checks the annotation and compares the
+selector endpoint with the Ready Pod IP, calls the preprocessor and native
+worker over gRPC, then asserts
 an OpenAI-compatible streamed response through AGW with a `stop` finish
 reason and `[DONE]`. The model's `chat_template_kwargs.enable_thinking=false`
 keeps this correctness check about the final answer rather than truncated
 thinking tokens. The fixture is aggregate-only; split vLLM and disaggregated
-real-worker verification remain pending. The worker Pod annotation currently
-publishes model identity only; runtime KV capacity still needs a publisher.
+real-worker verification remain pending. Its selector sees the runtime KV
+capacity, but this fixture does not yet enable native SGLang KV-event emission.
 See [the captured real-SGLang run](results/2026-09-25-real-sglang-split/README.md).
 
 The retained evidence is organized as follows:

@@ -12,11 +12,13 @@ the thin `dynamo-component-facade sglang-worker`; the preprocessor and
 selector were separate CPU Deployments. AGW generic was the HTTP entry point.
 No Dynamo distributed runtime or NATS was started for this path.
 
-The facade is Nix-built from Dynamo commit `0d7e775709` at
-`/nix/store/pvwyh2bdw1jvqanwfmb2h6a0ka4ihc9r-dynamo-component-facade-1.6.0-0d7e775709`.
+The facade is Nix-built from Dynamo commit `8468212130` at
+`/nix/store/gig2imm94kjrv2jbdqkyysfpgqnc1bmv-dynamo-component-facade-1.6.0-8468212130`.
 The AGW binary was the previously benchmarked immutable bundle
 `/nix/store/g7achknzv9ibixmfdaxgjy4a3pp33dp5-dynamo-component-pipelines-98676215fa`.
-The newer complete bundle also built, but was not rolled into this isolated
+The newer complete bundle
+`/nix/store/j7n9hn14s34c2595q1nr4h9w0055y24x-dynamo-component-pipelines-8468212130`
+also built, but was not rolled into this isolated
 route; its AGW source pin is unchanged. Both engine and facade ran from a
 read-only Nix store mounted into slim BusyBox containers.
 
@@ -43,7 +45,9 @@ Observed successful output:
   "generated_text": "Hello! How can I assist you today?",
   "selector_endpoint": "http://<ready-worker-pod-ip>:50051",
   "gateway_stream_chunks": 10,
-  "gateway_finish_reason": "stop"
+  "gateway_finish_reason": "stop",
+  "runtime_block_size": 64,
+  "runtime_total_kv_blocks": 122
 }
 ```
 
@@ -53,6 +57,16 @@ stream ends with `[DONE]`. Its request includes `enable_thinking=false` and
 `temperature=0`, so both direct gRPC and full-gateway paths return final
 answer content containing “hello” and a normal `stop` reason.
 
+The native sidecar `LLMEngine::start` returned these runtime values. The facade
+published one atomic Pod annotation with `block_size=64`,
+`total_kv_blocks=122`, `max_num_batched_tokens=16384`, and
+`stable_routing_id=<Pod UID>` before its gRPC health became Ready. The
+selector's live log showed `total_kv_blocks=Some(122)` on the subsequent
+KV-routing selection. This proves the EPP-derived Pod watcher consumed the
+post-start metadata, not merely that the annotation was written. This fixture
+does not yet enable SGLang's native KV-event stream, so it does not establish
+live KV-cache overlap tracking for real-worker routing.
+
 This verifies one aggregate SGLang replica and one model. It does not prove
-multi-model routing, dynamic KV-capacity publication, a native vLLM split
+multi-model routing, dynamic KV-capacity updates after startup, a native vLLM split
 worker, disaggregated prefill/decode, or performance parity with GPU workers.
