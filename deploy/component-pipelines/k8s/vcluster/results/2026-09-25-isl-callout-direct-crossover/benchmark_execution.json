@@ -1,0 +1,371 @@
+{
+  "captured_at": "2026-09-25T08:16:17Z",
+  "vcluster_api_server": "https://gateway-poc.mkhadkevich-dev:443",
+  "namespace": "dynamo-components-v2",
+  "jobs": [
+    {
+      "name": "nixv2-isl4000-envoy-callouts-r6",
+      "uid": "3762ce20-b20b-4ca5-b4b4-102819a00066",
+      "created_at": "2026-09-25T08:06:39Z",
+      "completed_at": "2026-09-25T08:09:16Z",
+      "succeeded": 6,
+      "failed": 0,
+      "image": "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
+      "command": [
+        "/bin/bash",
+        "-lc"
+      ],
+      "args": [
+        "set -euo pipefail\nwhile [ \"$(date +%s)\" -lt \"1790323689\" ]; do sleep 0.2; done\nexport HF_HOME=/tmp/hf HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1\ncache=/tmp/hf/hub/models--Qwen--Qwen2.5-0.5B-Instruct\nmkdir -p \"$cache/snapshots\" \"$cache/refs\"\nln -s /model/tokenizer \"$cache/snapshots/nix\"\nprintf nix > \"$cache/refs/main\"\ndataset=/shared/aiperf/static-qwen2.5-0.5b/isl4000-claude-sonnet-raw.jsonl\ntest -s \"$dataset\"\nexec aiperf profile --url \"http://envoy-callouts:8080/v1/chat/completions\" \\\n  --model Qwen/Qwen2.5-0.5B-Instruct \\\n  --tokenizer Qwen/Qwen2.5-0.5B-Instruct \\\n  --endpoint-type chat --streaming --use-server-token-count \\\n  --use-legacy-max-tokens --custom-dataset-type raw_payload \\\n  --input-file \"$dataset\" --random-seed 42 \\\n  --concurrency 128 --benchmark-duration 45 \\\n  --export-level summary --record-processors 16 \\\n  --output-artifact-dir /shared/aiperf/results/nixv2-isl4000-envoy-callouts-r6/$(JOB_COMPLETION_INDEX)"
+      ],
+      "node_affinity": {
+        "requiredDuringSchedulingIgnoredDuringExecution": {
+          "nodeSelectorTerms": [
+            {
+              "matchExpressions": [
+                {
+                  "key": "kubernetes.io/hostname",
+                  "operator": "In",
+                  "values": [
+                    "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+                    "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "topology_spread": [
+        {
+          "labelSelector": {
+            "matchLabels": {
+              "benchmark-run": "nixv2-isl4000-envoy-callouts-r6"
+            }
+          },
+          "maxSkew": 1,
+          "topologyKey": "kubernetes.io/hostname",
+          "whenUnsatisfiable": "DoNotSchedule"
+        }
+      ],
+      "placement_evidence_complete": true,
+      "pods": [
+        {
+          "name": "nixv2-isl4000-envoy-callouts-r6-0-h6m57",
+          "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+          "phase": "Succeeded",
+          "started_at": "2026-09-25T08:06:39Z",
+          "finished_at": "2026-09-25T08:09:12Z"
+        },
+        {
+          "name": "nixv2-isl4000-envoy-callouts-r6-1-dn9v2",
+          "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+          "phase": "Succeeded",
+          "started_at": "2026-09-25T08:06:39Z",
+          "finished_at": "2026-09-25T08:09:14Z"
+        },
+        {
+          "name": "nixv2-isl4000-envoy-callouts-r6-2-b6vfd",
+          "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+          "phase": "Succeeded",
+          "started_at": "2026-09-25T08:06:39Z",
+          "finished_at": "2026-09-25T08:09:13Z"
+        },
+        {
+          "name": "nixv2-isl4000-envoy-callouts-r6-3-56rgm",
+          "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+          "phase": "Succeeded",
+          "started_at": "2026-09-25T08:06:39Z",
+          "finished_at": "2026-09-25T08:09:13Z"
+        },
+        {
+          "name": "nixv2-isl4000-envoy-callouts-r6-4-7c5nv",
+          "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+          "phase": "Succeeded",
+          "started_at": "2026-09-25T08:06:39Z",
+          "finished_at": "2026-09-25T08:09:13Z"
+        },
+        {
+          "name": "nixv2-isl4000-envoy-callouts-r6-5-jp478",
+          "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+          "phase": "Succeeded",
+          "started_at": "2026-09-25T08:06:39Z",
+          "finished_at": "2026-09-25T08:09:13Z"
+        }
+      ]
+    },
+    {
+      "name": "nixv2-isl4000-envoy-generic-r14",
+      "uid": "ed4cbc31-e220-4587-bf8c-ecb43e7a52a7",
+      "created_at": "2026-09-25T08:03:32Z",
+      "completed_at": "2026-09-25T08:06:08Z",
+      "succeeded": 6,
+      "failed": 0,
+      "image": "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
+      "command": [
+        "/bin/bash",
+        "-lc"
+      ],
+      "args": [
+        "set -euo pipefail\nwhile [ \"$(date +%s)\" -lt \"1790323502\" ]; do sleep 0.2; done\nexport HF_HOME=/tmp/hf HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1\ncache=/tmp/hf/hub/models--Qwen--Qwen2.5-0.5B-Instruct\nmkdir -p \"$cache/snapshots\" \"$cache/refs\"\nln -s /model/tokenizer \"$cache/snapshots/nix\"\nprintf nix > \"$cache/refs/main\"\ndataset=/shared/aiperf/static-qwen2.5-0.5b/isl4000-claude-sonnet-raw.jsonl\ntest -s \"$dataset\"\nexec aiperf profile --url \"http://envoy-independent:8080/v1/chat/completions\" \\\n  --model Qwen/Qwen2.5-0.5B-Instruct \\\n  --tokenizer Qwen/Qwen2.5-0.5B-Instruct \\\n  --endpoint-type chat --streaming --use-server-token-count \\\n  --use-legacy-max-tokens --custom-dataset-type raw_payload \\\n  --input-file \"$dataset\" --random-seed 42 \\\n  --concurrency 128 --benchmark-duration 45 \\\n  --export-level summary --record-processors 16 \\\n  --output-artifact-dir /shared/aiperf/results/nixv2-isl4000-envoy-generic-r14/$(JOB_COMPLETION_INDEX)"
+      ],
+      "node_affinity": {
+        "requiredDuringSchedulingIgnoredDuringExecution": {
+          "nodeSelectorTerms": [
+            {
+              "matchExpressions": [
+                {
+                  "key": "kubernetes.io/hostname",
+                  "operator": "In",
+                  "values": [
+                    "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+                    "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "topology_spread": [
+        {
+          "labelSelector": {
+            "matchLabels": {
+              "benchmark-run": "nixv2-isl4000-envoy-generic-r14"
+            }
+          },
+          "maxSkew": 1,
+          "topologyKey": "kubernetes.io/hostname",
+          "whenUnsatisfiable": "DoNotSchedule"
+        }
+      ],
+      "placement_evidence_complete": true,
+      "pods": [
+        {
+          "name": "nixv2-isl4000-envoy-generic-r14-0-cwl2p",
+          "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+          "phase": "Succeeded",
+          "started_at": "2026-09-25T08:03:32Z",
+          "finished_at": "2026-09-25T08:06:04Z"
+        },
+        {
+          "name": "nixv2-isl4000-envoy-generic-r14-1-scr7q",
+          "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+          "phase": "Succeeded",
+          "started_at": "2026-09-25T08:03:32Z",
+          "finished_at": "2026-09-25T08:06:06Z"
+        },
+        {
+          "name": "nixv2-isl4000-envoy-generic-r14-2-6kp6p",
+          "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+          "phase": "Succeeded",
+          "started_at": "2026-09-25T08:03:32Z",
+          "finished_at": "2026-09-25T08:06:06Z"
+        },
+        {
+          "name": "nixv2-isl4000-envoy-generic-r14-3-gz6wv",
+          "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+          "phase": "Succeeded",
+          "started_at": "2026-09-25T08:03:32Z",
+          "finished_at": "2026-09-25T08:06:06Z"
+        },
+        {
+          "name": "nixv2-isl4000-envoy-generic-r14-4-k4bnx",
+          "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+          "phase": "Succeeded",
+          "started_at": "2026-09-25T08:03:32Z",
+          "finished_at": "2026-09-25T08:06:06Z"
+        },
+        {
+          "name": "nixv2-isl4000-envoy-generic-r14-5-26cbr",
+          "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+          "phase": "Succeeded",
+          "started_at": "2026-09-25T08:03:32Z",
+          "finished_at": "2026-09-25T08:06:06Z"
+        }
+      ]
+    },
+    {
+      "name": "nixv2-isl4000-envoy-generic-r15",
+      "uid": "7ec41d73-6d5d-417d-887f-03b55c1c0977",
+      "created_at": "2026-09-25T08:09:44Z",
+      "completed_at": "2026-09-25T08:12:20Z",
+      "succeeded": 6,
+      "failed": 0,
+      "image": "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
+      "command": [
+        "/bin/bash",
+        "-lc"
+      ],
+      "args": [
+        "set -euo pipefail\nwhile [ \"$(date +%s)\" -lt \"1790323874\" ]; do sleep 0.2; done\nexport HF_HOME=/tmp/hf HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1\ncache=/tmp/hf/hub/models--Qwen--Qwen2.5-0.5B-Instruct\nmkdir -p \"$cache/snapshots\" \"$cache/refs\"\nln -s /model/tokenizer \"$cache/snapshots/nix\"\nprintf nix > \"$cache/refs/main\"\ndataset=/shared/aiperf/static-qwen2.5-0.5b/isl4000-claude-sonnet-raw.jsonl\ntest -s \"$dataset\"\nexec aiperf profile --url \"http://envoy-independent:8080/v1/chat/completions\" \\\n  --model Qwen/Qwen2.5-0.5B-Instruct \\\n  --tokenizer Qwen/Qwen2.5-0.5B-Instruct \\\n  --endpoint-type chat --streaming --use-server-token-count \\\n  --use-legacy-max-tokens --custom-dataset-type raw_payload \\\n  --input-file \"$dataset\" --random-seed 42 \\\n  --concurrency 128 --benchmark-duration 45 \\\n  --export-level summary --record-processors 16 \\\n  --output-artifact-dir /shared/aiperf/results/nixv2-isl4000-envoy-generic-r15/$(JOB_COMPLETION_INDEX)"
+      ],
+      "node_affinity": {
+        "requiredDuringSchedulingIgnoredDuringExecution": {
+          "nodeSelectorTerms": [
+            {
+              "matchExpressions": [
+                {
+                  "key": "kubernetes.io/hostname",
+                  "operator": "In",
+                  "values": [
+                    "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+                    "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "topology_spread": [
+        {
+          "labelSelector": {
+            "matchLabels": {
+              "benchmark-run": "nixv2-isl4000-envoy-generic-r15"
+            }
+          },
+          "maxSkew": 1,
+          "topologyKey": "kubernetes.io/hostname",
+          "whenUnsatisfiable": "DoNotSchedule"
+        }
+      ],
+      "placement_evidence_complete": true,
+      "pods": [
+        {
+          "name": "nixv2-isl4000-envoy-generic-r15-0-dbzm2",
+          "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+          "phase": "Succeeded",
+          "started_at": "2026-09-25T08:09:44Z",
+          "finished_at": "2026-09-25T08:12:18Z"
+        },
+        {
+          "name": "nixv2-isl4000-envoy-generic-r15-1-vwcfm",
+          "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+          "phase": "Succeeded",
+          "started_at": "2026-09-25T08:09:44Z",
+          "finished_at": "2026-09-25T08:12:18Z"
+        },
+        {
+          "name": "nixv2-isl4000-envoy-generic-r15-2-frpcm",
+          "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+          "phase": "Succeeded",
+          "started_at": "2026-09-25T08:09:44Z",
+          "finished_at": "2026-09-25T08:12:17Z"
+        },
+        {
+          "name": "nixv2-isl4000-envoy-generic-r15-3-mmdhf",
+          "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+          "phase": "Succeeded",
+          "started_at": "2026-09-25T08:09:44Z",
+          "finished_at": "2026-09-25T08:12:18Z"
+        },
+        {
+          "name": "nixv2-isl4000-envoy-generic-r15-4-g8k7c",
+          "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+          "phase": "Succeeded",
+          "started_at": "2026-09-25T08:09:44Z",
+          "finished_at": "2026-09-25T08:12:18Z"
+        },
+        {
+          "name": "nixv2-isl4000-envoy-generic-r15-5-9znb5",
+          "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+          "phase": "Succeeded",
+          "started_at": "2026-09-25T08:09:44Z",
+          "finished_at": "2026-09-25T08:12:18Z"
+        }
+      ]
+    },
+    {
+      "name": "nixv2-isl4000-envoy-generic-r16",
+      "uid": "7a2720ee-1922-4719-a510-8d12281375d3",
+      "created_at": "2026-09-25T08:13:04Z",
+      "completed_at": "2026-09-25T08:15:41Z",
+      "succeeded": 6,
+      "failed": 0,
+      "image": "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
+      "command": [
+        "/bin/bash",
+        "-lc"
+      ],
+      "args": [
+        "set -euo pipefail\nwhile [ \"$(date +%s)\" -lt \"1790324074\" ]; do sleep 0.2; done\nexport HF_HOME=/tmp/hf HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1\ncache=/tmp/hf/hub/models--Qwen--Qwen2.5-0.5B-Instruct\nmkdir -p \"$cache/snapshots\" \"$cache/refs\"\nln -s /model/tokenizer \"$cache/snapshots/nix\"\nprintf nix > \"$cache/refs/main\"\ndataset=/shared/aiperf/static-qwen2.5-0.5b/isl4000-claude-sonnet-raw.jsonl\ntest -s \"$dataset\"\nexec aiperf profile --url \"http://envoy-independent:8080/v1/chat/completions\" \\\n  --model Qwen/Qwen2.5-0.5B-Instruct \\\n  --tokenizer Qwen/Qwen2.5-0.5B-Instruct \\\n  --endpoint-type chat --streaming --use-server-token-count \\\n  --use-legacy-max-tokens --custom-dataset-type raw_payload \\\n  --input-file \"$dataset\" --random-seed 42 \\\n  --concurrency 128 --benchmark-duration 45 \\\n  --export-level summary --record-processors 16 \\\n  --output-artifact-dir /shared/aiperf/results/nixv2-isl4000-envoy-generic-r16/$(JOB_COMPLETION_INDEX)"
+      ],
+      "node_affinity": {
+        "requiredDuringSchedulingIgnoredDuringExecution": {
+          "nodeSelectorTerms": [
+            {
+              "matchExpressions": [
+                {
+                  "key": "kubernetes.io/hostname",
+                  "operator": "In",
+                  "values": [
+                    "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+                    "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "topology_spread": [
+        {
+          "labelSelector": {
+            "matchLabels": {
+              "benchmark-run": "nixv2-isl4000-envoy-generic-r16"
+            }
+          },
+          "maxSkew": 1,
+          "topologyKey": "kubernetes.io/hostname",
+          "whenUnsatisfiable": "DoNotSchedule"
+        }
+      ],
+      "placement_evidence_complete": true,
+      "pods": [
+        {
+          "name": "nixv2-isl4000-envoy-generic-r16-0-4d2tq",
+          "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+          "phase": "Succeeded",
+          "started_at": "2026-09-25T08:13:04Z",
+          "finished_at": "2026-09-25T08:15:37Z"
+        },
+        {
+          "name": "nixv2-isl4000-envoy-generic-r16-1-lpmhk",
+          "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+          "phase": "Succeeded",
+          "started_at": "2026-09-25T08:13:04Z",
+          "finished_at": "2026-09-25T08:15:38Z"
+        },
+        {
+          "name": "nixv2-isl4000-envoy-generic-r16-2-w8g6h",
+          "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+          "phase": "Succeeded",
+          "started_at": "2026-09-25T08:13:04Z",
+          "finished_at": "2026-09-25T08:15:38Z"
+        },
+        {
+          "name": "nixv2-isl4000-envoy-generic-r16-3-wzg55",
+          "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+          "phase": "Succeeded",
+          "started_at": "2026-09-25T08:13:04Z",
+          "finished_at": "2026-09-25T08:15:38Z"
+        },
+        {
+          "name": "nixv2-isl4000-envoy-generic-r16-4-7jl5w",
+          "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+          "phase": "Succeeded",
+          "started_at": "2026-09-25T08:13:04Z",
+          "finished_at": "2026-09-25T08:15:38Z"
+        },
+        {
+          "name": "nixv2-isl4000-envoy-generic-r16-5-tnzrm",
+          "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+          "phase": "Succeeded",
+          "started_at": "2026-09-25T08:13:04Z",
+          "finished_at": "2026-09-25T08:15:38Z"
+        }
+      ]
+    }
+  ]
+}
