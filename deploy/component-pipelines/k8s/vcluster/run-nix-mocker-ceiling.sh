@@ -9,8 +9,8 @@ set -euo pipefail
 shopt -s nullglob
 
 if [ "$#" -lt 2 ] || [ "$#" -gt 3 ] || ! [[ "$1" =~ ^[0-9]+$ ]] ||
-  ! [[ "$2" =~ ^r[1-9][0-9]*$ ]] || ! [[ "${3:-base}" =~ ^(base|selector4|preprocessor8)$ ]]; then
-  echo "usage: $0 CLIENTS rN [base|selector4|preprocessor8]" >&2
+  ! [[ "$2" =~ ^r[1-9][0-9]*$ ]] || ! [[ "${3:-base}" =~ ^(base|selector4|preprocessor8|gateway12|isolated|envoy12)$ ]]; then
+  echo "usage: $0 CLIENTS rN [base|selector4|preprocessor8|gateway12|isolated|envoy12]" >&2
   exit 2
 fi
 clients=$1
@@ -18,10 +18,16 @@ trial=$2
 variant=${3:-base}
 selector_replicas=1
 preprocessor_replicas=4
+gateway_threads=8
+envoy_workers=6
 if [ "$variant" = selector4 ]; then
   selector_replicas=4
 elif [ "$variant" = preprocessor8 ]; then
   preprocessor_replicas=8
+elif [ "$variant" = gateway12 ]; then
+  gateway_threads=12
+elif [ "$variant" = envoy12 ]; then
+  envoy_workers=12
 fi
 if [ "$clients" -lt 6 ] || [ "$clients" -gt 24 ] || [ $((clients % 3)) -ne 0 ]; then
   echo "CLIENTS must be a multiple of 3 between 6 and 24" >&2
@@ -78,8 +84,13 @@ fi
     exit 2
   }
 "${kubectl_vc[@]}" get deployment envoy-independent -o json |
-  jq -e '(.spec.replicas == 1) and (.status.readyReplicas == 1)' >/dev/null || {
-    echo "envoy-independent must be exactly 1/1 Ready" >&2
+  jq -e --arg threads "$gateway_threads" --arg workers "$envoy_workers" '
+    (.spec.replicas == 1) and (.status.readyReplicas == 1) and
+    (.spec.template.spec.containers[0].args[3] == $workers) and
+    any(.spec.template.spec.containers[].env[]?;
+      .name == "GENERIC_PIPELINE_THREADS" and .value == $threads)
+  ' >/dev/null || {
+    echo "envoy-independent must be 1/1 Ready with $gateway_threads Tokio threads and $envoy_workers Envoy workers" >&2
     exit 2
   }
 for component in "dynamo-preprocessor:${preprocessor_replicas}" "dynamo-selector:${selector_replicas}" dynamo-benchmark-worker:16; do
@@ -91,6 +102,17 @@ for component in "dynamo-preprocessor:${preprocessor_replicas}" "dynamo-selector
       exit 2
     }
 done
+if [ "$variant" = isolated ] || [ "$variant" = envoy12 ]; then
+  "${kubectl_vc[@]}" get pods -l app=dynamo-benchmark-worker -o json |
+    jq -e --arg node "$AIPERF_NODE_C" '
+      (.items | length == 16) and
+      all(.items[]; .metadata.deletionTimestamp == null and
+          .spec.nodeName != $node and .status.containerStatuses[0].ready == true)
+    ' >/dev/null || {
+      echo "all 16 Ready synthetic workers must be off client node C" >&2
+      exit 2
+    }
+fi
 "${kubectl_vc[@]}" get deployment agw-static agw-generic envoy-callouts dynamo-frontend-reference -o json |
   jq -e 'all(.items[]; .spec.replicas == 0)' >/dev/null || {
     echo "another benchmark gateway has replicas" >&2
