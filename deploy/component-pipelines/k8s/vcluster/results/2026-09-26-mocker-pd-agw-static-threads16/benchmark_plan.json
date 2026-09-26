@@ -1,0 +1,87 @@
+{
+  "plan_id": "mocker-pd-agw-static-threads16-isl-diagnostic-v1",
+  "benchmark_series_id_by_workload": {
+    "short": "mocker-pd-agw-static-threads16-short-v1-2026-09-26",
+    "isl4000": "mocker-pd-agw-static-threads16-isl4000-v1-2026-09-26",
+    "mooncake": "mocker-pd-agw-static-threads16-mooncake-grace-v1-2026-09-26"
+  },
+  "question": "Does matching generic AGW's 16 worker threads close the static AGW P/D ISL4000 throughput gap at the original 200-microsecond preprocessor batch linger?",
+  "intent": "diagnostic characterization; single change from worker-pool candidate is gateway workerThreads 12 to 16",
+  "candidate": {
+    "static_core_source_commit": "dafb4898e4",
+    "agentgateway_nix_output": "/nix/store/nddp59k8czydjigx61bcil2z8ixfmsv6-agentgateway-component-pipeline-0.0.0-b14ca87d0a",
+    "facade_nix_output": "/nix/store/w77ac5nlyc9543kgkwdxpf9a7yk5l7y6-dynamo-component-facade-1.6.0-995c04e74f",
+    "pipeline": "compiled prepare -> GenerateRaw prefill -> select -> Generate decode",
+    "prefill_transport": "32 independent tonic HTTP/2 connections round-robin through the Kubernetes Service",
+    "gateway_replicas": 1,
+    "gateway_worker_threads": 16,
+    "preprocessor_replicas": 4,
+    "selector_replicas": 4,
+    "prefill_replicas": 4,
+    "decode_replicas": 16,
+    "worker_kind": "synthetic benchmark-only Dynamo AsyncEngine behind the real facade",
+    "worker_handoff_contract": "prefill emits benchmark_handoff; decode rejects requests without it",
+    "selector_transport": "32 independent tonic HTTP/2 connections round-robin through the Kubernetes Service",
+    "worker_transport": "32 independent lazy tonic HTTP/2 connections per selected worker endpoint, matching generic transport",
+    "preprocess_batch_linger_us": 200
+  },
+  "execution": {
+    "vcluster_server": "https://gateway-poc.mkhadkevich-dev:443",
+    "namespace": "dynamo-components-v2",
+    "endpoint": "http://dynamo-pd-agw-static:8080/v1/chat/completions",
+    "model": "Qwen/Qwen2.5-0.5B-Instruct",
+    "tokenizer": "Qwen/Qwen2.5-0.5B-Instruct",
+    "endpoint_type": "chat",
+    "streaming": true,
+    "clients": 6,
+    "concurrency_per_client": 128,
+    "benchmark_duration_seconds": 45,
+    "repetitions_per_workload": 1,
+    "seed": 42,
+    "aiperf_version": "0.12.0",
+    "aiperf_image": "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
+    "aiperf_version_resolution": "Reference-reproduction exception: prototype and paired gateway replays pin 0.12.0; the 0.13.0 single-manager Mooncake preparation failed before measurement in this campaign.",
+    "aiperf_nodes": [
+      "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4"
+    ],
+    "measurement_limit_seconds": 1800,
+    "raw_summary_export": true,
+    "per_request_export": false
+  },
+  "workloads": {
+    "short": {
+      "source": "frozen_reference_raw_payload",
+      "path": "/shared/aiperf/static-qwen2.5-0.5b/short-claude-sonnet-raw.jsonl",
+      "sha256": "ab030551a31fb4ac8e7a864a940862a68bc0d386b152b4aba7bc249322833426",
+      "schedule": "concurrency_128_per_client",
+      "benchmark_duration_seconds": 45
+    },
+    "isl4000": {
+      "source": "frozen_reference_raw_payload",
+      "path": "/shared/aiperf/static-qwen2.5-0.5b/isl4000-claude-sonnet-raw.jsonl",
+      "sha256": "3ad382586f5417f4255d7eea774700d9817bc39acbc7b537e2efa7d89145c743",
+      "schedule": "concurrency_128_per_client",
+      "benchmark_duration_seconds": 45
+    },
+    "mooncake": {
+      "source": "frozen_reference_trace_with_prebuilt_mmap_cache",
+      "path": "/shared/aiperf/mooncake-qwen2.5-0.5b/mooncake-512-context.jsonl",
+      "sha256": "28a94e9bc1b63fdc88e5217bdd5c647a0487c08c83bdc64a814ec0840562f550",
+      "rows_per_client": 22699,
+      "schedule": "fixed_trace_timestamps_with_one_second_completion_grace",
+      "benchmark_duration_seconds": 46,
+      "isl_block_size": 512,
+      "tokenization_during_measurement": false
+    }
+  },
+  "metrics": [
+    "successful_requests_per_second",
+    "output_tokens_per_second",
+    "request_latency",
+    "errors",
+    "cancelled"
+  ],
+  "quality_gates": "One active P/D gateway, six clients on pinned nodes, zero errors/cancellations, exact dataset hashes, full Mooncake trace with mmap cache hits, live pinned AGW binary and prefill endpoint confirmed",
+  "comparison_limit": "Summary-level characterization has no merged per-request percentiles. Different series and client-start skew prevent promotion-grade direct deltas versus older gateway results. Synthetic workers do not measure GPU inference or NIXL."
+}
