@@ -1,5 +1,7 @@
 {
   "series_id": "accf6af-mooncake-client-placement-2026-09-25",
+  "status": "invalid",
+  "next_action": "stop",
   "evidence_scope": "summary-level vCluster mocker throughput and client-placement diagnostic, not a promotion-grade request-ID, tail-SLO, or GPU audit",
   "plan_sha256": "58ad8caa1175ff8458e023f3786393129c8c2fe7eb7ba7099b064ae86d2dca53",
   "trace_sha256": "28a94e9bc1b63fdc88e5217bdd5c647a0487c08c83bdc64a814ec0840562f550",
@@ -14,7 +16,9 @@
   "client_nodes": 3,
   "clients_per_node": 8,
   "nominal_offered_rps": 12106.133333333333,
-  "successful_rps": 8951.77921174643,
+  "sum_of_client_reported_rps": 8951.77921174643,
+  "measured_phase_start_range_utc": ["2026-09-26T02:14:15.742323", "2026-09-26T02:14:19.755577"],
+  "measured_phase_end_range_utc": ["2026-09-26T02:15:01.388660", "2026-09-26T02:15:04.855258"],
   "requests_scheduled": 544776,
   "requests_successful": 407033,
   "replay_scheduler_degraded_clients": 24,
@@ -32,11 +36,12 @@
   ],
   "limitations": [
     "All 24 AIPerf clients flagged replay-schedule degradation; the nominal offered schedule was not faithfully delivered.",
+    "Client measured phases began about four seconds apart. The sum of their independently windowed RPS values is not a synchronized single-gateway rate.",
     "The two-node point belongs to a previous series, so the numerical 8.47% difference cannot be attributed causally to placement.",
     "AIPerf summary export has no request-level JSONL, so request-ID completeness and tail-metric recomputation are not independently auditable.",
     "Client nodes had 15 running other-namespace Pods at both occupancy snapshots; no synchronized neighbor or client CPU series was collected.",
     "The gateway cgroup CPU sample missed the measured phase and is not usable for saturation analysis; vCluster Metrics API was unavailable.",
     "No user SLO was specified, and workers were synthetic rather than production GPU workers."
   ],
-  "decision": "The clean absolute 8951.78 RPS result disproves 8252.72 RPS as a hard one-gateway ceiling, but scheduling degradation and cross-series comparison prevent a placement-effect or gateway-capacity claim. A stronger test needs less-contended load generation, faithful replay, and synchronized per-stage CPU profiles."
+  "decision": "The Job and response-integrity checks passed, but the planned fixed-schedule gateway-capacity measurement is invalid: all clients degraded the schedule and their profiling windows were not synchronized. The 8951.78 sum of client-reported RPS is diagnostic only; it neither proves a placement gain nor disproves an 8252.72 RPS hard one-gateway ceiling. A new series needs faithful replay, synchronized windows, and per-stage CPU profiles."
 }
