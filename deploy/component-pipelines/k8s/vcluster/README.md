@@ -650,3 +650,9 @@ differences of mixed sign. Replacing the static worker-channel map's async
 mutex did not materially narrow the static/generic gap; the candidate Nix
 output and raw audit evidence remain available for reproduction, while the
 default static implementation keeps its prior lock.
+
+The follow-up [bulk-drain A/B](results/2026-09-26-mocker-pd-static-bulk-drain/README.md)
+used the same Nix binary for three interleaved runs per arm. Draining the
+ready queue into concurrent bounded preprocessing RPCs changed collection
+behavior but yielded medians of 6,427 RPS off versus 6,321 RPS on. All six
+audits passed, and the default static implementation remains unchanged.
