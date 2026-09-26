@@ -1,7 +1,14 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{collections::HashSet, sync::Arc};
+use std::{
+    collections::HashSet,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
+    time::{Duration, Instant},
+};
 
 use dynamo_llm::{
     preprocessor::{MultimodalCounts, OpenAIPreprocessor, PreprocessRequestOptions},
@@ -26,6 +33,21 @@ pub struct PreprocessorFacade {
     max_batch_bytes: usize,
     max_concurrency: usize,
     concurrency: Arc<Semaphore>,
+    batch_stats: Option<Arc<BatchStats>>,
+}
+
+#[derive(Default)]
+struct BatchStats {
+    batches: AtomicU64,
+    items: AtomicU64,
+    bytes: AtomicU64,
+    handler_us: AtomicU64,
+    permit_wait_us: AtomicU64,
+    prepare_us: AtomicU64,
+}
+
+fn elapsed_us(start: Instant) -> u64 {
+    start.elapsed().as_micros().min(u64::MAX as u128) as u64
 }
 
 impl PreprocessorFacade {
@@ -85,12 +107,42 @@ impl PreprocessorFacade {
         anyhow::ensure!(max_batch_items > 0, "max_batch_items must be positive");
         anyhow::ensure!(max_batch_bytes > 0, "max_batch_bytes must be positive");
         anyhow::ensure!(max_concurrency > 0, "max_concurrency must be positive");
+        let stats_interval = std::env::var("DYN_PREPROCESSOR_STATS_INTERVAL_SECS")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .filter(|interval| (1..=3600).contains(interval));
+        let batch_stats = stats_interval.map(|interval| {
+            let stats = Arc::new(BatchStats::default());
+            let reporter = Arc::downgrade(&stats);
+            tokio::spawn(async move {
+                let mut timer = tokio::time::interval(Duration::from_secs(interval));
+                timer.tick().await;
+                loop {
+                    timer.tick().await;
+                    let Some(stats) = reporter.upgrade() else {
+                        break;
+                    };
+                    tracing::debug!(
+                        target: "dynamo_preprocessor_batch_stats",
+                        batches = stats.batches.load(Ordering::Relaxed),
+                        items = stats.items.load(Ordering::Relaxed),
+                        bytes = stats.bytes.load(Ordering::Relaxed),
+                        handler_us = stats.handler_us.load(Ordering::Relaxed),
+                        permit_wait_us = stats.permit_wait_us.load(Ordering::Relaxed),
+                        prepare_us = stats.prepare_us.load(Ordering::Relaxed),
+                        "preprocessor batch summary",
+                    );
+                }
+            });
+            stats
+        });
         Ok(Self {
             processor,
             max_batch_items,
             max_batch_bytes,
             max_concurrency,
             concurrency: Arc::new(Semaphore::new(max_concurrency)),
+            batch_stats,
         })
     }
 
@@ -206,6 +258,7 @@ impl Preprocessor for PreprocessorFacade {
         &self,
         request: Request<PreprocessBatchRequest>,
     ) -> Result<Response<PreprocessBatchResponse>, Status> {
+        let started_at = self.batch_stats.as_ref().map(|_| Instant::now());
         let batch = request.into_inner();
         if batch.items.len() > self.max_batch_items {
             return Err(Status::resource_exhausted("batch item limit exceeded"));
@@ -230,13 +283,33 @@ impl Preprocessor for PreprocessorFacade {
         }
         let processor = self.processor.clone();
         let concurrency = self.concurrency.clone();
+        let stats = self.batch_stats.clone();
+        let count = batch.items.len() as u64;
         let mut items = stream::iter(batch.items.into_iter().enumerate())
             .map(move |(index, item)| {
                 let processor = processor.clone();
                 let concurrency = concurrency.clone();
+                let stats = stats.clone();
                 async move {
+                    let permit_started_at = stats.as_ref().map(|_| Instant::now());
                     let prepared = match concurrency.acquire_owned().await {
-                        Ok(_permit) => Self::prepare_one(processor, item).await,
+                        Ok(_permit) => {
+                            let prepare_started_at = permit_started_at.map(|start| {
+                                if let Some(stats) = &stats {
+                                    stats
+                                        .permit_wait_us
+                                        .fetch_add(elapsed_us(start), Ordering::Relaxed);
+                                }
+                                Instant::now()
+                            });
+                            let prepared = Self::prepare_one(processor, item).await;
+                            if let (Some(stats), Some(start)) = (&stats, prepare_started_at) {
+                                stats
+                                    .prepare_us
+                                    .fetch_add(elapsed_us(start), Ordering::Relaxed);
+                            }
+                            prepared
+                        }
                         Err(_) => PreparedItem {
                             item_id: item.item_id,
                             error: Some(item_error(
@@ -254,6 +327,14 @@ impl Preprocessor for PreprocessorFacade {
             .collect::<Vec<_>>()
             .await;
         items.sort_unstable_by_key(|(index, _)| *index);
+        if let (Some(stats), Some(start)) = (&self.batch_stats, started_at) {
+            stats.batches.fetch_add(1, Ordering::Relaxed);
+            stats.items.fetch_add(count, Ordering::Relaxed);
+            stats.bytes.fetch_add(bytes as u64, Ordering::Relaxed);
+            stats
+                .handler_us
+                .fetch_add(elapsed_us(start), Ordering::Relaxed);
+        }
         Ok(Response::new(PreprocessBatchResponse {
             items: items.into_iter().map(|(_, item)| item).collect(),
         }))
