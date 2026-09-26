@@ -32,6 +32,7 @@ const MAX_GRPC_CHANNELS_PER_ENDPOINT: usize = 256;
 const DEFAULT_PREPROCESS_BATCH_MAX: usize = 32;
 const DEFAULT_PREPROCESS_BATCH_LINGER_US: u64 = 200;
 const DEFAULT_PREPROCESS_QUEUE_CAPACITY: usize = 8192;
+const MAX_PREPROCESS_BATCH_SHARDS: usize = 32;
 
 fn duration_us(duration: Duration) -> u64 {
     duration.as_micros().min(u64::MAX as u128) as u64
@@ -57,7 +58,8 @@ struct BatchSummary {
 
 #[derive(Clone)]
 struct PreprocessBatcher {
-    sender: mpsc::Sender<PreprocessBatchItem>,
+    senders: Arc<[mpsc::Sender<PreprocessBatchItem>]>,
+    next_sender: Arc<AtomicUsize>,
     is_stats_enabled: bool,
 }
 
@@ -73,6 +75,11 @@ impl PreprocessBatcher {
             .and_then(|value| value.parse().ok())
             .unwrap_or(DEFAULT_PREPROCESS_QUEUE_CAPACITY)
             .clamp(max_batch, 1_048_576);
+        let shards = std::env::var("DYN_PREPROCESS_BATCH_SHARDS")
+            .ok()
+            .and_then(|value| value.parse::<usize>().ok())
+            .unwrap_or(1)
+            .clamp(1, MAX_PREPROCESS_BATCH_SHARDS);
         let stats_every = std::env::var("DYN_STATIC_BATCH_STATS_EVERY")
             .ok()
             .and_then(|value| value.parse::<usize>().ok())
@@ -109,143 +116,163 @@ impl PreprocessBatcher {
                 }
             });
         }
-        let (sender, mut receiver) = mpsc::channel::<PreprocessBatchItem>(queue_capacity);
-        tokio::spawn(async move {
-            let mut batch_index = 0usize;
-            while let Some(first) = receiver.recv().await {
-                batch_index = batch_index.wrapping_add(1);
-                let should_emit_stats = stats_every > 0 && batch_index % stats_every == 0;
-                let received_at = (should_emit_stats || summary.is_some()).then(Instant::now);
-                let mut batch = Vec::with_capacity(max_batch);
-                batch.push(first);
-                if linger_us == 0 {
-                    tokio::task::yield_now().await;
-                    while batch.len() < max_batch {
-                        match receiver.try_recv() {
-                            Ok(item) => batch.push(item),
-                            Err(_) => break,
+        let mut senders = Vec::with_capacity(shards);
+        for _ in 0..shards {
+            let (sender, mut receiver) = mpsc::channel::<PreprocessBatchItem>(
+                queue_capacity.div_ceil(shards).max(max_batch),
+            );
+            senders.push(sender);
+            let preprocessors = preprocessors.clone();
+            let next_preprocessor = next_preprocessor.clone();
+            let summary = summary.clone();
+            tokio::spawn(async move {
+                let mut batch_index = 0usize;
+                while let Some(first) = receiver.recv().await {
+                    batch_index = batch_index.wrapping_add(1);
+                    let should_emit_stats = stats_every > 0 && batch_index % stats_every == 0;
+                    let received_at = (should_emit_stats || summary.is_some()).then(Instant::now);
+                    let mut batch = Vec::with_capacity(max_batch);
+                    batch.push(first);
+                    if linger_us == 0 {
+                        tokio::task::yield_now().await;
+                        while batch.len() < max_batch {
+                            match receiver.try_recv() {
+                                Ok(item) => batch.push(item),
+                                Err(_) => break,
+                            }
+                        }
+                    } else {
+                        let deadline = Instant::now() + Duration::from_micros(linger_us);
+                        while batch.len() < max_batch {
+                            let remaining = deadline.saturating_duration_since(Instant::now());
+                            if remaining.is_zero() {
+                                break;
+                            }
+                            match tokio::time::timeout(remaining, receiver.recv()).await {
+                                Ok(Some(item)) => batch.push(item),
+                                _ => break,
+                            }
                         }
                     }
-                } else {
-                    let deadline = Instant::now() + Duration::from_micros(linger_us);
-                    while batch.len() < max_batch {
-                        let remaining = deadline.saturating_duration_since(Instant::now());
-                        if remaining.is_zero() {
-                            break;
-                        }
-                        match tokio::time::timeout(remaining, receiver.recv()).await {
-                            Ok(Some(item)) => batch.push(item),
-                            _ => break,
-                        }
-                    }
-                }
 
-                let diagnostics = received_at.map(|received_at| {
-                    let collected_at = Instant::now();
-                    let enqueue_to_recv_us = batch[0]
-                        .enqueued_at
-                        .map(|enqueued_at| duration_us(received_at.duration_since(enqueued_at)))
-                        .unwrap_or_default();
-                    (
-                        batch.len(),
-                        enqueue_to_recv_us,
-                        duration_us(collected_at.duration_since(received_at)),
-                        receiver.len(),
-                    )
-                });
-                if let (Some(summary), Some((size, queue_wait_us, collect_us, queue_depth))) =
-                    (&summary, &diagnostics)
-                {
-                    summary.batches.fetch_add(1, Ordering::Relaxed);
-                    summary.items.fetch_add(*size as u64, Ordering::Relaxed);
-                    summary
-                        .queue_wait_us
-                        .fetch_add(*queue_wait_us, Ordering::Relaxed);
-                    summary.collect_us.fetch_add(*collect_us, Ordering::Relaxed);
-                    summary
-                        .queue_depth
-                        .fetch_add(*queue_depth as u64, Ordering::Relaxed);
-                }
-                let index = next_preprocessor.fetch_add(1, Ordering::Relaxed) % preprocessors.len();
-                let mut client = preprocessors[index].clone();
-                let summary = summary.clone();
-                tokio::spawn(async move {
-                    let (requests, replies): (Vec<_>, Vec<_>) = batch
-                        .into_iter()
-                        .map(|item| (item.request, item.reply))
-                        .unzip();
-                    let expected_ids = requests
-                        .iter()
-                        .map(|item| item.item_id.clone())
-                        .collect::<Vec<_>>();
-                    let rpc_started_at = diagnostics.as_ref().map(|_| Instant::now());
-                    let result = client
-                        .prepare_batch(dynamo_component_facades::proto::PreprocessBatchRequest {
-                            items: requests,
-                        })
-                        .await;
-                    let rpc_us = rpc_started_at.map(|start| duration_us(start.elapsed()));
-                    if let Some(summary) = summary {
-                        summary.rpc_completed.fetch_add(1, Ordering::Relaxed);
-                        summary
-                            .rpc_us
-                            .fetch_add(rpc_us.unwrap_or_default(), Ordering::Relaxed);
-                        if result.is_err() {
-                            summary.rpc_transport_errors.fetch_add(1, Ordering::Relaxed);
-                        }
-                    }
-                    if let Some((size, enqueue_to_recv_us, collect_us, queue_depth)) = diagnostics {
-                        tracing::trace!(
-                            size = size as u64,
+                    let diagnostics = received_at.map(|received_at| {
+                        let collected_at = Instant::now();
+                        let enqueue_to_recv_us = batch[0]
+                            .enqueued_at
+                            .map(|enqueued_at| duration_us(received_at.duration_since(enqueued_at)))
+                            .unwrap_or_default();
+                        (
+                            batch.len(),
                             enqueue_to_recv_us,
-                            collect_us,
-                            queue_depth = queue_depth as u64,
-                            rpc_us = rpc_us.unwrap_or_default(),
-                            is_ok = result.is_ok(),
-                            "static batch sample",
-                        );
+                            duration_us(collected_at.duration_since(received_at)),
+                            receiver.len(),
+                        )
+                    });
+                    if let (Some(summary), Some((size, queue_wait_us, collect_us, queue_depth))) =
+                        (&summary, &diagnostics)
+                    {
+                        summary.batches.fetch_add(1, Ordering::Relaxed);
+                        summary.items.fetch_add(*size as u64, Ordering::Relaxed);
+                        summary
+                            .queue_wait_us
+                            .fetch_add(*queue_wait_us, Ordering::Relaxed);
+                        summary.collect_us.fetch_add(*collect_us, Ordering::Relaxed);
+                        summary
+                            .queue_depth
+                            .fetch_add(*queue_depth as u64, Ordering::Relaxed);
                     }
-                    match result {
-                        Ok(response) => {
-                            let items = response.into_inner().items;
-                            let valid = items.len() == replies.len()
-                                && items
-                                    .iter()
-                                    .zip(&expected_ids)
-                                    .all(|(item, expected)| item.item_id == *expected);
-                            if valid {
-                                for (reply, item) in replies.into_iter().zip(items) {
-                                    let _ = reply.send(Ok(item));
-                                }
-                            } else {
-                                for reply in replies {
-                                    let _ = reply.send(Err(tonic::Status::internal(
+                    let index =
+                        next_preprocessor.fetch_add(1, Ordering::Relaxed) % preprocessors.len();
+                    let mut client = preprocessors[index].clone();
+                    let summary = summary.clone();
+                    tokio::spawn(async move {
+                        let (requests, replies): (Vec<_>, Vec<_>) = batch
+                            .into_iter()
+                            .map(|item| (item.request, item.reply))
+                            .unzip();
+                        let expected_ids = requests
+                            .iter()
+                            .map(|item| item.item_id.clone())
+                            .collect::<Vec<_>>();
+                        let rpc_started_at = diagnostics.as_ref().map(|_| Instant::now());
+                        let result = client
+                            .prepare_batch(
+                                dynamo_component_facades::proto::PreprocessBatchRequest {
+                                    items: requests,
+                                },
+                            )
+                            .await;
+                        let rpc_us = rpc_started_at.map(|start| duration_us(start.elapsed()));
+                        if let Some(summary) = summary {
+                            summary.rpc_completed.fetch_add(1, Ordering::Relaxed);
+                            summary
+                                .rpc_us
+                                .fetch_add(rpc_us.unwrap_or_default(), Ordering::Relaxed);
+                            if result.is_err() {
+                                summary.rpc_transport_errors.fetch_add(1, Ordering::Relaxed);
+                            }
+                        }
+                        if let Some((size, enqueue_to_recv_us, collect_us, queue_depth)) =
+                            diagnostics
+                        {
+                            tracing::trace!(
+                                size = size as u64,
+                                enqueue_to_recv_us,
+                                collect_us,
+                                queue_depth = queue_depth as u64,
+                                rpc_us = rpc_us.unwrap_or_default(),
+                                is_ok = result.is_ok(),
+                                "static batch sample",
+                            );
+                        }
+                        match result {
+                            Ok(response) => {
+                                let items = response.into_inner().items;
+                                let valid = items.len() == replies.len()
+                                    && items
+                                        .iter()
+                                        .zip(&expected_ids)
+                                        .all(|(item, expected)| item.item_id == *expected);
+                                if valid {
+                                    for (reply, item) in replies.into_iter().zip(items) {
+                                        let _ = reply.send(Ok(item));
+                                    }
+                                } else {
+                                    for reply in replies {
+                                        let _ = reply.send(Err(tonic::Status::internal(
                                         "preprocessor batch response did not preserve request order",
+                                    )));
+                                    }
+                                }
+                            }
+                            Err(status) => {
+                                for reply in replies {
+                                    let _ = reply.send(Err(tonic::Status::new(
+                                        status.code(),
+                                        status.message().to_string(),
                                     )));
                                 }
                             }
                         }
-                        Err(status) => {
-                            for reply in replies {
-                                let _ = reply.send(Err(tonic::Status::new(
-                                    status.code(),
-                                    status.message().to_string(),
-                                )));
-                            }
-                        }
-                    }
-                });
-            }
-        });
+                    });
+                }
+            });
+        }
         Self {
-            sender,
+            senders: Arc::from(senders),
+            next_sender: Arc::new(AtomicUsize::new(0)),
             is_stats_enabled: stats_every > 0 || summary_secs > 0,
         }
     }
 
     async fn prepare(&self, request: PreprocessItem) -> Result<PreparedItem, tonic::Status> {
         let (reply, receiver) = oneshot::channel();
-        self.sender
+        let index = if self.senders.len() == 1 {
+            0
+        } else {
+            self.next_sender.fetch_add(1, Ordering::Relaxed) % self.senders.len()
+        };
+        self.senders[index]
             .send(PreprocessBatchItem {
                 request,
                 reply,

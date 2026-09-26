@@ -37,6 +37,9 @@ batch_stats_every=${PD_BATCH_STATS_EVERY:-0}
 batch_summary_secs=${PD_BATCH_SUMMARY_SECS:-0}
 [[ $batch_summary_secs =~ ^[0-9]+$ ]] &&
   (( batch_summary_secs <= 3600 )) || exit 2
+batch_shards=${PD_PREPROCESS_BATCH_SHARDS:-1}
+[[ $batch_shards =~ ^[0-9]+$ ]] &&
+  (( batch_shards >= 1 && batch_shards <= 32 )) || exit 2
 rust_log=${PD_RUST_LOG:-}
 [[ -z $rust_log || $rust_log == warn ||
    $rust_log == warn,dynamo_static_pipeline=trace ||
@@ -76,7 +79,7 @@ config=$(jq -c --arg threads "$worker_threads" '
 apply_json "$config"
 
 source_deployment=$("${vc[@]}" get deployment agw-static -o json)
-deployment=$(jq -c --arg binary "$binary" --arg linger "$preprocess_linger_us" --arg batch_max "$preprocess_batch_max" --arg channels "$grpc_channels" --arg timing "$stage_timing_every" --arg batch_stats "$batch_stats_every" --arg summary_secs "$batch_summary_secs" --arg rust_log "$rust_log" '
+deployment=$(jq -c --arg binary "$binary" --arg linger "$preprocess_linger_us" --arg batch_max "$preprocess_batch_max" --arg channels "$grpc_channels" --arg timing "$stage_timing_every" --arg batch_stats "$batch_stats_every" --arg summary_secs "$batch_summary_secs" --arg batch_shards "$batch_shards" --arg rust_log "$rust_log" '
   {apiVersion,kind,metadata:{name:"dynamo-pd-agw-static"},spec:.spec}
   | .spec.replicas=1
   | .spec.selector.matchLabels.app="dynamo-pd-agw-static"
@@ -93,6 +96,9 @@ deployment=$(jq -c --arg binary "$binary" --arg linger "$preprocess_linger_us" -
   | .spec.template.spec.containers[0].env +=
       (if $summary_secs == "0" then []
        else [{name:"DYN_STATIC_BATCH_SUMMARY_SECS",value:$summary_secs}] end)
+  | .spec.template.spec.containers[0].env +=
+      (if $batch_shards == "1" then []
+       else [{name:"DYN_PREPROCESS_BATCH_SHARDS",value:$batch_shards}] end)
   | .spec.template.spec.containers[0].env +=
       (if $rust_log == "" then []
        else [{name:"RUST_LOG",value:$rust_log}] end)
