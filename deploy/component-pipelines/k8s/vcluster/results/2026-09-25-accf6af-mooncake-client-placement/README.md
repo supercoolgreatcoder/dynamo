@@ -9,21 +9,27 @@ per node). AIPerf 0.12.0 used the same digest-pinned cursor-free mmap reader
 overlay as the preceding fixed-reader series, and all 24 clients proved an
 mmap-cache HIT without tokenizer or composer work.
 
-| Placement | Clients | Nominal offered RPS | Successful RPS | Successful requests | Errors |
+| Placement | Clients | Nominal offered RPS | Sum of client-reported RPS | Successful requests | Errors |
 |---|---:|---:|---:|---:|---:|
 | Prior two-node run (context) | 24 | 12,106.13 | 8,252.72 | 375,387 | 0 |
 | This three-node run | 24 | 12,106.13 | 8,951.78 | 407,033 | 0 |
 
 The new Job completed 24/24 Pods, exactly eight on each planned node, with no
-exported errors or cancelled clients. It achieved an absolute rate above the
-previous 8.25k RPS plateau, so that plateau was **not a hard gateway ceiling**.
-The two-node number is from a different series and is contextual only: the
-8.47% numerical difference is not a controlled placement-effect estimate.
+exported errors or cancelled clients. The **sum of client-reported rates** is
+above the previous 8.25k RPS plateau, but this does **not** establish a higher
+synchronized gateway throughput or disprove that plateau as a hard ceiling.
+The client measured phases started between 02:14:15.742 and 02:14:19.756 UTC,
+a four-second spread, so summing per-client rates measured over different
+windows can exaggerate a shared gateway's single-window throughput. The
+two-node number is from a different series and is contextual only: the 8.47%
+numerical difference is not a controlled placement-effect estimate.
 The 45-second fixed schedule nominally contained 544,776 arrivals across the
 24 clients, but only 407,033 completed successfully. Every client reported
 replay-scheduler degradation (per-client p99 scheduling lag 9.38–12.25 s).
-This run therefore did not deliver the intended schedule faithfully and does
-not establish the gateway's maximum sustainable throughput or a latency SLO.
+This run therefore did not deliver the intended schedule faithfully. Its
+fixed-schedule benchmark audit is **invalid for a gateway-capacity claim**; it
+does not establish the gateway's maximum sustainable throughput or a latency
+SLO.
 
 Read-only client-node occupancy snapshots at 02:11:58 and 02:15:20 UTC each
 showed 15 running Pods in another namespace across the three nodes. Those
