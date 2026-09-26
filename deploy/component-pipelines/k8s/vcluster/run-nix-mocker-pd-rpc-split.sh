@@ -18,6 +18,8 @@ trial=$1
 [[ $VCLUSTER_EXPECTED_SERVER == https://gateway-poc.mkhadkevich-dev:443 ]] || exit 2
 [[ $VCLUSTER_NAMESPACE == dynamo-components-v2 ]] || exit 2
 [[ $PD_SPLIT_BINARY == /nix/store/*/bin/agentgateway ]] || exit 2
+lazy_channels=${PD_LAZY_CHANNELS:-0}
+[[ $lazy_channels == 0 || $lazy_channels == 1 ]] || exit 2
 actual_server=$(kubectl --kubeconfig "$VCLUSTER_KUBECONFIG" \
   config view --minify -o jsonpath='{.clusters[0].cluster.server}')
 [[ $actual_server == "$VCLUSTER_EXPECTED_SERVER" ]] || exit 2
@@ -25,13 +27,17 @@ vc=(kubectl --kubeconfig "$VCLUSTER_KUBECONFIG" -n "$VCLUSTER_NAMESPACE")
 "${vc[@]}" get jobs -o json |
   jq -e '[.items[] | select((.status.active // 0) > 0)] | length == 0' >/dev/null
 "${vc[@]}" get deployment dynamo-pd-agw-static -o json |
-  jq -e --arg binary "$PD_SPLIT_BINARY" '
+  jq -e --arg binary "$PD_SPLIT_BINARY" --arg lazy "$lazy_channels" '
     .spec.replicas == 1 and .status.readyReplicas == 1
     and .spec.template.spec.containers[0].command[0] == $binary
     and any(.spec.template.spec.containers[0].env[];
       .name == "DYN_STATIC_STAGE_TIMING_EVERY" and .value == "1000")
     and any(.spec.template.spec.containers[0].env[];
       .name == "RUST_LOG" and .value == "warn,dynamo_static_rpc_split=debug")
+    and (if $lazy == "0" then
+      all(.spec.template.spec.containers[0].env[]; .name != "DYN_STATIC_LAZY_CHANNELS")
+      else any(.spec.template.spec.containers[0].env[];
+        .name == "DYN_STATIC_LAZY_CHANNELS" and .value == $lazy) end)
   ' >/dev/null
 for inactive in dynamo-pd-agw-generic dynamo-pd-envoy-generic dynamo-pd-envoy-callouts; do
   "${vc[@]}" get deployment "$inactive" -o json |

@@ -31,6 +31,8 @@ grpc_channels=${PD_GRPC_CHANNELS_PER_ENDPOINT:-}
 stage_timing_every=${PD_STAGE_TIMING_EVERY:-0}
 [[ $stage_timing_every =~ ^[0-9]+$ ]] &&
   (( stage_timing_every <= 1000000 )) || exit 2
+lazy_channels=${PD_LAZY_CHANNELS:-0}
+[[ $lazy_channels == 0 || $lazy_channels == 1 ]] || exit 2
 batch_stats_every=${PD_BATCH_STATS_EVERY:-0}
 [[ $batch_stats_every =~ ^[0-9]+$ ]] &&
   (( batch_stats_every <= 1000000 )) || exit 2
@@ -87,7 +89,7 @@ config=$(jq -c --arg threads "$worker_threads" '
 apply_json "$config"
 
 source_deployment=$("${vc[@]}" get deployment agw-static -o json)
-deployment=$(jq -c --arg binary "$binary" --arg linger "$preprocess_linger_us" --arg batch_max "$preprocess_batch_max" --arg channels "$grpc_channels" --arg timing "$stage_timing_every" --arg batch_stats "$batch_stats_every" --arg summary_secs "$batch_summary_secs" --arg batch_shards "$batch_shards" --arg sleep_drain "$sleep_drain" --arg bulk_drain "$bulk_drain" --arg ready_threshold "$ready_threshold" --arg rust_log "$rust_log" '
+deployment=$(jq -c --arg binary "$binary" --arg linger "$preprocess_linger_us" --arg batch_max "$preprocess_batch_max" --arg channels "$grpc_channels" --arg timing "$stage_timing_every" --arg lazy "$lazy_channels" --arg batch_stats "$batch_stats_every" --arg summary_secs "$batch_summary_secs" --arg batch_shards "$batch_shards" --arg sleep_drain "$sleep_drain" --arg bulk_drain "$bulk_drain" --arg ready_threshold "$ready_threshold" --arg rust_log "$rust_log" '
   {apiVersion,kind,metadata:{name:"dynamo-pd-agw-static"},spec:.spec}
   | .spec.replicas=1
   | .spec.selector.matchLabels.app="dynamo-pd-agw-static"
@@ -98,6 +100,9 @@ deployment=$(jq -c --arg binary "$binary" --arg linger "$preprocess_linger_us" -
   | .spec.template.spec.containers[0].env +=
       (if $timing == "0" then []
        else [{name:"DYN_STATIC_STAGE_TIMING_EVERY",value:$timing}] end)
+  | .spec.template.spec.containers[0].env +=
+      (if $lazy == "0" then []
+       else [{name:"DYN_STATIC_LAZY_CHANNELS",value:$lazy}] end)
   | .spec.template.spec.containers[0].env +=
       (if $batch_stats == "0" then []
        else [{name:"DYN_STATIC_BATCH_STATS_EVERY",value:$batch_stats}] end)

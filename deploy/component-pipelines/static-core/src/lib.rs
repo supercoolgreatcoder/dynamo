@@ -413,22 +413,19 @@ impl StaticAggregatePipeline {
             .ok()
             .and_then(|value| value.parse().ok())
             .unwrap_or(0usize);
+        // Diagnostic only: compare startup-established connections with the lazy
+        // channels used by the generic transport. Eager remains the default.
+        let lazy_channels = std::env::var("DYN_STATIC_LAZY_CHANNELS").ok().as_deref() == Some("1");
         let mut preprocessors = Vec::with_capacity(pool_size);
         for _ in 0..pool_size {
-            let channel = configured_endpoint(preprocessor_endpoint.clone())?
-                .connect()
-                .await
-                .map_err(|error| PipelineError::Endpoint(error.to_string()))?;
+            let channel = connect_channel(preprocessor_endpoint.clone(), lazy_channels).await?;
             preprocessors.push(PreprocessorClient::new(channel));
         }
         // Selector traffic also goes through a Kubernetes Service. A single
         // tonic Channel would pin every request to one selector replica.
         let mut selectors = Vec::with_capacity(pool_size);
         for _ in 0..pool_size {
-            let channel = configured_endpoint(selector_endpoint.clone())?
-                .connect()
-                .await
-                .map_err(|error| PipelineError::Endpoint(error.to_string()))?;
+            let channel = connect_channel(selector_endpoint.clone(), lazy_channels).await?;
             selectors.push(SelectorClient::new(channel));
         }
         let preprocessors = Arc::new(preprocessors);
@@ -454,12 +451,7 @@ impl StaticAggregatePipeline {
         let prefill_channels = if let Some(endpoint) = prefill_endpoint {
             let mut channels = Vec::with_capacity(pool_size);
             for _ in 0..pool_size {
-                channels.push(
-                    configured_endpoint(endpoint.clone())?
-                        .connect()
-                        .await
-                        .map_err(|error| PipelineError::Endpoint(error.to_string()))?,
-                );
+                channels.push(connect_channel(endpoint.clone(), lazy_channels).await?);
             }
             Some(Arc::new(channels))
         } else {
@@ -726,4 +718,16 @@ fn configured_endpoint(endpoint: String) -> Result<tonic::transport::Endpoint, P
                 .initial_stream_window_size(Some(GRPC_STREAM_WINDOW_BYTES))
                 .initial_connection_window_size(Some(GRPC_CONNECTION_WINDOW_BYTES))
         })
+}
+
+async fn connect_channel(endpoint: String, lazy: bool) -> Result<Channel, PipelineError> {
+    let endpoint = configured_endpoint(endpoint)?;
+    if lazy {
+        Ok(endpoint.connect_lazy())
+    } else {
+        endpoint
+            .connect()
+            .await
+            .map_err(|error| PipelineError::Endpoint(error.to_string()))
+    }
 }
