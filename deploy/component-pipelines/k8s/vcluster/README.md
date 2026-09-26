@@ -681,3 +681,10 @@ multimodal counts that the static path already forwarded. A vCluster gRPC
 smoke confirmed `prompt_tokens=32` at prefill; the corrected graph's first
 six-client ISL4000 run delivered 9,609 RPS with no errors. This does not
 explain or close the static gateway's throughput gap.
+
+The [static prefill RPC split](results/2026-09-26-mocker-pd-static-rpc-split/README.md)
+then reproduced 6,325 RPS on the same frozen ISL4000 workload and found
+that the ~29 ms prefill stage is nearly all spent waiting for gRPC response
+headers; reading the terminal handoff stream took only 12.5 µs mean. This
+rules out streamed handoff consumption as the cause but leaves client-side
+scheduling, transport queueing, and server admission to distinguish.
