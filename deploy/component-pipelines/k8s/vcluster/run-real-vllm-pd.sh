@@ -31,6 +31,7 @@ actual_server=$(
   exit 2
 }
 vc=("$kubectl_bin" --kubeconfig "$VCLUSTER_KUBECONFIG" -n "$VCLUSTER_NAMESPACE")
+stager_pod=${NIX_STAGER_POD:-dynamo-component-store-stager}
 dry_run=${PD_DRY_RUN:-0}
 [[ $dry_run == 0 || $dry_run == 1 ]] || {
   echo "PD_DRY_RUN must be 0 or 1" >&2
@@ -48,7 +49,7 @@ if [[ $dry_run == 0 ]]; then
   for basename in \
     "${FACADE_STORE_PATH#/nix/store/}/bin/dynamo-component-facade" \
     "${GATEWAY_BUNDLE_PATH#/nix/store/}/bin/agentgateway"; do
-    "${vc[@]}" exec dynamo-component-store-stager -- \
+    "${vc[@]}" exec "$stager_pod" -- \
       test -x "/shared/nix/store/$basename"
   done
 fi

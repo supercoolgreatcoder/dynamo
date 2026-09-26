@@ -63,7 +63,7 @@ for attempt in {1..30}; do
   sleep 1
 done
 
-request='{"model":"Qwen/Qwen3-0.6B","messages":[{"role":"user","content":"Say hello in one short sentence."}],"max_tokens":32,"temperature":0,"stream":true,"chat_template_kwargs":{"enable_thinking":false}}'
+request='{"model":"Qwen/Qwen3-0.6B","messages":[{"role":"user","content":"Say hello in one short sentence."}],"max_tokens":32,"temperature":0,"stream":true,"stream_options":{"include_usage":true},"chat_template_kwargs":{"enable_thinking":false}}'
 stream=$(
   curl --fail-with-body --silent --show-error --no-buffer --max-time 120 \
     -H 'content-type: application/json' -d "$request" \
@@ -78,7 +78,8 @@ chunks=$(sed -n 's/^data: //p' <<<"$stream" | sed '/^\[DONE\]$/d')
 jq -es '
   length > 0 and
   (map(.choices[0].delta.content // "") | join("") | ascii_downcase | contains("hello")) and
-  any(.[]; .choices[0].finish_reason != null)
+  any(.[]; .choices[0].finish_reason != null) and
+  any(.[]; (.usage.prompt_tokens // 0) > 0)
 ' <<<"$chunks" >/dev/null || {
   echo "P/D gateway returned no content or no terminal finish reason" >&2
   printf '%s\n' "$stream" >&2
@@ -90,6 +91,7 @@ jq -n --arg text "$(jq -sr '[.[].choices[0].delta.content // ""] | join("")' \
   --arg finish_reason "$(jq -sr '[.[] | .choices[0].finish_reason // empty][-1]' \
     <<<"$chunks")" \
   --argjson chunks "$(jq -s 'length' <<<"$chunks")" \
+  --argjson prompt_tokens "$(jq -sr '[.[] | .usage.prompt_tokens // empty][-1]' <<<"$chunks")" \
   '{result:"pass",engine:"real vLLM NIXL prefill/decode",gateway:"AGW generic",
     tokenizer:"Dynamo fastokens",generated_text:$text,
-    stream_chunks:$chunks,finish_reason:$finish_reason}'
+    stream_chunks:$chunks,finish_reason:$finish_reason,prompt_tokens:$prompt_tokens}'
