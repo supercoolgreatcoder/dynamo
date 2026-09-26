@@ -131,7 +131,12 @@ fi
     exit 2
   }
 if [ "$arm" = pd-agw-static ] || [ "$arm" = pd-agw-generic ] || [ "$arm" = pd-envoy-generic ] || [ "$arm" = pd-envoy-callouts ]; then
-  components=(dynamo-pd-preprocessor:4 dynamo-pd-selector:4 dynamo-pd-prefill:4 dynamo-pd-decode:16)
+  decode_replicas=${PD_DECODE_REPLICAS:-16}
+  [[ $decode_replicas == 16 || $decode_replicas == 32 ]] || {
+    echo "PD_DECODE_REPLICAS must be 16 or 32" >&2
+    exit 2
+  }
+  components=(dynamo-pd-preprocessor:4 dynamo-pd-selector:4 dynamo-pd-prefill:4 "dynamo-pd-decode:$decode_replicas")
 else
   components=(dynamo-preprocessor:4 dynamo-selector:1 dynamo-benchmark-worker:16)
 fi
