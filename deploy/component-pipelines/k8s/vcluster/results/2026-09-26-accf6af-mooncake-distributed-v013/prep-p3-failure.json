@@ -1,0 +1,9 @@
+{
+  "attempt": "mooncake-dist-c24-prep3",
+  "plan_id": "accf6af-mooncake-distributed-v013-v3",
+  "plan_sha256": "1bdd4b769e701c428a79c2522c946347ce069de3f3fa68f9ce654ee524e64fdb",
+  "outcome": "invalid_no_measurement",
+  "reason": "Only seven of 25 JobSet Pods scheduled across the vCluster CPU pool; 18 remained Pending and the distributed timing manager could not start the benchmark.",
+  "scheduler_event": "0/29 nodes are available: 1 Insufficient cpu, 1 node(s) were unschedulable, 19 node(s) had untolerated taint(s), 3 node(s) didn't match pod topology spread constraints, 6 Insufficient memory.",
+  "next_action": "Stop the failed prep JobSet and create a new immutable plan using AIPerf's documented resourceMode=none (no requested resources) for a carefully monitored development benchmark; retain 24 worker Pods and the same workload. Abort and invalidate on eviction, OOM, or client starvation."
+}

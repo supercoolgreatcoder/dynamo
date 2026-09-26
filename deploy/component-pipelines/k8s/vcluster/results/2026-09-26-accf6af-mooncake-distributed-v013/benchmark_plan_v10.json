@@ -1,0 +1,25 @@
+{
+  "plan_id": "accf6af-mooncake-distributed-v013-v10",
+  "benchmark_series_id": "accf6af-mooncake-distributed-v013-v10-2026-09-26",
+  "inherits_plan_id": "accf6af-mooncake-distributed-v013-v9",
+  "inherits_plan_path": "benchmark_plan_v9.json",
+  "inherits_plan_sha256": "249f24fd6ad2bf3fd8a3d1f77c39d2ebce84a0307b095f265d5140342ac3b590",
+  "reason_for_revision": "The large one-time 544,776-prompt composition exceeded AIPerf's default 5-second service-heartbeat interval and three-miss threshold during Configure Profiling; no replay requests were sent.",
+  "overrides": {
+    "instrument.service_heartbeat_interval_seconds": 10,
+    "instrument.service_heartbeat_missed_threshold": 100,
+    "instrument.service_command_response_timeout_seconds": 1000,
+    "instrument.service_comms_request_timeout_seconds": 1000,
+    "instrument.prep_watch": "Actively monitor cache-prep Pod health and cancel if it stalls or exceeds the preparation budget; heartbeat settings are not evidence of replay fidelity",
+    "instrument.pod_topology_spread_label": "mooncake-dist-c24-v10"
+  },
+  "explicitly_unchanged": [
+    "performance question and absolute capacity intent",
+    "gateway, selector, preprocessor, and worker deployment",
+    "source and derived trace bytes, SHA-256, and request schedule",
+    "AIPerf version, image, and actual tokenizer bytes",
+    "24 worker Pods, one controller Pod, vCluster CPU-pool placement, resourceMode=none, and hard taint-aware spreading",
+    "endpoint, model, cache policy, seed, exports, and replay fidelity quality gates"
+  ],
+  "comparison_limit": "Earlier plans produced no measurement. AIPerf 0.12 multi-Job numbers remain contextual only."
+}

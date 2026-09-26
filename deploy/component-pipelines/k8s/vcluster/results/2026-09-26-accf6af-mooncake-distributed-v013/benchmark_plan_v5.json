@@ -1,0 +1,22 @@
+{
+  "plan_id": "accf6af-mooncake-distributed-v013-v5",
+  "benchmark_series_id": "accf6af-mooncake-distributed-v013-v5-2026-09-26",
+  "inherits_plan_id": "accf6af-mooncake-distributed-v013-v4",
+  "inherits_plan_path": "benchmark_plan_v4.json",
+  "inherits_plan_sha256": "1c0d3204b7bae022090d0184828f74431dcb227c5c430fd888561d94306c15e9",
+  "reason_for_revision": "The hard maxSkew=1 spread constraint counted a tainted, unschedulable CPU node as an empty domain and prevented Pod 10 onward from scheduling.",
+  "overrides": {
+    "instrument.topology_spread_node_taints_policy": "Honor: do not count nodes whose NoSchedule taints the benchmark Pods cannot tolerate",
+    "instrument.pod_topology_spread_label": "mooncake-dist-c24-v5"
+  },
+  "explicitly_unchanged": [
+    "performance question and absolute capacity intent",
+    "gateway, selector, preprocessor, and worker deployment",
+    "source and derived trace bytes, SHA-256, and request schedule",
+    "AIPerf version and public container image",
+    "24 worker Pods, one controller Pod, vCluster CPU-pool placement, and resourceMode=none",
+    "hard maxSkew=1 Pod spreading across eligible nodes",
+    "endpoint, model, tokenizer, cache policy, seed, exports, and replay fidelity quality gates"
+  ],
+  "comparison_limit": "Earlier plans produced no measurement. AIPerf 0.12 multi-Job numbers remain contextual only."
+}

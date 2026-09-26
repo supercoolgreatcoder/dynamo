@@ -1,0 +1,9 @@
+{
+  "attempt": "mooncake-dist-c24-prep9",
+  "plan_id": "accf6af-mooncake-distributed-v013-v9",
+  "plan_sha256": "249f24fd6ad2bf3fd8a3d1f77c39d2ebce84a0307b095f265d5140342ac3b590",
+  "outcome": "invalid_no_measurement",
+  "placement": "All 25 Pods started; parent and child offline tokenizers resolved the cache (confirmed independently by the exact-image probe).",
+  "reason": "Composing 544,776 prompts blocked dataset-manager heartbeat during AIPerf's default 5-second heartbeat and three-miss window. The controller declared it reaped at 03:07:05 UTC while in Configuring and shut down before replay traffic.",
+  "next_action": "Stop failed JobSet; extend only AIPerf service heartbeat and command response timeouts for the large one-time prompt-cache preparation, preserving trace, tokenizer, client count, and measured fidelity gates."
+}

@@ -1,0 +1,21 @@
+{
+  "plan_id": "accf6af-mooncake-distributed-v013-v7",
+  "benchmark_series_id": "accf6af-mooncake-distributed-v013-v7-2026-09-26",
+  "inherits_plan_id": "accf6af-mooncake-distributed-v013-v6",
+  "inherits_plan_path": "benchmark_plan_v6.json",
+  "inherits_plan_sha256": "aabb9c1e41ecb92d0a03801e645bf4ce4481205f5ce97089d2d3739a48edbd64",
+  "reason_for_revision": "AIPerf v0.13.0's bool(environment-string) offline-mode check considers the string '0' true and still invokes snapshot_download on the absolute local path.",
+  "overrides": {
+    "instrument.offline_flags": "Omitted, not set to '0'; the absolute local tokenizer path is handled locally by AIPerf's alias guard and Transformers AutoTokenizer",
+    "instrument.pod_topology_spread_label": "mooncake-dist-c24-v7"
+  },
+  "explicitly_unchanged": [
+    "performance question and absolute capacity intent",
+    "gateway, selector, preprocessor, and worker deployment",
+    "source and derived trace bytes, SHA-256, and request schedule",
+    "AIPerf version, image, and byte-identical local tokenizer copy",
+    "24 worker Pods, one controller Pod, vCluster CPU-pool placement, resourceMode=none, and hard taint-aware spreading",
+    "endpoint, model, cache policy, seed, exports, and replay fidelity quality gates"
+  ],
+  "comparison_limit": "Earlier plans produced no measurement. AIPerf 0.12 multi-Job numbers remain contextual only."
+}

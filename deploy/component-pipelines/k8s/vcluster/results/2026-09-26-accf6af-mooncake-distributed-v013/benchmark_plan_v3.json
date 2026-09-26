@@ -1,0 +1,22 @@
+{
+  "plan_id": "accf6af-mooncake-distributed-v013-v3",
+  "benchmark_series_id": "accf6af-mooncake-distributed-v013-v3-2026-09-26",
+  "inherits_plan_id": "accf6af-mooncake-distributed-v013-v2",
+  "inherits_plan_path": "benchmark_plan_v2.json",
+  "inherits_plan_sha256": "9d9f1bcc85aaf5f6429aaed5da4df89a3f5bfc7b970e01fd6cc0e49d4274e01a",
+  "reason_for_revision": "24 workers could not schedule on the three pinned vCluster nodes; no requests were sent in the previous attempt.",
+  "overrides": {
+    "target.client_nodes": "Any schedulable vCluster node labeled topology.unikorn-cloud.org/node-pool=cpu-pool; record actual Pod-to-node map before analysis",
+    "instrument.source_config": "deploy/component-pipelines/k8s/vcluster/mooncake-distributed-aiperfjob.yaml at the generated-v3 manifest snapshot",
+    "instrument.pod_topology_spread_label": "mooncake-dist-c24-v3"
+  },
+  "explicitly_unchanged": [
+    "performance question and absolute capacity intent",
+    "gateway, selector, preprocessor, and worker deployment",
+    "source and derived trace bytes, SHA-256, and request schedule",
+    "AIPerf version and public container image",
+    "24 worker Pods, one controller Pod, and resourceMode=burstable",
+    "endpoint, model, tokenizer, cache policy, seed, exports, and quality gates"
+  ],
+  "comparison_limit": "Placement differs from v2 but v2 produced no measurement. AIPerf 0.12 multi-Job numbers remain contextual only."
+}

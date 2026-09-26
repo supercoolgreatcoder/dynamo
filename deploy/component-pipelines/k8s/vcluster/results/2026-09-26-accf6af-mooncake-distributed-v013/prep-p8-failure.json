@@ -1,0 +1,9 @@
+{
+  "attempt": "mooncake-dist-c24-prep8",
+  "plan_id": "accf6af-mooncake-distributed-v013-v8",
+  "plan_sha256": "7681b850ad7ec60b4b81d0209788ccedda97da2d291470bc95c984fc0d4ac9df",
+  "outcome": "invalid_no_measurement",
+  "reason": "All Pods scheduled, but AIPerf's offline tokenizer loader could not find the manually populated Qwen repo ID in its local Hugging Face cache; dataset configuration stopped before requests.",
+  "cache_layout_checked": "The vCluster NFS tree contained models--Qwen--Qwen2.5-0.5B-Instruct/refs/main and a matching 40-hex snapshots directory with byte-identical tokenizer files; the generated dataset-manager environment named HF_HUB_CACHE=/shared/aiperf/hf_hub_cache.",
+  "next_action": "Stop failed JobSet; run a focused vCluster-only AIPerf-image cache probe to inspect the actual Hugging Face cache resolution and fix only the cache representation or mount."
+}

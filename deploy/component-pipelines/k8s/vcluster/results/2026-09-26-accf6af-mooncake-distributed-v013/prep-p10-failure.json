@@ -1,0 +1,9 @@
+{
+  "attempt": "mooncake-dist-c24-prep10",
+  "plan_id": "accf6af-mooncake-distributed-v013-v10",
+  "plan_sha256": "2c46182fde901a8a535750be69bcf80e2a63c4b67be86f422447f9ba4c826ebd",
+  "outcome": "invalid_no_measurement",
+  "placement": "All 25 Pods scheduled across nine eligible vCluster CPU nodes; cached Qwen tokenizer loaded and Mooncake trace parsing began.",
+  "reason": "AIPerf 0.13.0 centralized dataset-manager materialized the 544,776-row expanded trace in one process. Its cgroup memory.current climbed from about 29.6 GB to 36.5 GB and 38.8 GB, then it terminated with exit code 137 on a 64-GB CPU node before any mmap cache or replay request was produced. No hard container memory limit was set, so the cause is consistent with node memory pressure, but the pod reported reason Error rather than OOMKilled.",
+  "decision": "Do not retry the 24x single-dataset design on the same node class. Return to 22,699-row per-client cached datasets, distribute clients across more vCluster CPU nodes, synchronize their start with a shared barrier, and enforce per-client replay-fidelity gates before aggregating throughput."
+}

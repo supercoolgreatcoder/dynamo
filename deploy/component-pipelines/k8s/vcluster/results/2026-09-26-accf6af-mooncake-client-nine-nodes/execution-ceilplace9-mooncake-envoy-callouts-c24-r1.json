@@ -1,0 +1,325 @@
+{
+  "vcluster_api_server": "https://gateway-poc.mkhadkevich-dev:443",
+  "job": {
+    "name": "ceilplace9-mooncake-envoy-callouts-c24-r1",
+    "uid": "3f6167b5-2a3c-4a34-9ffc-5e27b11b784c",
+    "created_at": "2026-09-26T03:17:10Z",
+    "completed_at": "2026-09-26T03:21:21Z",
+    "succeeded": 24,
+    "failed": 0,
+    "spec": {
+      "affinity": {
+        "nodeAffinity": {
+          "requiredDuringSchedulingIgnoredDuringExecution": {
+            "nodeSelectorTerms": [
+              {
+                "matchExpressions": [
+                  {
+                    "key": "kubernetes.io/hostname",
+                    "operator": "In",
+                    "values": [
+                      "cluster-0967a26d-pool-1f83edbe-mj5s4-4sr9z",
+                      "cluster-0967a26d-pool-1f83edbe-mj5s4-79r2b",
+                      "cluster-0967a26d-pool-1f83edbe-mj5s4-bf5w2",
+                      "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+                      "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4",
+                      "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+                      "cluster-0967a26d-pool-1f83edbe-mj5s4-nwjkn",
+                      "cluster-0967a26d-pool-1f83edbe-mj5s4-rd9cc",
+                      "cluster-0967a26d-pool-1f83edbe-mj5s4-trdbv"
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "automountServiceAccountToken": false,
+      "containers": [
+        {
+          "args": [
+            "set -euo pipefail\nwhile [ \"$(date +%s)\" -lt \"1790392810\" ]; do sleep 0.2; done\nexport HF_HOME=/tmp/hf HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1\ncache=/tmp/hf/hub/models--Qwen--Qwen2.5-0.5B-Instruct\nmkdir -p \"$cache/snapshots\" \"$cache/refs\"\nln -s /model/tokenizer \"$cache/snapshots/nix\"\nprintf nix > \"$cache/refs/main\"\n\ndataset=/shared/aiperf/mooncake-qwen2.5-0.5b/mooncake-512-context.jsonl\ntest -s \"$dataset\"\nartifacts=/shared/aiperf/results/ceilplace9-mooncake-envoy-callouts-c24-r1/$JOB_COMPLETION_INDEX\nmkdir -p \"$artifacts\"\npython3 -c 'from aiperf.dataset.memory_map_utils import MemoryMapDatasetClient; assert MemoryMapDatasetClient.get_conversation.__module__ == \"sitecustomize\"'\nexec aiperf profile \\\n  --url \"http://envoy-callouts:8080/v1/chat/completions\" \\\n  --model Qwen/Qwen2.5-0.5B-Instruct \\\n  --tokenizer Qwen/Qwen2.5-0.5B-Instruct \\\n  --endpoint-type chat --streaming --use-server-token-count \\\n  --use-legacy-max-tokens \\\n  --custom-dataset-type mooncake-trace \\\n  --input-file \"$dataset\" \\\n  --isl-block-size 512 \\\n  --random-seed 42 \\\n  --concurrency 128 --benchmark-duration 45 \\\n  --export-level records \\\n  --record-processors 1 \\\n  --output-artifact-dir \"$artifacts\"\n"
+          ],
+          "command": [
+            "/bin/bash",
+            "-lc"
+          ],
+          "env": [
+            {
+              "name": "BENCHMARK_START_UNIX",
+              "value": "1790392810"
+            },
+            {
+              "name": "JOB_COMPLETION_INDEX",
+              "valueFrom": {
+                "fieldRef": {
+                  "apiVersion": "v1",
+                  "fieldPath": "metadata.annotations['batch.kubernetes.io/job-completion-index']"
+                }
+              }
+            },
+            {
+              "name": "AIPERF_DATASET_MMAP_CACHE_ENABLED",
+              "value": "true"
+            },
+            {
+              "name": "AIPERF_DATASET_MMAP_CACHE_DIR",
+              "value": "/shared/aiperf/mooncake-qwen2.5-0.5b/mmap-cache"
+            },
+            {
+              "name": "AIPERF_DATASET_MMAP_BASE_PATH",
+              "value": "/shared/aiperf/mooncake-qwen2.5-0.5b/run-mmaps"
+            },
+            {
+              "name": "PYTHONPATH",
+              "value": "/opt/aiperf-mmap-patch"
+            }
+          ],
+          "image": "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
+          "imagePullPolicy": "IfNotPresent",
+          "name": "benchmark",
+          "resources": {},
+          "securityContext": {
+            "runAsUser": 0
+          },
+          "terminationMessagePath": "/dev/termination-log",
+          "terminationMessagePolicy": "File",
+          "volumeMounts": [
+            {
+              "mountPath": "/nix/store",
+              "name": "nix-store",
+              "readOnly": true,
+              "subPath": "store"
+            },
+            {
+              "mountPath": "/model/tokenizer",
+              "name": "nix-store",
+              "readOnly": true,
+              "subPath": "store/wjq1b3wfjpzak4yd4rmj9arwqk1gkiir-qwen-tokenizer"
+            },
+            {
+              "mountPath": "/shared",
+              "name": "nix-store"
+            },
+            {
+              "mountPath": "/opt/aiperf-mmap-patch",
+              "name": "aiperf-mmap-patch",
+              "readOnly": true
+            }
+          ]
+        }
+      ],
+      "dnsPolicy": "ClusterFirst",
+      "nodeSelector": {
+        "topology.unikorn-cloud.org/node-pool": "cpu-pool"
+      },
+      "restartPolicy": "Never",
+      "schedulerName": "default-scheduler",
+      "securityContext": {},
+      "terminationGracePeriodSeconds": 30,
+      "topologySpreadConstraints": [
+        {
+          "labelSelector": {
+            "matchLabels": {
+              "arm": "envoy-callouts",
+              "benchmark": "mooncake-placement-nine"
+            }
+          },
+          "maxSkew": 1,
+          "nodeTaintsPolicy": "Honor",
+          "topologyKey": "kubernetes.io/hostname",
+          "whenUnsatisfiable": "DoNotSchedule"
+        }
+      ],
+      "volumes": [
+        {
+          "name": "nix-store",
+          "nfs": {
+            "path": "/unikorn-identity-03cfadd31877-551/pvc-19aeb650-5f77-45c4-8b8b-0a3b88542f39",
+            "server": "192.168.0.220"
+          }
+        },
+        {
+          "configMap": {
+            "defaultMode": 420,
+            "name": "aiperf-mmap-slice-f03b6507"
+          },
+          "name": "aiperf-mmap-patch"
+        }
+      ]
+    },
+    "completions": 24,
+    "parallelism": 24
+  },
+  "pods": [
+    {
+      "name": "ceilplace9-mooncake-envoy-callouts-c24-r1-0-stxxv",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+      "phase": "Succeeded",
+      "started_at": "2026-09-26T03:17:11Z",
+      "finished_at": "2026-09-26T03:21:16Z"
+    },
+    {
+      "name": "ceilplace9-mooncake-envoy-callouts-c24-r1-1-pm87h",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-4sr9z",
+      "phase": "Succeeded",
+      "started_at": "2026-09-26T03:17:11Z",
+      "finished_at": "2026-09-26T03:21:18Z"
+    },
+    {
+      "name": "ceilplace9-mooncake-envoy-callouts-c24-r1-10-j7r57",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-rd9cc",
+      "phase": "Succeeded",
+      "started_at": "2026-09-26T03:17:11Z",
+      "finished_at": "2026-09-26T03:21:15Z"
+    },
+    {
+      "name": "ceilplace9-mooncake-envoy-callouts-c24-r1-11-lbg4g",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-rd9cc",
+      "phase": "Succeeded",
+      "started_at": "2026-09-26T03:17:11Z",
+      "finished_at": "2026-09-26T03:21:15Z"
+    },
+    {
+      "name": "ceilplace9-mooncake-envoy-callouts-c24-r1-12-k88ph",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-bf5w2",
+      "phase": "Succeeded",
+      "started_at": "2026-09-26T03:17:11Z",
+      "finished_at": "2026-09-26T03:21:16Z"
+    },
+    {
+      "name": "ceilplace9-mooncake-envoy-callouts-c24-r1-13-cvjrf",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded",
+      "started_at": "2026-09-26T03:17:11Z",
+      "finished_at": "2026-09-26T03:21:16Z"
+    },
+    {
+      "name": "ceilplace9-mooncake-envoy-callouts-c24-r1-14-925sx",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-bf5w2",
+      "phase": "Succeeded",
+      "started_at": "2026-09-26T03:17:11Z",
+      "finished_at": "2026-09-26T03:21:16Z"
+    },
+    {
+      "name": "ceilplace9-mooncake-envoy-callouts-c24-r1-15-lwnvm",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4",
+      "phase": "Succeeded",
+      "started_at": "2026-09-26T03:17:11Z",
+      "finished_at": "2026-09-26T03:21:17Z"
+    },
+    {
+      "name": "ceilplace9-mooncake-envoy-callouts-c24-r1-16-mw8qk",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-bf5w2",
+      "phase": "Succeeded",
+      "started_at": "2026-09-26T03:17:11Z",
+      "finished_at": "2026-09-26T03:21:16Z"
+    },
+    {
+      "name": "ceilplace9-mooncake-envoy-callouts-c24-r1-17-st6wv",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-79r2b",
+      "phase": "Succeeded",
+      "started_at": "2026-09-26T03:17:11Z",
+      "finished_at": "2026-09-26T03:21:16Z"
+    },
+    {
+      "name": "ceilplace9-mooncake-envoy-callouts-c24-r1-18-4xpt2",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-4sr9z",
+      "phase": "Succeeded",
+      "started_at": "2026-09-26T03:17:11Z",
+      "finished_at": "2026-09-26T03:21:18Z"
+    },
+    {
+      "name": "ceilplace9-mooncake-envoy-callouts-c24-r1-19-mp965",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-79r2b",
+      "phase": "Succeeded",
+      "started_at": "2026-09-26T03:17:11Z",
+      "finished_at": "2026-09-26T03:21:16Z"
+    },
+    {
+      "name": "ceilplace9-mooncake-envoy-callouts-c24-r1-2-b4v8t",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-nwjkn",
+      "phase": "Succeeded",
+      "started_at": "2026-09-26T03:17:11Z",
+      "finished_at": "2026-09-26T03:21:16Z"
+    },
+    {
+      "name": "ceilplace9-mooncake-envoy-callouts-c24-r1-20-6flxs",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-trdbv",
+      "phase": "Succeeded",
+      "started_at": "2026-09-26T03:17:11Z",
+      "finished_at": "2026-09-26T03:21:16Z"
+    },
+    {
+      "name": "ceilplace9-mooncake-envoy-callouts-c24-r1-21-gkt6r",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+      "phase": "Succeeded",
+      "started_at": "2026-09-26T03:17:11Z",
+      "finished_at": "2026-09-26T03:21:17Z"
+    },
+    {
+      "name": "ceilplace9-mooncake-envoy-callouts-c24-r1-22-v2vpc",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-nwjkn",
+      "phase": "Succeeded",
+      "started_at": "2026-09-26T03:17:11Z",
+      "finished_at": "2026-09-26T03:21:16Z"
+    },
+    {
+      "name": "ceilplace9-mooncake-envoy-callouts-c24-r1-23-rrndb",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-nwjkn",
+      "phase": "Succeeded",
+      "started_at": "2026-09-26T03:17:11Z",
+      "finished_at": "2026-09-26T03:21:16Z"
+    },
+    {
+      "name": "ceilplace9-mooncake-envoy-callouts-c24-r1-3-lwrjb",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded",
+      "started_at": "2026-09-26T03:17:11Z",
+      "finished_at": "2026-09-26T03:21:16Z"
+    },
+    {
+      "name": "ceilplace9-mooncake-envoy-callouts-c24-r1-4-kklr6",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4",
+      "phase": "Succeeded",
+      "started_at": "2026-09-26T03:17:11Z",
+      "finished_at": "2026-09-26T03:21:17Z"
+    },
+    {
+      "name": "ceilplace9-mooncake-envoy-callouts-c24-r1-5-4r42r",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-79r2b",
+      "phase": "Succeeded",
+      "started_at": "2026-09-26T03:17:11Z",
+      "finished_at": "2026-09-26T03:21:16Z"
+    },
+    {
+      "name": "ceilplace9-mooncake-envoy-callouts-c24-r1-6-nwtt7",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-trdbv",
+      "phase": "Succeeded",
+      "started_at": "2026-09-26T03:17:11Z",
+      "finished_at": "2026-09-26T03:21:16Z"
+    },
+    {
+      "name": "ceilplace9-mooncake-envoy-callouts-c24-r1-7-8vgcs",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-4sr9z",
+      "phase": "Succeeded",
+      "started_at": "2026-09-26T03:17:11Z",
+      "finished_at": "2026-09-26T03:21:18Z"
+    },
+    {
+      "name": "ceilplace9-mooncake-envoy-callouts-c24-r1-8-rm4kh",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+      "phase": "Succeeded",
+      "started_at": "2026-09-26T03:17:11Z",
+      "finished_at": "2026-09-26T03:21:17Z"
+    },
+    {
+      "name": "ceilplace9-mooncake-envoy-callouts-c24-r1-9-fp9j5",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-trdbv",
+      "phase": "Succeeded",
+      "started_at": "2026-09-26T03:17:11Z",
+      "finished_at": "2026-09-26T03:21:16Z"
+    }
+  ]
+}

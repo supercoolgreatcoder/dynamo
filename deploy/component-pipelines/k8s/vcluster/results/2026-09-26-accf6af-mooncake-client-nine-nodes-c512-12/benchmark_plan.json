@@ -1,0 +1,11 @@
+{
+  "plan_id": "accf6af-mooncake-nine-nodes-c512-12-v1",
+  "benchmark_series_id": "accf6af-mooncake-nine-nodes-c512-load-sweep-2026-09-26",
+  "inherits_plan_path": "../2026-09-26-accf6af-mooncake-client-nine-nodes-c512/benchmark_plan.json",
+  "inherits_plan_sha256": "2a26f701f8ae394350ac254e1f5f9deb81c4e24aeb99a1d5107488678b4e6d5b",
+  "performance_question": "At 12 clients and a 512-outstanding-request cap per client, does one Envoy callout gateway faithfully complete the frozen Mooncake trace at approximately 6,053 offered RPS?",
+  "load": {"clients": 12, "scheduled_requests": 272388, "offered_rps_nominal": 6053.066666666667, "concurrency_per_client": 512, "start_barrier_seconds": 180},
+  "placement": {"nodes": ["cluster-0967a26d-pool-1f83edbe-mj5s4-4sr9z", "cluster-0967a26d-pool-1f83edbe-mj5s4-79r2b", "cluster-0967a26d-pool-1f83edbe-mj5s4-bf5w2", "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67", "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4", "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj", "cluster-0967a26d-pool-1f83edbe-mj5s4-nwjkn", "cluster-0967a26d-pool-1f83edbe-mj5s4-rd9cc", "cluster-0967a26d-pool-1f83edbe-mj5s4-trdbv"]},
+  "quality_gates": "All clients complete, zero errors/cancellations, every cache HIT, zero degraded replay, max p99 schedule lag 500 ms, profiling-start spread <=3 s, records retained and globally normalized",
+  "comparison_limit": "Within-sweep offered-load point. Only quality-gated runs may be compared as gateway capacity evidence."
+}

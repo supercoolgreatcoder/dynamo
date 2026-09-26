@@ -1,0 +1,22 @@
+{
+  "job": "ceilplace9-mooncake-envoy-callouts-c24-r1",
+  "clients": 24,
+  "version": [
+    "0.12.0"
+  ],
+  "phase_types": [
+    "fixed_schedule"
+  ],
+  "requests_scheduled": 544776,
+  "requests_successful": 306746,
+  "rps": 6654.34449155777,
+  "rps_semantics": "sum of per-client rates measured over potentially different windows",
+  "output_tps": 1133710.3314937095,
+  "errors": 0,
+  "cancelled": false,
+  "replay_degraded_clients": 24,
+  "replay_lag_p99_ms_max": 19164.7951872,
+  "measured_start_min": "2026-09-26T03:20:25.735204",
+  "measured_start_max": "2026-09-26T03:20:28.713413",
+  "measured_start_spread_seconds": 2.9782090187072754
+}

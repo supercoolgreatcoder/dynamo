@@ -1,0 +1,25 @@
+{
+  "plan_id": "accf6af-mooncake-distributed-v013-v8",
+  "benchmark_series_id": "accf6af-mooncake-distributed-v013-v8-2026-09-26",
+  "inherits_plan_id": "accf6af-mooncake-distributed-v013-v7",
+  "inherits_plan_path": "benchmark_plan_v7.json",
+  "inherits_plan_sha256": "60f607d0977a6be8b785f91116f47d08d4cdc52026bec144d8c3170d23005974",
+  "reason_for_revision": "AIPerf v0.13.0 parallel_decode child processes force offline mode; its offline tokenizer loader only accepts a Hub-style repo ID present in the local cache, not an absolute path.",
+  "overrides": {
+    "instrument.tokenizer_name": "Qwen/Qwen2.5-0.5B-Instruct",
+    "instrument.hub_cache": "/shared/aiperf/hf_hub_cache, containing a standard models--Qwen--Qwen2.5-0.5B-Instruct/refs/main and snapshots/<content-derived-key>/ layout",
+    "instrument.hub_cache_ref": "c0382117ea329cdf097041132f6d735924b69792; this is a synthetic cache key derived from tokenizer.json SHA-256, not an upstream Git commit",
+    "instrument.tokenizer_parity": "Snapshot files copied byte-for-byte from the existing tokenizer; tokenizer.json SHA-256 c0382117ea329cdf097041132f6d735924b697924d6f6fc3945713e96ce87539",
+    "instrument.offline_flags": "HF_HUB_OFFLINE=1 and TRANSFORMERS_OFFLINE=1 in parent and AIPerf child processes; no Hub network request is required",
+    "instrument.pod_topology_spread_label": "mooncake-dist-c24-v8"
+  },
+  "explicitly_unchanged": [
+    "performance question and absolute capacity intent",
+    "gateway, selector, preprocessor, and worker deployment",
+    "source and derived trace bytes, SHA-256, and request schedule",
+    "AIPerf version, image, and actual tokenizer bytes",
+    "24 worker Pods, one controller Pod, vCluster CPU-pool placement, resourceMode=none, and hard taint-aware spreading",
+    "endpoint, model, cache policy, seed, exports, and replay fidelity quality gates"
+  ],
+  "comparison_limit": "Earlier plans produced no measurement. AIPerf 0.12 multi-Job numbers remain contextual only."
+}

@@ -10,6 +10,8 @@ shopt -s nullglob
 
 reader_mode=original
 placement_mode=two
+concurrency_per_client=128
+phase_duration=45
 if [ "$#" -eq 1 ] && [[ "$1" =~ ^r[1-9][0-9]*$ ]]; then
   clients=12
   trial=$1
@@ -28,8 +30,42 @@ elif [ "$#" -eq 3 ] && [ "$1" = fixed3 ] && [ "$2" = 24 ] && [[ "$3" =~ ^r[1-9][
   trial=$3
   job="ceilplace-mooncake-envoy-callouts-c24-${trial}"
   plan_sha256=58ad8caa1175ff8458e023f3786393129c8c2fe7eb7ba7099b064ae86d2dca53
+elif [ "$#" -eq 3 ] && [ "$1" = fixed9 ] && [ "$2" = 24 ] && [[ "$3" =~ ^r[1-9][0-9]*$ ]]; then
+  reader_mode=fixed
+  placement_mode=nine
+  clients=24
+  trial=$3
+  job="ceilplace9-mooncake-envoy-callouts-c24-${trial}"
+  plan_sha256=8440f926b24a4db61e8cf0a33724a1b7abbb5428381bda325d6518d4296fd170
+elif [ "$#" -eq 3 ] && [ "$1" = fixed9c512 ] && [[ "$2" =~ ^(12|14|16|24)$ ]] && [[ "$3" =~ ^r[1-9][0-9]*$ ]]; then
+  reader_mode=fixed
+  placement_mode=nine
+  concurrency_per_client=512
+  clients=$2
+  trial=$3
+  job="ceilplace9c512-mooncake-envoy-callouts-c${clients}-${trial}"
+  case "$clients" in
+    12) plan_sha256=3a23b730478eeb0baa286224dcf355bac87d8b089617fe8d3382a62b55a6d684 ;;
+    14) plan_sha256=b7867fa4e22c80f16f9e9d4362aa0a7bf073bec9e078efdadc940db77d798623 ;;
+    16) plan_sha256=5e694a6ae7c20a576e072253c58fea7c617af1f9a109b4ae615a44435c43a14d ;;
+    24) plan_sha256=2a26f701f8ae394350ac254e1f5f9deb81c4e24aeb99a1d5107488678b4e6d5b ;;
+  esac
+elif [ "$#" -eq 3 ] && [ "$1" = fixed9c512grace ] && [[ "$2" =~ ^(12|14|15|16)$ ]] && [[ "$3" =~ ^r[1-9][0-9]*$ ]]; then
+  reader_mode=fixed
+  placement_mode=nine
+  concurrency_per_client=512
+  phase_duration=46
+  clients=$2
+  trial=$3
+  job="ceilplace9c512g-mooncake-envoy-callouts-c${clients}-${trial}"
+  case "$clients" in
+    12) plan_sha256=1b5996046a7ecf56cea6dde8acf38408d0f51f72c245216597a10cdddc7e600b ;;
+    14) plan_sha256=8f7cec377427c956dd5914896c6321b257649552085434a5a0c958c33d281ba6 ;;
+    15) plan_sha256=aabe88cb92abeddcb878adadb621ad211789d520d7aae2d4363865bd0d282643 ;;
+    16) plan_sha256=23baf574d4e59e84cad979924d611a09834b75fbd5c8e309e187148e57d0e286 ;;
+  esac
 else
-  echo "usage: $0 rN | fixed {12|18|24} rN | fixed3 24 rN" >&2
+  echo "usage: $0 rN | fixed {12|18|24} rN | fixed3 24 rN | fixed9 24 rN | fixed9c512 {12|14|16|24} rN | fixed9c512grace {12|14|15|16} rN" >&2
   exit 2
 fi
 bundle=/nix/store/d9n60x9aylvjvj9j56654640xshsai1x-dynamo-component-pipelines-accf6af699
@@ -47,6 +83,12 @@ client_nodes=("$AIPERF_NODE_A" "$AIPERF_NODE_B")
 if [ "$placement_mode" = three ]; then
   : "${AIPERF_NODE_C:?set load-generator node C}"
   client_nodes+=("$AIPERF_NODE_C")
+elif [ "$placement_mode" = nine ]; then
+  for suffix in C D E F G H I; do
+    variable="AIPERF_NODE_${suffix}"
+    test -n "${!variable:-}" || { echo "set $variable" >&2; exit 2; }
+    client_nodes+=("${!variable}")
+  done
 fi
 : "${NIX_STORE_NFS_SERVER:?set the existing vCluster NFS server}"
 : "${NIX_STORE_NFS_PATH:?set the existing vCluster NFS export}"
@@ -67,15 +109,16 @@ test "$(printf '%s\n' "${client_nodes[@]}" | sort -u | wc -l)" -eq "${#client_no
   echo "load-generator nodes must be distinct" >&2
   exit 2
 }
+client_nodes_json=$(printf '%s\n' "${client_nodes[@]}" | jq -R . | jq -s .)
 test "$(sha256sum "$RESULT_DIR/benchmark_plan.json" | cut -d' ' -f1)" = "$plan_sha256" || {
   echo "benchmark plan identity changed; start a new series" >&2
   exit 2
 }
-if [ "$placement_mode" = three ]; then
-  jq -e --arg a "$AIPERF_NODE_A" --arg b "$AIPERF_NODE_B" --arg c "$AIPERF_NODE_C" '
-    (.placement.nodes | sort) == ([$a,$b,$c] | sort)
+if [ "$placement_mode" = three ] || [ "$placement_mode" = nine ]; then
+  jq -e --argjson expected "$client_nodes_json" '
+    (.placement.nodes | sort) == ($expected | sort)
   ' "$RESULT_DIR/benchmark_plan.json" >/dev/null || {
-    echo "three client nodes differ from frozen placement plan" >&2
+    echo "client nodes differ from frozen placement plan" >&2
     exit 2
   }
 fi
@@ -159,12 +202,12 @@ if [ "$reader_mode" = fixed ]; then
     exit 2
   }
 fi
-if [ "$placement_mode" = three ]; then
+if [ "$placement_mode" = three ] || [ "$placement_mode" = nine ]; then
   kubectl --kubeconfig "$VCLUSTER_KUBECONFIG" get pods -A -o json |
-    jq --arg a "$AIPERF_NODE_A" --arg b "$AIPERF_NODE_B" --arg c "$AIPERF_NODE_C" '
+    jq --argjson nodes "$client_nodes_json" '
       {captured_at:now|todateiso8601,
        pods:[.items[] | select(.status.phase == "Running") |
-         select(.spec.nodeName == $a or .spec.nodeName == $b or .spec.nodeName == $c) |
+         select(.spec.nodeName as $node | $nodes | index($node)) |
          {namespace:.metadata.namespace,name:.metadata.name,node:.spec.nodeName,phase:.status.phase}]}
     ' > "$RESULT_DIR/occupancy-before-$job.json"
 fi
@@ -173,19 +216,27 @@ export JOB_NAME=$job ARM_NAME=envoy-callouts
 export TARGET_URL=http://envoy-callouts:8080/v1/chat/completions
 export VCLUSTER_NAMESPACE AIPERF_NODE_A AIPERF_NODE_B
 export NIX_STORE_NFS_SERVER NIX_STORE_NFS_PATH
-export BENCHMARK_START_UNIX=$(( $(date -u +%s) + 120 ))
+barrier_delay=120
+if [ "$placement_mode" = nine ]; then barrier_delay=180; fi
+export BENCHMARK_START_UNIX=$(( $(date -u +%s) + barrier_delay ))
 "$envsubst_bin" '${JOB_NAME} ${VCLUSTER_NAMESPACE} ${ARM_NAME} ${AIPERF_NODE_A} ${AIPERF_NODE_B} ${BENCHMARK_START_UNIX} ${TARGET_URL} ${NIX_STORE_NFS_SERVER} ${NIX_STORE_NFS_PATH}' \
   < "$(dirname "$0")/mooncake-job.yaml.tmpl" |
   "${vc[@]}" create --dry-run=client -f - -o json |
-  jq --argjson clients "$clients" --arg reader_mode "$reader_mode" --arg placement_mode "$placement_mode" \
-    --arg c "${AIPERF_NODE_C:-}" --arg patch_configmap "$patch_configmap" '
+  jq --argjson clients "$clients" --argjson concurrency "$concurrency_per_client" --argjson phase_duration "$phase_duration" --arg reader_mode "$reader_mode" --arg placement_mode "$placement_mode" \
+    --argjson nodes "$client_nodes_json" --arg patch_configmap "$patch_configmap" '
     .spec.completions = $clients |
     .spec.parallelism = $clients |
-    .spec.template.metadata.labels.benchmark = (if $placement_mode == "three" then "mooncake-placement" else "mooncake-capacity" end) |
+    .spec.template.metadata.labels.benchmark = (if $placement_mode == "nine" then "mooncake-placement-nine" elif $placement_mode == "three" then "mooncake-placement" else "mooncake-capacity" end) |
     .spec.template.spec.topologySpreadConstraints[0].labelSelector.matchLabels.benchmark = .spec.template.metadata.labels.benchmark |
     .spec.template.spec.containers[0].args[0] |= gsub("--record-processors 16"; "--record-processors 1") |
-    if $placement_mode == "three" then
-      .spec.template.spec.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution.nodeSelectorTerms[0].matchExpressions[0].values += [$c]
+    .spec.template.spec.containers[0].args[0] |= gsub("--concurrency 128"; "--concurrency " + ($concurrency|tostring)) |
+    .spec.template.spec.containers[0].args[0] |= gsub("--benchmark-duration 45"; "--benchmark-duration " + ($phase_duration|tostring)) |
+    if $placement_mode == "three" or $placement_mode == "nine" then
+      .spec.template.spec.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution.nodeSelectorTerms[0].matchExpressions[0].values = $nodes
+    else . end |
+    if $placement_mode == "nine" then
+      .spec.template.spec.topologySpreadConstraints[0].nodeTaintsPolicy = "Honor" |
+      .spec.template.spec.containers[0].args[0] |= gsub("--export-level summary"; "--export-level records")
     else . end |
     if $reader_mode == "fixed" then
       .spec.template.spec.containers[0].env += [{"name":"PYTHONPATH","value":"/opt/aiperf-mmap-patch"}] |
@@ -198,20 +249,26 @@ export BENCHMARK_START_UNIX=$(( $(date -u +%s) + 120 ))
 
 echo "waiting for $job ($clients clients, barrier $BENCHMARK_START_UNIX)" >&2
 "${vc[@]}" wait --for=condition=complete "job/$job" --timeout=900s
-if [ "$placement_mode" = three ]; then
+if [ "$placement_mode" = three ] || [ "$placement_mode" = nine ]; then
   kubectl --kubeconfig "$VCLUSTER_KUBECONFIG" get pods -A -o json |
-    jq --arg a "$AIPERF_NODE_A" --arg b "$AIPERF_NODE_B" --arg c "$AIPERF_NODE_C" '
+    jq --argjson nodes "$client_nodes_json" '
       {captured_at:now|todateiso8601,
        pods:[.items[] | select(.status.phase == "Running") |
-         select(.spec.nodeName == $a or .spec.nodeName == $b or .spec.nodeName == $c) |
+         select(.spec.nodeName as $node | $nodes | index($node)) |
          {namespace:.metadata.namespace,name:.metadata.name,node:.spec.nodeName,phase:.status.phase}]}
     ' > "$RESULT_DIR/occupancy-after-$job.json"
 fi
 out="$RESULT_DIR/raw_aiperf/$job"
 mkdir -p "$out"
-"${vc[@]}" exec -i dynamo-component-store-stager -- \
-  sh -c "cd /shared/nix/aiperf/results/$job && tar -cf - ?/profile_export_aiperf.json ?/profile_export_aiperf.csv ?/profile_export_console.txt ??/profile_export_aiperf.json ??/profile_export_aiperf.csv ??/profile_export_console.txt" |
-  tar -C "$out" -xf -
+if [ "$placement_mode" = nine ]; then
+  "${vc[@]}" exec -i dynamo-component-store-stager -- \
+    sh -c "cd /shared/nix/aiperf/results/$job && tar -cf - ?/profile_export_aiperf.json ?/profile_export_aiperf.csv ?/profile_export_console.txt ??/profile_export_aiperf.json ??/profile_export_aiperf.csv ??/profile_export_console.txt ?/profile_export.jsonl ??/profile_export.jsonl" |
+    tar -C "$out" -xf -
+else
+  "${vc[@]}" exec -i dynamo-component-store-stager -- \
+    sh -c "cd /shared/nix/aiperf/results/$job && tar -cf - ?/profile_export_aiperf.json ?/profile_export_aiperf.csv ?/profile_export_console.txt ??/profile_export_aiperf.json ??/profile_export_aiperf.csv ??/profile_export_console.txt" |
+    tar -C "$out" -xf -
+fi
 
 "${vc[@]}" get jobs,pods -o json |
   jq --arg job "$job" --arg server "$actual_server" '
@@ -228,11 +285,11 @@ mkdir -p "$out"
          finished_at:.status.containerStatuses[0].state.terminated.finishedAt}]
     }
   ' > "$RESULT_DIR/execution-$job.json"
-jq -e --argjson clients "$clients" --arg a "$AIPERF_NODE_A" --arg b "$AIPERF_NODE_B" \
-  --arg c "${AIPERF_NODE_C:-}" --argjson node_count "${#client_nodes[@]}" '
+jq -e --argjson clients "$clients" --argjson nodes "$client_nodes_json" \
+  --argjson node_count "${#client_nodes[@]}" '
   .job.succeeded == $clients and .job.failed == 0 and (.pods|length) == $clients and
-  ([.pods[].node] | group_by(.) | map(length) | all(. == ($clients/$node_count))) and
-  ([.pods[].node] | unique | sort) == ((if $node_count == 3 then [$a,$b,$c] else [$a,$b] end) | sort)
+  ([.pods[].node] | group_by(.) | map(length) | all(. >= (($clients/$node_count)|floor) and . <= ((($clients/$node_count)|floor)+1))) and
+  ([.pods[].node] | unique | sort) == ($nodes | sort)
 ' "$RESULT_DIR/execution-$job.json" >/dev/null
 
 summaries=("$out"/*/profile_export_aiperf.json)
@@ -263,8 +320,11 @@ bash "$(dirname "$0")/verify-nix-mooncake-cache.sh" "$job"
 jq . "$RESULT_DIR/summary-$job.json"
 jq -e --argjson clients "$clients" '
   .clients == $clients and .version == ["0.12.0"] and
+  .requests_scheduled == ($clients * 22699) and
+  .requests_successful == .requests_scheduled and
   .phase_types == ["fixed_schedule"] and .errors == 0 and .cancelled == false and
-  .replay_degraded_clients == 0 and .measured_start_spread_seconds <= 3
+  .replay_degraded_clients == 0 and .measured_start_spread_seconds <= 3 and
+  .replay_lag_p99_ms_max <= 500
 ' "$RESULT_DIR/summary-$job.json" >/dev/null || {
   echo "benchmark artifacts retained, but replay or phase synchronization failed the capacity gate" >&2
   exit 1

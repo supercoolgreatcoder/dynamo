@@ -1,0 +1,88 @@
+{
+  "plan_id": "accf6af-mooncake-distributed-v013-v2",
+  "supersedes_plan_id": "accf6af-mooncake-distributed-v013-v1",
+  "benchmark_series_id": "accf6af-mooncake-distributed-v013-v2-2026-09-26",
+  "performance_question": "What request rate can one Envoy generic-with-callouts gateway sustain when a single distributed AIPerf timing manager faithfully delivers the 24-client Mooncake schedule?",
+  "intent": "absolute_capacity_characterization",
+  "comparison_limit": "AIPerf 0.13.0 distributed execution and one central timing manager are a new measurement instrument. AIPerf 0.12.0 multi-Job numbers are contextual only; no cross-series gain, loss, or ceiling comparison is authorized.",
+  "workload_source": "user_trace_reproduction",
+  "user_workload_path": null,
+  "user_workload_note": "Gateway-only mocker capacity campaign outside the DGD recipe-optimization contract; this plan and the frozen trace define the run.",
+  "source_trace": {
+    "path_in_pod": "/shared/aiperf/mooncake-qwen2.5-0.5b/mooncake-512-context.jsonl",
+    "sha256": "28a94e9bc1b63fdc88e5217bdd5c647a0487c08c83bdc64a814ec0840562f550",
+    "rows": 22699,
+    "timestamp_range_ms": [0, 45000],
+    "input_length_range_tokens": [890, 29797],
+    "output_length_range_tokens": [1, 2000]
+  },
+  "derived_trace": {
+    "path_in_pod": "/shared/aiperf/mooncake-qwen2.5-0.5b/mooncake-512-context-x24.jsonl",
+    "sha256": "17fd673c7b5903ce7a737c03ce175562455b27086c598995a3d532eee717e1c5",
+    "rows": 544776,
+    "derivation": "24 byte-for-byte concatenated copies of the source JSONL; every timestamp, input_length, output_length, and hash_ids value is preserved",
+    "generator": "deploy/component-pipelines/k8s/vcluster/prepare-distributed-mooncake.sh"
+  },
+  "load": {
+    "mode": "fixed_schedule",
+    "duration_seconds_from_trace": 45,
+    "nominal_offered_rps": 12106.133333333333,
+    "total_requests": 544776,
+    "maximum_concurrency": 3072,
+    "auto_offset_timestamps": true,
+    "warmup": "none; a separate cold cache-population Job is diagnostic only and excluded from the measured run",
+    "measured_runs": 1,
+    "maximum_measurement_seconds": 1800,
+    "seed": 42
+  },
+  "target": {
+    "vcluster_api_server": "https://gateway-poc.mkhadkevich-dev:443",
+    "namespace": "dynamo-components-v2",
+    "endpoint": "http://envoy-callouts:8080/v1/chat/completions",
+    "endpoint_type": "chat",
+    "streaming": true,
+    "model": "Qwen/Qwen2.5-0.5B-Instruct",
+    "tokenizer_store_path": "/nix/store/wjq1b3wfjpzak4yd4rmj9arwqk1gkiir-qwen-tokenizer",
+    "gateway_replicas": 1,
+    "gateway_envoy_workers": 20,
+    "gateway_pipeline_threads": 20,
+    "selector_replicas": 8,
+    "preprocessor_replicas": 8,
+    "synthetic_worker_replicas": 32,
+    "gpu_count": 0,
+    "bundle_store_path": "/nix/store/d9n60x9aylvjvj9j56654640xshsai1x-dynamo-component-pipelines-accf6af699"
+  },
+  "instrument": {
+    "aiperf_version": "0.13.0",
+    "aiperf_source_commit": "794f8bb75f8582f22e412d7e650fc71ca2a3d21a",
+    "version_resolution": "gh release view --repo ai-dynamo/aiperf --json tagName,publishedAt,targetCommitish returned v0.13.0, published 2026-09-24T01:30:21Z; latest stable checked 2026-09-26",
+    "image": "nvcr.io/nvidia/ai-dynamo/aiperf:0.13.0",
+    "jobset_version": "0.12.0",
+    "jobset_manifest_sha256": "a41aaf12dd0b7b0a3d626b8d6107f32c3dc889d7e7830adc46b8cdb77a8963bb",
+    "deployment_mode": "direct Kubernetes JobSet, no AIPerf operator",
+    "controller_pods": 1,
+    "worker_pods": 24,
+    "workers_per_pod": 1,
+    "record_processors_per_pod": 1,
+    "client_nodes": [
+      "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+      "cluster-0967a26d-pool-1f83edbe-mj5s4-rd9cc"
+    ],
+    "source_config": "deploy/component-pipelines/k8s/vcluster/mooncake-distributed-aiperfjob.yaml",
+    "cache_directory_in_pod": "/shared/aiperf/dataset-mmap-cache-013",
+    "cache_policy": "measured run requires content-addressed mmap cache HIT and no tokenizer/composer work; cold preparation is retained separately",
+    "exports": ["profile summary JSON", "request records JSONL"]
+  },
+  "metrics": ["synchronized_successful_requests_per_second", "request_count_integrity", "replay_schedule_lag_p99_ms", "replay_schedule_degraded", "request_latency_ms", "time_to_first_token_ms", "output_tokens_per_second", "errors", "gateway_cpu_cores"],
+  "quality_gates": {
+    "replay_schedule_degraded": false,
+    "replay_schedule_lag_p99_ms_max": 500,
+    "request_records_required": true,
+    "request_errors": 0,
+    "cache_hit_required": true,
+    "active_other_benchmarks_at_target": 0
+  },
+  "slos": null,
+  "evidence_limit": "No production-GPU or user-SLO claim. Shared CPU nodes have other-namespace Pods; record occupancy and synchronized CPU use."
+}
