@@ -39,7 +39,8 @@ for component in dynamo-pd-preprocessor:4 dynamo-pd-selector:4 dynamo-pd-prefill
       '.spec.replicas == $replicas and .status.readyReplicas == $replicas' >/dev/null
 done
 
-binary=/nix/store/j19wni2yhzxbim3h29bcxpq4rwgv6qj4-agentgateway-component-pipeline-0.0.0-b14ca87d0a/bin/agentgateway
+binary=${PD_AGW_BINARY:-/nix/store/j19wni2yhzxbim3h29bcxpq4rwgv6qj4-agentgateway-component-pipeline-0.0.0-b14ca87d0a/bin/agentgateway}
+[[ $binary == /nix/store/*/bin/agentgateway ]] || exit 2
 "${vc[@]}" exec "$stager_pod" -- test -x \
   "/shared/nix${binary#/nix}"
 

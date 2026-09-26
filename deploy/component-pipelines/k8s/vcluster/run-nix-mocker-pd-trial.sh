@@ -6,7 +6,7 @@
 # identity even when the AIPerf export validation fails.
 set -euo pipefail
 [[ $# -ge 2 && $# -le 3 && $1 =~ ^(short|isl4000|mooncake)$ && $2 =~ ^r[1-9][0-9]*$ ]] || {
-  echo "usage: $0 {short|isl4000|mooncake} rN [grace|envoy|callouts|static|generic-refresh|generic-metadata|generic-unified|generic-unified-rest|agw-records|envoy-records]" >&2
+  echo "usage: $0 {short|isl4000|mooncake} rN [grace|envoy|callouts|static|static-unified|generic-refresh|generic-metadata|generic-unified|generic-unified-rest|agw-records|envoy-records]" >&2
   exit 2
 }
 workload=$1
@@ -42,6 +42,12 @@ elif [[ ${3:-} == callouts ]]; then
 elif [[ ${3:-} == static ]]; then
   export RESULT_DIR=$script_dir/results/2026-09-26-mocker-pd-agw-static-logwarn
   plan_sha256=5688eba75b15413353f993fe222ad282e6271e44a679036df27077ae6d5eca3c
+  job_prefix=nixpds
+  arm=pd-agw-static
+  export PD_RECORD_EXPORT=0
+elif [[ ${3:-} == static-unified ]]; then
+  export RESULT_DIR=$script_dir/results/2026-09-26-mocker-pd-agw-static-unified
+  plan_sha256=cf91374466861e5dfef2bc9f21382325b2ae0f61af7507ef95e7da480e267a9a
   job_prefix=nixpds
   arm=pd-agw-static
   export PD_RECORD_EXPORT=0
