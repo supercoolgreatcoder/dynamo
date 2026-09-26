@@ -33,6 +33,7 @@ const DEFAULT_PREPROCESS_BATCH_MAX: usize = 32;
 const DEFAULT_PREPROCESS_BATCH_LINGER_US: u64 = 200;
 const DEFAULT_PREPROCESS_QUEUE_CAPACITY: usize = 8192;
 const MAX_PREPROCESS_BATCH_SHARDS: usize = 32;
+const MAX_PREPROCESS_BULK_DRAIN_ITEMS: usize = 1024;
 
 fn duration_us(duration: Duration) -> u64 {
     duration.as_micros().min(u64::MAX as u128) as u64
@@ -54,6 +55,82 @@ struct BatchSummary {
     rpc_completed: AtomicU64,
     rpc_transport_errors: AtomicU64,
     rpc_us: AtomicU64,
+}
+
+type BatchDiagnostics = (usize, u64, u64, usize);
+
+fn dispatch_preprocess_batch(
+    batch: Vec<PreprocessBatchItem>,
+    mut client: PreprocessorClient<Channel>,
+    summary: Option<Arc<BatchSummary>>,
+    diagnostics: Option<BatchDiagnostics>,
+) {
+    tokio::spawn(async move {
+        let (requests, replies): (Vec<_>, Vec<_>) = batch
+            .into_iter()
+            .map(|item| (item.request, item.reply))
+            .unzip();
+        let expected_ids = requests
+            .iter()
+            .map(|item| item.item_id.clone())
+            .collect::<Vec<_>>();
+        let rpc_started_at = (summary.is_some() || diagnostics.is_some()).then(Instant::now);
+        let result = client
+            .prepare_batch(dynamo_component_facades::proto::PreprocessBatchRequest {
+                items: requests,
+            })
+            .await;
+        let rpc_us = rpc_started_at.map(|start| duration_us(start.elapsed()));
+        if let Some(summary) = summary {
+            summary.rpc_completed.fetch_add(1, Ordering::Relaxed);
+            summary
+                .rpc_us
+                .fetch_add(rpc_us.unwrap_or_default(), Ordering::Relaxed);
+            if result.is_err() {
+                summary.rpc_transport_errors.fetch_add(1, Ordering::Relaxed);
+            }
+        }
+        if let Some((size, enqueue_to_recv_us, collect_us, queue_depth)) = diagnostics {
+            tracing::trace!(
+                size = size as u64,
+                enqueue_to_recv_us,
+                collect_us,
+                queue_depth = queue_depth as u64,
+                rpc_us = rpc_us.unwrap_or_default(),
+                is_ok = result.is_ok(),
+                "static batch sample",
+            );
+        }
+        match result {
+            Ok(response) => {
+                let items = response.into_inner().items;
+                let valid = items.len() == replies.len()
+                    && items
+                        .iter()
+                        .zip(&expected_ids)
+                        .all(|(item, expected)| item.item_id == *expected);
+                if valid {
+                    for (reply, item) in replies.into_iter().zip(items) {
+                        let _ = reply.send(Ok(item));
+                    }
+                } else {
+                    for reply in replies {
+                        let _ = reply.send(Err(tonic::Status::internal(
+                            "preprocessor batch response did not preserve request order",
+                        )));
+                    }
+                }
+            }
+            Err(status) => {
+                for reply in replies {
+                    let _ = reply.send(Err(tonic::Status::new(
+                        status.code(),
+                        status.message().to_string(),
+                    )));
+                }
+            }
+        }
+    });
 }
 
 #[derive(Clone)]
@@ -81,6 +158,10 @@ impl PreprocessBatcher {
             .unwrap_or(1)
             .clamp(1, MAX_PREPROCESS_BATCH_SHARDS);
         let is_sleep_drain_enabled = std::env::var("DYN_PREPROCESS_BATCH_SLEEP_DRAIN")
+            .ok()
+            .as_deref()
+            == Some("1");
+        let is_bulk_drain_enabled = std::env::var("DYN_PREPROCESS_BATCH_BULK_DRAIN")
             .ok()
             .as_deref()
             == Some("1");
@@ -174,6 +255,17 @@ impl PreprocessBatcher {
                             }
                         }
                     }
+                    if is_bulk_drain_enabled {
+                        let ready = receiver
+                            .len()
+                            .min(MAX_PREPROCESS_BULK_DRAIN_ITEMS.saturating_sub(batch.len()));
+                        for _ in 0..ready {
+                            match receiver.try_recv() {
+                                Ok(item) => batch.push(item),
+                                Err(_) => break,
+                            }
+                        }
+                    }
 
                     let diagnostics = received_at.map(|received_at| {
                         let collected_at = Instant::now();
@@ -201,80 +293,38 @@ impl PreprocessBatcher {
                             .queue_depth
                             .fetch_add(*queue_depth as u64, Ordering::Relaxed);
                     }
-                    let index =
-                        next_preprocessor.fetch_add(1, Ordering::Relaxed) % preprocessors.len();
-                    let mut client = preprocessors[index].clone();
-                    let summary = summary.clone();
-                    tokio::spawn(async move {
-                        let (requests, replies): (Vec<_>, Vec<_>) = batch
-                            .into_iter()
-                            .map(|item| (item.request, item.reply))
-                            .unzip();
-                        let expected_ids = requests
-                            .iter()
-                            .map(|item| item.item_id.clone())
-                            .collect::<Vec<_>>();
-                        let rpc_started_at = diagnostics.as_ref().map(|_| Instant::now());
-                        let result = client
-                            .prepare_batch(
-                                dynamo_component_facades::proto::PreprocessBatchRequest {
-                                    items: requests,
-                                },
-                            )
-                            .await;
-                        let rpc_us = rpc_started_at.map(|start| duration_us(start.elapsed()));
-                        if let Some(summary) = summary {
-                            summary.rpc_completed.fetch_add(1, Ordering::Relaxed);
-                            summary
-                                .rpc_us
-                                .fetch_add(rpc_us.unwrap_or_default(), Ordering::Relaxed);
-                            if result.is_err() {
-                                summary.rpc_transport_errors.fetch_add(1, Ordering::Relaxed);
+                    if is_bulk_drain_enabled {
+                        let mut pending = batch.into_iter();
+                        let mut first_diagnostics = diagnostics;
+                        loop {
+                            let chunk: Vec<_> = pending.by_ref().take(max_batch).collect();
+                            if chunk.is_empty() {
+                                break;
                             }
-                        }
-                        if let Some((size, enqueue_to_recv_us, collect_us, queue_depth)) =
-                            diagnostics
-                        {
-                            tracing::trace!(
-                                size = size as u64,
-                                enqueue_to_recv_us,
-                                collect_us,
-                                queue_depth = queue_depth as u64,
-                                rpc_us = rpc_us.unwrap_or_default(),
-                                is_ok = result.is_ok(),
-                                "static batch sample",
+                            let index = next_preprocessor.fetch_add(1, Ordering::Relaxed)
+                                % preprocessors.len();
+                            let chunk_size = chunk.len();
+                            dispatch_preprocess_batch(
+                                chunk,
+                                preprocessors[index].clone(),
+                                summary.clone(),
+                                first_diagnostics.take().map(
+                                    |(_, queue_wait_us, collect_us, queue_depth)| {
+                                        (chunk_size, queue_wait_us, collect_us, queue_depth)
+                                    },
+                                ),
                             );
                         }
-                        match result {
-                            Ok(response) => {
-                                let items = response.into_inner().items;
-                                let valid = items.len() == replies.len()
-                                    && items
-                                        .iter()
-                                        .zip(&expected_ids)
-                                        .all(|(item, expected)| item.item_id == *expected);
-                                if valid {
-                                    for (reply, item) in replies.into_iter().zip(items) {
-                                        let _ = reply.send(Ok(item));
-                                    }
-                                } else {
-                                    for reply in replies {
-                                        let _ = reply.send(Err(tonic::Status::internal(
-                                        "preprocessor batch response did not preserve request order",
-                                    )));
-                                    }
-                                }
-                            }
-                            Err(status) => {
-                                for reply in replies {
-                                    let _ = reply.send(Err(tonic::Status::new(
-                                        status.code(),
-                                        status.message().to_string(),
-                                    )));
-                                }
-                            }
-                        }
-                    });
+                    } else {
+                        let index =
+                            next_preprocessor.fetch_add(1, Ordering::Relaxed) % preprocessors.len();
+                        dispatch_preprocess_batch(
+                            batch,
+                            preprocessors[index].clone(),
+                            summary.clone(),
+                            diagnostics,
+                        );
+                    }
                 }
             });
         }
