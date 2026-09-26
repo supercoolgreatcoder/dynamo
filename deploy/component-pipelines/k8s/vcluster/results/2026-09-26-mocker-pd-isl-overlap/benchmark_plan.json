@@ -1,0 +1,61 @@
+{
+  "plan_id": "mocker-pd-isl4000-record-overlap-v1",
+  "benchmark_series_id": "mocker-pd-isl4000-record-overlap-v1-2026-09-26",
+  "question": "Does Envoy generic differ from AGW generic on ISL4000 when successful requests are counted over identical-length, fully overlapping six-client measurement windows?",
+  "intent": "paired gateway-host diagnosis; the former summary-only 45-second series is contextual, not a direct reference",
+  "required_arms": ["pd-agw-generic", "pd-envoy-generic"],
+  "candidate": {
+    "facade_source_commit": "995c04e74f785a498470f305d37875703fb72b86",
+    "facade_nix_output": "/nix/store/w77ac5nlyc9543kgkwdxpf9a7yk5l7y6-dynamo-component-facade-1.6.0-995c04e74f",
+    "gateway_nix_output": "/nix/store/d9n60x9aylvjvj9j56654640xshsai1x-dynamo-component-pipelines-accf6af699",
+    "graph": "deploy/component-pipelines/graphs/disaggregated.yaml",
+    "gateway_replicas": 1,
+    "preprocessor_replicas": 4,
+    "selector_replicas": 4,
+    "prefill_replicas": 4,
+    "decode_replicas": 16,
+    "worker_kind": "synthetic benchmark-only Dynamo AsyncEngine"
+  },
+  "execution": {
+    "vcluster_server": "https://gateway-poc.mkhadkevich-dev:443",
+    "namespace": "dynamo-components-v2",
+    "endpoints": {
+      "pd-agw-generic": "http://dynamo-pd-agw-generic:8080/v1/chat/completions",
+      "pd-envoy-generic": "http://dynamo-pd-envoy-generic:8080/v1/chat/completions"
+    },
+    "model": "Qwen/Qwen2.5-0.5B-Instruct",
+    "tokenizer": "Qwen/Qwen2.5-0.5B-Instruct",
+    "endpoint_type": "chat",
+    "streaming": true,
+    "clients": 6,
+    "concurrency_per_client": 128,
+    "benchmark_duration_seconds": 45,
+    "synchronized_barrier_lead_seconds": 90,
+    "aiperf_version": "0.12.0",
+    "aiperf_image": "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
+    "aiperf_version_resolution": "Reference-reproduction exception: the paired gateway series and Claude reference pin AIPerf 0.12.0; latest stable 0.13.0 was verified on 2026-09-26, but its single-manager Mooncake preparation failed before measurement",
+    "aiperf_nodes": ["cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67", "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4"],
+    "export_level": "records",
+    "slice_duration_seconds": 1,
+    "measurement_limit_seconds": 1800,
+    "repetitions_per_arm": 1,
+    "repeat_rationale": "The prior summary-only ISL4000 comparison was consequential but confounded by unequal client start spread; record-level overlap resolves the timing ambiguity",
+    "seed": 42
+  },
+  "workload": {
+    "source": "frozen_reference_raw_payload",
+    "path": "/shared/aiperf/static-qwen2.5-0.5b/isl4000-claude-sonnet-raw.jsonl",
+    "sha256": "3ad382586f5417f4255d7eea774700d9817bc39acbc7b537e2efa7d89145c743",
+    "schedule": "concurrency_128_per_client"
+  },
+  "measurement": {
+    "primary_metric": "successful request completions per second in a 30-second common interior window within each arm's six-client Job",
+    "common_window_rule": "For each Job independently, t0 is the latest of its six AIPerf profile start times plus 2 seconds and t1=t0+30 seconds; require all six profile end times at least 2 seconds after t1. Count only records with request_start_ns and request_end_ns both inside [t0,t1]. The two sequential Jobs use separate absolute timestamps but identical 30-second window definitions.",
+    "common_window_seconds": 30,
+    "request_integrity": "every summary success must have exactly one well-formed profiling record and no duplicate x_request_id per Job",
+    "uncertainty": "one run per arm is diagnostic; a small delta cannot support a final gateway ranking without a measured series noise floor",
+    "slo": null
+  },
+  "quality_gates": "Single active gateway, six clients on pinned nodes, identical dataset/image/flags, zero request errors/cancellations, complete request records, at least 30 seconds of shared interior window",
+  "comparison_limit": "Changing export level creates a new series. Request-record instrumentation may lower absolute throughput relative to summary-only results; never compare the two series as a gain or loss."
+}

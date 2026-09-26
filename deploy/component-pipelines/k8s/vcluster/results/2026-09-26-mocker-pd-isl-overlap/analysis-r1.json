@@ -1,0 +1,33 @@
+{
+  "benchmark_series_id": "mocker-pd-isl4000-record-overlap-v1-2026-09-26",
+  "plan_sha256": "0f0644639ba99446fa1ee95fe07a166658da1e2735f312cd747b9b0be7a157e9",
+  "metric": "common_window_successful_requests_per_second",
+  "agw_rps": 9625.533333333333,
+  "envoy_rps": 9421.5,
+  "envoy_signed_percent_change": -2.1197093840687566,
+  "agw_pilot_median_rps": 9625.533333333333,
+  "envoy_vs_agw_pilot_median_percent": -2.1197093840687566,
+  "series_noise_floor": {
+    "method": "half of the observed three-run AGW range divided by its median",
+    "percent": 1.6883912926037068,
+    "agw_pilot_rps": [
+      9625.533333333333,
+      9748.2,
+      9423.166666666666
+    ]
+  },
+  "minimum_detectable_effect": {
+    "method": "full observed three-run AGW range divided by its median; operational, not a confidence interval",
+    "percent": 3.3767825852074136
+  },
+  "verdict": "inconclusive_within_empirical_spread",
+  "reason": "The single Envoy result lies within the AGW three-run observed spread; this series cannot distinguish a gateway-specific difference.",
+  "repeat_decision": "not_needed",
+  "repeat_rationale": "The once-per-series AGW n=3 noise-floor pilot is complete; another run is not justified solely by a delta within its observed spread.",
+  "pilot_configuration": "pd-agw-generic",
+  "pilot_target_valid_runs": 3,
+  "jobs": {
+    "agw": "nixpdr-isl4000-pd-agw-generic-r1",
+    "envoy": "nixpdr-isl4000-pd-envoy-generic-r1"
+  }
+}

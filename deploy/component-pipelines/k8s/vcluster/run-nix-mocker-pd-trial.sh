@@ -6,7 +6,7 @@
 # identity even when the AIPerf export validation fails.
 set -euo pipefail
 [[ $# -ge 2 && $# -le 3 && $1 =~ ^(short|isl4000|mooncake)$ && $2 =~ ^r[1-9][0-9]*$ ]] || {
-  echo "usage: $0 {short|isl4000|mooncake} rN [grace|envoy]" >&2
+  echo "usage: $0 {short|isl4000|mooncake} rN [grace|envoy|agw-records|envoy-records]" >&2
   exit 2
 }
 workload=$1
@@ -19,17 +19,27 @@ if [[ ${3:-} == grace && $workload == mooncake ]]; then
   plan_sha256=66375e549497c63ee944eca1c499f959371e339eae78b8fa5762067d9ced458c
   job_prefix=nixpdg
   arm=pd-agw-generic
+  export PD_RECORD_EXPORT=0
+elif [[ ${3:-} == agw-records || ${3:-} == envoy-records ]]; then
+  [[ $workload == isl4000 ]] || exit 2
+  export RESULT_DIR=$script_dir/results/2026-09-26-mocker-pd-isl-overlap
+  plan_sha256=0f0644639ba99446fa1ee95fe07a166658da1e2735f312cd747b9b0be7a157e9
+  job_prefix=nixpdr
+  arm=pd-${3%-records}-generic
+  export PD_RECORD_EXPORT=1
 elif [[ ${3:-} == envoy ]]; then
   export RESULT_DIR=$script_dir/results/2026-09-26-mocker-pd-envoy-generic
   plan_sha256=9d0c3b7fef51ff82173d97623016f8b99869a58e78e41cfa12ddf3bc2aff3d68
   job_prefix=nixpde
   arm=pd-envoy-generic
+  export PD_RECORD_EXPORT=0
 elif [[ $# == 2 ]]; then
   export RESULT_DIR=$script_dir/results/2026-09-26-mocker-pd-generic
   export BENCHMARK_DURATION=45
   plan_sha256=36e98edcd8ae9007724870ae3072e46d45b0037a53e21485c1b0f695a2b6dccc
   job_prefix=nixpd
   arm=pd-agw-generic
+  export PD_RECORD_EXPORT=0
 else
   echo "grace is supported only for Mooncake" >&2
   exit 2
@@ -40,9 +50,11 @@ export BENCHMARK_DURATION
 BENCHMARK_DURATION=$(jq -er --arg workload "$workload" \
   '.workloads[$workload].benchmark_duration_seconds // .execution.benchmark_duration_seconds' "$plan")
 series_id=$(jq -er --arg workload "$workload" \
-  '.benchmark_series_id_by_workload[$workload]' "$plan")
-dataset_path=$(jq -er --arg workload "$workload" '.workloads[$workload].path' "$plan")
-dataset_sha256=$(jq -er --arg workload "$workload" '.workloads[$workload].sha256' "$plan")
+  '.benchmark_series_id // .benchmark_series_id_by_workload[$workload]' "$plan")
+dataset_path=$(jq -er --arg workload "$workload" \
+  '.workload.path // .workloads[$workload].path' "$plan")
+dataset_sha256=$(jq -er --arg workload "$workload" \
+  '.workload.sha256 // .workloads[$workload].sha256' "$plan")
 : "${VCLUSTER_KUBECONFIG:?}"
 : "${VCLUSTER_EXPECTED_SERVER:?}"
 : "${VCLUSTER_NAMESPACE:?}"
@@ -103,10 +115,11 @@ pods_json=$("${vc[@]}" get pods -l "job-name=$job" -o json)
 jq -n --argjson job "$job_json" --argjson pods "$pods_json" \
   --arg status "$status" --arg server "$actual_server" \
   --arg plan "$plan" --arg hash "$plan_sha256" \
-  --arg series "$series_id" --arg workload "$workload" '
+  --arg series "$series_id" --arg workload "$workload" \
+  --arg question "$(jq -r '.question' "$plan")" '
   {status:$status,vcluster_api_server:$server,
    plan_path:$plan,plan_sha256:$hash,benchmark_series_id:$series,
-   performance_question:"P/D generic gateway host characterization on frozen reference traffic",
+   performance_question:$question,
    workload:$workload,
    job:{name:$job.metadata.name,uid:$job.metadata.uid,
      created_at:$job.metadata.creationTimestamp,

@@ -31,6 +31,11 @@ case "$workload" in
   *) echo "unsupported workload: $workload" >&2; exit 2 ;;
 esac
 [[ "$trial" =~ ^r[1-9][0-9]*$ ]] || { echo "trial must be rN" >&2; exit 2; }
+record_export=${PD_RECORD_EXPORT:-0}
+[[ $record_export == 0 || $record_export == 1 ]] || exit 2
+if [[ $record_export == 1 ]]; then
+  [[ $workload == isl4000 && ( $arm == pd-agw-generic || $arm == pd-envoy-generic ) ]] || exit 2
+fi
 
 : "${VCLUSTER_KUBECONFIG:?set the explicit vCluster kubeconfig path}"
 : "${VCLUSTER_EXPECTED_SERVER:?set the expected vCluster API server URL}"
@@ -53,7 +58,9 @@ if [ "$actual_server" != "$VCLUSTER_EXPECTED_SERVER" ]; then
 fi
 
 kubectl_vc=(kubectl --kubeconfig "$VCLUSTER_KUBECONFIG" -n "$VCLUSTER_NAMESPACE")
-if [ "$arm" = pd-envoy-generic ]; then
+if [[ $record_export == 1 ]]; then
+  job="nixpdr-${workload}-${arm}-${trial}"
+elif [ "$arm" = pd-envoy-generic ]; then
   job="nixpde-${workload}-${arm}-${trial}"
 elif [ "$arm" = pd-agw-generic ] && [ "$workload" = mooncake ] && [ "${BENCHMARK_DURATION:-45}" = 46 ]; then
   job="nixpdg-${workload}-${arm}-${trial}"
@@ -109,17 +116,29 @@ if [ "$workload" = mooncake ]; then
 else
   export RUN_NAME=$job ARM_SERVICE=$service DATASET=$dataset
   export TOKENIZER_STORE_BASENAME
-  "$envsubst_bin" '${RUN_NAME} ${VCLUSTER_NAMESPACE} ${ARM_SERVICE} ${DATASET} ${AIPERF_NODE_A} ${AIPERF_NODE_B} ${BENCHMARK_START_UNIX} ${TOKENIZER_STORE_BASENAME} ${NIX_STORE_NFS_SERVER} ${NIX_STORE_NFS_PATH}' \
-    < "$(dirname "$0")/frozen-raw-capacity-job.yaml.tmpl" | "${kubectl_vc[@]}" apply -f -
+  rendered=$("$envsubst_bin" '${RUN_NAME} ${VCLUSTER_NAMESPACE} ${ARM_SERVICE} ${DATASET} ${AIPERF_NODE_A} ${AIPERF_NODE_B} ${BENCHMARK_START_UNIX} ${TOKENIZER_STORE_BASENAME} ${NIX_STORE_NFS_SERVER} ${NIX_STORE_NFS_PATH}' \
+    < "$(dirname "$0")/frozen-raw-capacity-job.yaml.tmpl")
+  if [[ $record_export == 1 ]]; then
+    rendered=$(sed 's/--export-level summary/--export-level records --slice-duration 1/' <<<"$rendered")
+    [[ $rendered == *'--export-level records --slice-duration 1'* ]] || exit 2
+  fi
+  printf '%s\n' "$rendered" | "${kubectl_vc[@]}" apply --dry-run=server -f - >/dev/null
+  printf '%s\n' "$rendered" | "${kubectl_vc[@]}" apply -f -
 fi
 
 echo "waiting for $job (start barrier $BENCHMARK_START_UNIX)" >&2
 "${kubectl_vc[@]}" wait --for=condition=complete "job/$job" --timeout=900s
 out="$RESULT_DIR/raw_aiperf/$job"
 mkdir -p "$out"
-"${kubectl_vc[@]}" exec -i dynamo-component-store-stager -- \
-  sh -c "cd /shared/nix/aiperf/results/$job && tar -cf - ?/profile_export_aiperf.json ?/profile_export_aiperf.csv ?/profile_export_console.txt" |
-  tar -C "$out" -xf -
+if [[ $record_export == 1 ]]; then
+  "${kubectl_vc[@]}" exec -i dynamo-component-store-stager -- \
+    sh -c "cd /shared/nix/aiperf/results/$job && tar -cf - ?/profile_export_aiperf.json ?/profile_export_aiperf.csv ?/profile_export_console.txt ?/profile_export.jsonl" |
+    tar -C "$out" -xf -
+else
+  "${kubectl_vc[@]}" exec -i dynamo-component-store-stager -- \
+    sh -c "cd /shared/nix/aiperf/results/$job && tar -cf - ?/profile_export_aiperf.json ?/profile_export_aiperf.csv ?/profile_export_console.txt" |
+    tar -C "$out" -xf -
+fi
 jq -es --arg job "$job" '{job:$job,clients:length,rps:(map(.request_throughput.avg)|add),requests:(map(.request_count.avg)|add),errors:(map(.error_summary|map(.count)|add // 0)|add),cancelled:(map(.was_cancelled)|any)}' \
   "$out"/?/profile_export_aiperf.json
 jq -es 'length == 6 and all(.[]; (.error_summary | length) == 0 and .was_cancelled == false)' \

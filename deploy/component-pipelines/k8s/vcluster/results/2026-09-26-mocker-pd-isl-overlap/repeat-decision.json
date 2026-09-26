@@ -1,0 +1,19 @@
+{
+  "decision_time": "after valid AGW r1 and Envoy r1 audits, before AGW r2 or r3",
+  "benchmark_series_id": "mocker-pd-isl4000-record-overlap-v1-2026-09-26",
+  "plan_sha256": "0f0644639ba99446fa1ee95fe07a166658da1e2735f312cd747b9b0be7a157e9",
+  "valid_reference_jobs": [
+    "nixpdr-isl4000-pd-agw-generic-r1",
+    "nixpdr-isl4000-pd-envoy-generic-r1"
+  ],
+  "agw_rps": 9625.533333333333,
+  "envoy_rps": 9421.5,
+  "observed_envoy_change_percent": -2.1197093840687566,
+  "repeat_decision": "necessary",
+  "rationale": "Once-per-series noise-floor pilot (n=3 total) on the unchanged AGW configuration. The small observed difference cannot support a gateway ranking without measuring run-to-run fixture variability; two additional AGW runs are warranted before deciding whether Envoy-specific follow-up is useful.",
+  "authorized_jobs": [
+    "nixpdr-isl4000-pd-agw-generic-r2",
+    "nixpdr-isl4000-pd-agw-generic-r3"
+  ],
+  "maximum_additional_runs": 2
+}
