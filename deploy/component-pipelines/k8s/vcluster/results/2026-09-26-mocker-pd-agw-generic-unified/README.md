@@ -30,3 +30,8 @@ globally normalized requests/s. This confirms the large static/generic
 gap remained in the later fixture state; one run does not quantify
 variance. Its execution record, normalized summary, and audit are retained
 here.
+
+The later CPU-sampled `nixpd-isl4000-pd-agw-generic-r29` passed the same
+six-client audit with 440,545 successful requests, zero errors or
+cancellations, and 9,513.85 globally normalized requests/s. See the
+`cpu-samples/` report for raw gateway and preprocessor cgroup counters.
