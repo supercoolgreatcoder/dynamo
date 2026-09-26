@@ -64,6 +64,11 @@ paths:
                 request_id: {type: string}
                 backend_request_json: {type: object}
                 token_ids_le: {type: string}
+                prompt_tokens: {type: integer}
+                image_tokens: {type: integer}
+                image_count: {type: integer}
+                video_count: {type: integer}
+                audio_count: {type: integer}
                 deadline_unix_ms: {type: integer}
       responses:
         "200":
