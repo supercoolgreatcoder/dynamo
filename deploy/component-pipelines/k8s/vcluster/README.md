@@ -589,6 +589,17 @@ passed all audit gates at 6,043.03 summed and 5,957.69 globally normalized
 successful RPS. This small gain does not explain the main static-versus-generic
 gap; short and Mooncake were not run on that candidate.
 
+The next [worker-pool candidate](results/2026-09-26-mocker-pd-agw-static-worker-pool/benchmark_plan.json)
+(`dafb4898e4`, Nix output
+`/nix/store/nddp59k8czydjigx61bcil2z8ixfmsv6-agentgateway-component-pipeline-0.0.0-b14ca87d0a`)
+matched the generic transport's 32 lazy gRPC connections per selected worker
+endpoint. Its first ISL4000 trial also passed all audit gates at 6,104.74
+summed and 5,974.62 globally normalized successful RPS. The negligible
+increase over selector pooling rules out connection fan-out as the primary
+remaining static P/D bottleneck. Short and Mooncake were not run on this
+diagnostic candidate; the earlier prefill-pool series is the only complete
+three-workload static P/D characterization so far.
+
 To reproduce, build the pinned envs flake, stage its output with
 `stage-nix-closure.sh` and a fresh stage ID, then set the explicit
 `VCLUSTER_KUBECONFIG`, `VCLUSTER_EXPECTED_SERVER`, `VCLUSTER_NAMESPACE`,
