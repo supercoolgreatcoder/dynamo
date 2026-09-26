@@ -545,6 +545,7 @@ impl StaticAggregatePipeline {
         let prefill_result_json = if let Some(channels) = &self.prefill_channels {
             let index = self.next_prefill.fetch_add(1, Ordering::Relaxed) % channels.len();
             let channel = channels[index].clone();
+            let rpc_started_at = timing_start.map(|_| Instant::now());
             let mut stream = ChatWorkerBridgeClient::new(channel)
                 .generate_raw(ChatWorkerRequest {
                     request_id: request_id.clone(),
@@ -565,6 +566,7 @@ impl StaticAggregatePipeline {
                 .await
                 .map_err(PipelineError::PrefillTransport)?
                 .into_inner();
+            let headers_at = timing_start.map(|_| Instant::now());
             let mut handoff = None;
             let mut finished = false;
             while let Some(output) = stream
@@ -592,9 +594,19 @@ impl StaticAggregatePipeline {
             if !finished {
                 return Err(PipelineError::PrefillResponse("missing terminal frame"));
             }
-            handoff.ok_or(PipelineError::PrefillResponse(
+            let handoff = handoff.ok_or(PipelineError::PrefillResponse(
                 "missing disaggregated handoff",
-            ))?
+            ))?;
+            if let (Some(start), Some(headers)) = (rpc_started_at, headers_at) {
+                let completed = Instant::now();
+                tracing::debug!(
+                    target: "dynamo_static_rpc_split",
+                    headers_us = duration_us(headers.duration_since(start)),
+                    stream_us = duration_us(completed.duration_since(headers)),
+                    "static prefill RPC split"
+                );
+            }
+            handoff
         } else {
             Vec::new()
         };

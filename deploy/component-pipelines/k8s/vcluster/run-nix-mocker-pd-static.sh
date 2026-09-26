@@ -50,7 +50,8 @@ ready_threshold=${PD_PREPROCESS_BATCH_READY_THRESHOLD:-}
 rust_log=${PD_RUST_LOG:-}
 [[ -z $rust_log || $rust_log == warn ||
    $rust_log == warn,dynamo_static_pipeline=trace ||
-   $rust_log == warn,dynamo_static_batch_summary=debug ]] || exit 2
+   $rust_log == warn,dynamo_static_batch_summary=debug ||
+   $rust_log == warn,dynamo_static_rpc_split=debug ]] || exit 2
 "${vc[@]}" get jobs -o json |
   jq -e '[.items[] | select((.status.active // 0) > 0)] | length == 0' >/dev/null
 for component in dynamo-pd-preprocessor:4 dynamo-pd-selector:4 dynamo-pd-prefill:4 dynamo-pd-decode:16; do
