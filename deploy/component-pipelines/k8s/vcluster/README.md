@@ -656,3 +656,12 @@ used the same Nix binary for three interleaved runs per arm. Draining the
 ready queue into concurrent bounded preprocessing RPCs changed collection
 behavior but yielded medians of 6,427 RPS off versus 6,321 RPS on. All six
 audits passed, and the default static implementation remains unchanged.
+
+The next [facade-side timing series](results/2026-09-26-mocker-pd-facade-timing/README.md)
+used an isolated opt-in preprocessor diagnostic with the same frozen ISL4000
+payload. It showed that four static gRPC channels all pinned to one
+preprocessor pod, but increasing to 16 channels spread load without raising
+throughput. Combining 16 channels with bulk drain also remained near 6.2k
+RPS. Sparse stage timings instead localize the remaining static delay to
+prefill and selector RPC waits; the diagnostic binary and gateway were
+removed from the live fixture afterward.
