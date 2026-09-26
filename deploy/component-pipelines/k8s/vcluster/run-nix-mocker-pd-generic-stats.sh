@@ -13,8 +13,11 @@ set -euo pipefail
 [[ $PD_AGW_BINARY == /nix/store/*/bin/agentgateway ]] || exit 2
 stats_interval=${PD_GENERIC_STATS_INTERVAL_SECS:-0}
 [[ $stats_interval =~ ^[0-9]+$ ]] && (( stats_interval <= 3600 )) || exit 2
+correlated_timing=${PD_GENERIC_CORRELATED_TIMING:-0}
+[[ $correlated_timing == 0 || $correlated_timing == 1 ]] || exit 2
 rust_log=${PD_RUST_LOG:-warn,dynamo_generic_pipeline_stats=debug}
-[[ $rust_log == warn,dynamo_generic_pipeline_stats=debug ]] || exit 2
+[[ $rust_log == warn,dynamo_generic_pipeline_stats=debug ||
+   $rust_log == warn,dynamo_generic_rpc_split=debug ]] || exit 2
 actual_server=$(kubectl --kubeconfig "$VCLUSTER_KUBECONFIG" \
   config view --minify -o jsonpath='{.clusters[0].cluster.server}')
 [[ $actual_server == "$VCLUSTER_EXPECTED_SERVER" ]] || exit 2
@@ -34,15 +37,17 @@ stager_pod=${NIX_STAGER_POD:-dynamo-component-store-stager}
 "${vc[@]}" exec "$stager_pod" -- test -x "/shared/nix${PD_AGW_BINARY#/nix}"
 source_deployment=$("${vc[@]}" get deployment dynamo-pd-agw-generic -o json)
 deployment=$(jq -c --arg binary "$PD_AGW_BINARY" \
-  --arg interval "$stats_interval" --arg rust_log "$rust_log" '
+  --arg interval "$stats_interval" --arg correlated "$correlated_timing" --arg rust_log "$rust_log" '
   {apiVersion,kind,metadata:{name:"dynamo-pd-agw-generic"},spec:.spec}
   | .spec.replicas=1
   | .spec.template.spec.containers[0].command[0]=$binary
   | .spec.template.spec.containers[0].env |=
-      (map(select(.name != "DYN_GENERIC_STATS_INTERVAL_SECS" and .name != "RUST_LOG"))
+      (map(select(.name != "DYN_GENERIC_STATS_INTERVAL_SECS" and .name != "DYN_GENERIC_CORRELATED_TIMING" and .name != "RUST_LOG"))
        + [{name:"RUST_LOG",value:$rust_log}]
        + (if $interval == "0" then []
-          else [{name:"DYN_GENERIC_STATS_INTERVAL_SECS",value:$interval}] end))
+          else [{name:"DYN_GENERIC_STATS_INTERVAL_SECS",value:$interval}] end)
+       + (if $correlated == "0" then []
+          else [{name:"DYN_GENERIC_CORRELATED_TIMING",value:$correlated}] end))
 ' <<<"$source_deployment")
 printf '%s\n' "$deployment" | "${vc[@]}" apply --dry-run=server -f - >/dev/null
 printf '%s\n' "$deployment" | "${vc[@]}" apply -f -

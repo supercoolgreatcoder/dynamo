@@ -55,7 +55,7 @@ def stats(values: list[int]) -> dict:
     }
 
 
-def prefill(gateway: dict, handlers: dict, terminals: dict) -> dict:
+def prefill(gateway: dict, handlers: dict, terminals: dict, has_handoff_stream: bool) -> dict:
     joined = gateway.keys() & handlers.keys() & terminals.keys()
     measures = {
         "gateway_header_wait": [],
@@ -63,15 +63,16 @@ def prefill(gateway: dict, handlers: dict, terminals: dict) -> dict:
         "outside_facade_handler": [],
         "gateway_start_to_facade_entry_cross_clock": [],
         "facade_handler_to_gateway_headers_cross_clock": [],
-        "gateway_handoff_stream": [],
-        "facade_terminal_to_gateway_end_cross_clock": [],
     }
+    if has_handoff_stream:
+        measures["gateway_handoff_stream"] = []
+        measures["facade_terminal_to_gateway_end_cross_clock"] = []
     for request_id in joined:
         client = gateway[request_id]
         handler = handlers[request_id]
         terminal = terminals[request_id]
         header_us = int(client["headers_us"])
-        stream_us = int(client["stream_us"])
+        stream_us = int(client["stream_us"]) if has_handoff_stream else 0
         handler_us = int(handler["elapsed_us"])
         gateway_end = client["timestamp_us"]
         gateway_start = gateway_end - header_us - stream_us
@@ -87,10 +88,11 @@ def prefill(gateway: dict, handlers: dict, terminals: dict) -> dict:
         measures["facade_handler_to_gateway_headers_cross_clock"].append(
             gateway_headers - facade_handler_done
         )
-        measures["gateway_handoff_stream"].append(stream_us)
-        measures["facade_terminal_to_gateway_end_cross_clock"].append(
-            gateway_end - terminal["timestamp_us"]
-        )
+        if has_handoff_stream:
+            measures["gateway_handoff_stream"].append(stream_us)
+            measures["facade_terminal_to_gateway_end_cross_clock"].append(
+                gateway_end - terminal["timestamp_us"]
+            )
     return {
         "gateway_samples": len(gateway),
         "facade_handler_samples": len(handlers),
@@ -145,7 +147,16 @@ def main() -> None:
     if not gateway_log.is_file() or not prefill_logs or not selector_logs:
         parser.error("gateway, prefill, and selector logs for the job are required")
     gateway_prefill = events([gateway_log], "dynamo_static_rpc_split")
-    gateway_selector = events([gateway_log], "dynamo_static_selector_rpc")
+    is_static = bool(gateway_prefill)
+    if is_static:
+        gateway_selector = events([gateway_log], "dynamo_static_selector_rpc")
+    else:
+        gateway_prefill = events(
+            [gateway_log], "dynamo_generic_rpc_split", stage="prefill"
+        )
+        gateway_selector = events(
+            [gateway_log], "dynamo_generic_rpc_split", stage="selector"
+        )
     prefill_handlers = events(
         prefill_logs,
         "dynamo_component_rpc_sample",
@@ -168,6 +179,7 @@ def main() -> None:
     )
     result = {
         "job": args.job,
+        "gateway_mode": "static" if is_static else "generic",
         "all_stage_joined_samples": len(
             gateway_prefill.keys()
             & gateway_selector.keys()
@@ -175,7 +187,9 @@ def main() -> None:
             & prefill_terminals.keys()
             & selector_handlers.keys()
         ),
-        "prefill": prefill(gateway_prefill, prefill_handlers, prefill_terminals),
+        "prefill": prefill(
+            gateway_prefill, prefill_handlers, prefill_terminals, is_static
+        ),
         "selector": selector(gateway_selector, selector_handlers),
         "clock_note": (
             "Cross-clock segments require synchronized Pod-node clocks; "

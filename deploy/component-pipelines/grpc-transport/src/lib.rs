@@ -37,9 +37,10 @@ use prost_reflect::{
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::{
-    atomic::{AtomicUsize, Ordering},
     Arc, Mutex,
+    atomic::{AtomicUsize, Ordering},
 };
+use std::time::Instant;
 const GRPC_STREAM_WINDOW_BYTES: u32 = 8 * 1024 * 1024;
 const GRPC_CONNECTION_WINDOW_BYTES: u32 = 16 * 1024 * 1024;
 const MAX_GRPC_CHANNELS_PER_ENDPOINT: usize = 256;
@@ -381,6 +382,7 @@ pub struct GrpcTransport {
     pool: DescriptorPool,
     channels: Arc<Mutex<HashMap<String, Arc<ChannelPool>>>>,
     channels_per_endpoint: usize,
+    is_correlated_timing: bool,
 }
 
 struct ChannelPool {
@@ -419,6 +421,10 @@ impl GrpcTransport {
             pool,
             channels: Arc::new(Mutex::new(HashMap::new())),
             channels_per_endpoint: channels_per_endpoint.clamp(1, MAX_GRPC_CHANNELS_PER_ENDPOINT),
+            is_correlated_timing: std::env::var("DYN_GENERIC_CORRELATED_TIMING")
+                .ok()
+                .as_deref()
+                == Some("1"),
         })
     }
 
@@ -537,6 +543,20 @@ impl Transport for GrpcTransport {
     async fn call(&self, req: Request) -> Result<Reply, Box<dyn std::error::Error + Send + Sync>> {
         let b = binding(&req)?;
         let method = self.method(&b)?;
+        let sample_id = if self.is_correlated_timing {
+            let field = match method.name() {
+                "GenerateRaw" => Some("request_id"),
+                "Select" => Some("item_id"),
+                _ => None,
+            };
+            field
+                .and_then(|field| req.body.get(field))
+                .and_then(Value::as_str)
+                .filter(|id| id.ends_with("00"))
+                .map(str::to_owned)
+        } else {
+            None
+        };
         let (authority, _) = split_authority(&req.url);
         let channel = self.channel(&authority).await?;
 
@@ -563,6 +583,7 @@ impl Transport for GrpcTransport {
             .map_err(|e| GrpcError::Transport(e.to_string()))?;
 
         let mut client = tonic::client::Grpc::new(channel);
+        let rpc_started_at = sample_id.as_ref().map(|_| Instant::now());
         client
             .ready()
             .await
@@ -573,6 +594,15 @@ impl Transport for GrpcTransport {
                 .server_streaming(tonic::Request::new(msg), path, codec)
                 .await
                 .map_err(|e| GrpcError::Transport(e.to_string()))?;
+            if let (Some(start), Some(request_id)) = (rpc_started_at, sample_id.as_deref()) {
+                tracing::debug!(
+                    target: "dynamo_generic_rpc_split",
+                    stage = "prefill",
+                    request_id = %request_id,
+                    headers_us = start.elapsed().as_micros().min(u64::MAX as u128) as u64,
+                    "generic gRPC response headers"
+                );
+            }
             let inner = resp.into_inner();
             // Each streamed message becomes one item, converted to JSON. The core's
             // per-item projection then decides what is emitted -- the transport never
@@ -592,6 +622,15 @@ impl Transport for GrpcTransport {
                 .unary(tonic::Request::new(msg), path, codec)
                 .await
                 .map_err(|e| GrpcError::Transport(e.to_string()))?;
+            if let (Some(start), Some(request_id)) = (rpc_started_at, sample_id.as_deref()) {
+                tracing::debug!(
+                    target: "dynamo_generic_rpc_split",
+                    stage = "selector",
+                    request_id = %request_id,
+                    elapsed_us = start.elapsed().as_micros().min(u64::MAX as u128) as u64,
+                    "generic gRPC unary response"
+                );
+            }
             let bytes = resp.into_inner();
             let decoder =
                 PreparedOutputDecoder::new(method.output(), decode_json_bytes, response_body);
