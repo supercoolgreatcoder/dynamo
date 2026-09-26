@@ -6,7 +6,7 @@
 # identity even when the AIPerf export validation fails.
 set -euo pipefail
 [[ $# -ge 2 && $# -le 3 && $1 =~ ^(short|isl4000|mooncake)$ && $2 =~ ^r[1-9][0-9]*$ ]] || {
-  echo "usage: $0 {short|isl4000|mooncake} rN [grace|envoy|callouts|static|generic-refresh|generic-metadata|generic-unified|agw-records|envoy-records]" >&2
+  echo "usage: $0 {short|isl4000|mooncake} rN [grace|envoy|callouts|static|generic-refresh|generic-metadata|generic-unified|generic-unified-rest|agw-records|envoy-records]" >&2
   exit 2
 }
 workload=$1
@@ -63,6 +63,13 @@ elif [[ ${3:-} == generic-unified ]]; then
   export RESULT_DIR=$script_dir/results/2026-09-26-mocker-pd-agw-generic-unified
   plan_sha256=0bcc9e931bb183fd12db3e7ddd32bc437c3945dba14a7304af9d4d404771b1cc
   job_prefix=nixpd
+  arm=pd-agw-generic
+  export PD_RECORD_EXPORT=0
+elif [[ ${3:-} == generic-unified-rest ]]; then
+  [[ $workload == short || $workload == mooncake ]] || exit 2
+  export RESULT_DIR=$script_dir/results/2026-09-26-mocker-pd-agw-generic-unified-rest
+  plan_sha256=9c09dd9ff683f874c7c27099ccfead3709ff9dd66c5929751c21951201b428d0
+  if [[ $workload == mooncake ]]; then job_prefix=nixpdg; else job_prefix=nixpd; fi
   arm=pd-agw-generic
   export PD_RECORD_EXPORT=0
 elif [[ $# == 2 ]]; then
