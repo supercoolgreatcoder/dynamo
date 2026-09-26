@@ -99,6 +99,19 @@ tonic/H2 queueing, network transit, or another transport effect. Cross-Pod
 wall-clock timestamp subtraction has negative values in the generic run
 and is not a reliable attribution of the subsegments.
 
+An offline check of the earlier preprocessor-facade counter logs adds a
+batching clue, not a causal conclusion. During static `r66`, the active Pod
+processed 286,486 items in 14,091 batches, or 20.33 items/batch. During
+generic `r67`, the three active Pods processed 426,506 items in 39,864
+batches, or 10.70 items/batch. These deltas bracket the measured AIPerf
+windows using 10-second cumulative snapshots; generic's last snapshot
+missed roughly 2,500 tail requests. Static therefore released larger
+preprocessing batches into prefill, which could increase downstream burst
+queueing. But the prior static batch-cap-16 run was slower, and using 16
+channels to distribute static preprocessing across all four Pods did not
+close the gap. Batch size or Service connection pinning alone is not a
+supported fix.
+
 To reproduce the generic pair, build and stage
 `component-pipeline-agentgateway-generic-correlated` from envs commit
 `ccaee2a` and the correlated facade output above. Roll selector and prefill
