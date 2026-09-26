@@ -9,6 +9,7 @@ set -euo pipefail
 shopt -s nullglob
 
 reader_mode=original
+placement_mode=two
 if [ "$#" -eq 1 ] && [[ "$1" =~ ^r[1-9][0-9]*$ ]]; then
   clients=12
   trial=$1
@@ -20,8 +21,15 @@ elif [ "$#" -eq 3 ] && [ "$1" = fixed ] && [[ "$2" =~ ^(12|18|24)$ ]] && [[ "$3"
   trial=$3
   job="ceilfix-mooncake-envoy-callouts-c${clients}-${trial}"
   plan_sha256=787bb593a7841345c4ccdc25405ce91454ccddc7ddaef402deee28383ce06a7e
+elif [ "$#" -eq 3 ] && [ "$1" = fixed3 ] && [ "$2" = 24 ] && [[ "$3" =~ ^r[1-9][0-9]*$ ]]; then
+  reader_mode=fixed
+  placement_mode=three
+  clients=24
+  trial=$3
+  job="ceilplace-mooncake-envoy-callouts-c24-${trial}"
+  plan_sha256=58ad8caa1175ff8458e023f3786393129c8c2fe7eb7ba7099b064ae86d2dca53
 else
-  echo "usage: $0 rN | fixed {12|18|24} rN" >&2
+  echo "usage: $0 rN | fixed {12|18|24} rN | fixed3 24 rN" >&2
   exit 2
 fi
 bundle=/nix/store/d9n60x9aylvjvj9j56654640xshsai1x-dynamo-component-pipelines-accf6af699
@@ -35,6 +43,11 @@ patch_configmap=aiperf-mmap-slice-f03b6507
 : "${VCLUSTER_NAMESPACE:?set the vCluster namespace}"
 : "${AIPERF_NODE_A:?set load-generator node A}"
 : "${AIPERF_NODE_B:?set load-generator node B}"
+client_nodes=("$AIPERF_NODE_A" "$AIPERF_NODE_B")
+if [ "$placement_mode" = three ]; then
+  : "${AIPERF_NODE_C:?set load-generator node C}"
+  client_nodes+=("$AIPERF_NODE_C")
+fi
 : "${NIX_STORE_NFS_SERVER:?set the existing vCluster NFS server}"
 : "${NIX_STORE_NFS_PATH:?set the existing vCluster NFS export}"
 : "${RESULT_DIR:?set a new, existing result directory}"
@@ -50,11 +63,22 @@ if [ "$reader_mode" = fixed ]; then
     exit 2
   }
 fi
-test "$AIPERF_NODE_A" != "$AIPERF_NODE_B"
+test "$(printf '%s\n' "${client_nodes[@]}" | sort -u | wc -l)" -eq "${#client_nodes[@]}" || {
+  echo "load-generator nodes must be distinct" >&2
+  exit 2
+}
 test "$(sha256sum "$RESULT_DIR/benchmark_plan.json" | cut -d' ' -f1)" = "$plan_sha256" || {
   echo "benchmark plan identity changed; start a new series" >&2
   exit 2
 }
+if [ "$placement_mode" = three ]; then
+  jq -e --arg a "$AIPERF_NODE_A" --arg b "$AIPERF_NODE_B" --arg c "$AIPERF_NODE_C" '
+    (.placement.nodes | sort) == ([$a,$b,$c] | sort)
+  ' "$RESULT_DIR/benchmark_plan.json" >/dev/null || {
+    echo "three client nodes differ from frozen placement plan" >&2
+    exit 2
+  }
+fi
 actual_server=$(kubectl --kubeconfig "$VCLUSTER_KUBECONFIG" config view --minify -o jsonpath='{.clusters[0].cluster.server}')
 test "$actual_server" = "$VCLUSTER_EXPECTED_SERVER" || {
   echo "refusing non-vCluster API: $actual_server" >&2
@@ -75,7 +99,7 @@ test ! -e "$RESULT_DIR/raw_aiperf/$job" || {
     exit 2
   }
 
-for node in "$AIPERF_NODE_A" "$AIPERF_NODE_B"; do
+for node in "${client_nodes[@]}"; do
   kubectl --kubeconfig "$VCLUSTER_KUBECONFIG" get node "$node" -o json |
     jq -e '(.metadata.labels["topology.unikorn-cloud.org/node-pool"] == "cpu-pool") and
       ((.spec.unschedulable // false) == false) and
@@ -135,6 +159,15 @@ if [ "$reader_mode" = fixed ]; then
     exit 2
   }
 fi
+if [ "$placement_mode" = three ]; then
+  kubectl --kubeconfig "$VCLUSTER_KUBECONFIG" get pods -A -o json |
+    jq --arg a "$AIPERF_NODE_A" --arg b "$AIPERF_NODE_B" --arg c "$AIPERF_NODE_C" '
+      {captured_at:now|todateiso8601,
+       pods:[.items[] | select(.status.phase == "Running") |
+         select(.spec.nodeName == $a or .spec.nodeName == $b or .spec.nodeName == $c) |
+         {namespace:.metadata.namespace,name:.metadata.name,node:.spec.nodeName,phase:.status.phase}]}
+    ' > "$RESULT_DIR/occupancy-before-$job.json"
+fi
 
 export JOB_NAME=$job ARM_NAME=envoy-callouts
 export TARGET_URL=http://envoy-callouts:8080/v1/chat/completions
@@ -144,12 +177,16 @@ export BENCHMARK_START_UNIX=$(( $(date -u +%s) + 120 ))
 "$envsubst_bin" '${JOB_NAME} ${VCLUSTER_NAMESPACE} ${ARM_NAME} ${AIPERF_NODE_A} ${AIPERF_NODE_B} ${BENCHMARK_START_UNIX} ${TARGET_URL} ${NIX_STORE_NFS_SERVER} ${NIX_STORE_NFS_PATH}' \
   < "$(dirname "$0")/mooncake-job.yaml.tmpl" |
   "${vc[@]}" create --dry-run=client -f - -o json |
-  jq --argjson clients "$clients" --arg reader_mode "$reader_mode" --arg patch_configmap "$patch_configmap" '
+  jq --argjson clients "$clients" --arg reader_mode "$reader_mode" --arg placement_mode "$placement_mode" \
+    --arg c "${AIPERF_NODE_C:-}" --arg patch_configmap "$patch_configmap" '
     .spec.completions = $clients |
     .spec.parallelism = $clients |
-    .spec.template.metadata.labels.benchmark = "mooncake-capacity" |
-    .spec.template.spec.topologySpreadConstraints[0].labelSelector.matchLabels.benchmark = "mooncake-capacity" |
+    .spec.template.metadata.labels.benchmark = (if $placement_mode == "three" then "mooncake-placement" else "mooncake-capacity" end) |
+    .spec.template.spec.topologySpreadConstraints[0].labelSelector.matchLabels.benchmark = .spec.template.metadata.labels.benchmark |
     .spec.template.spec.containers[0].args[0] |= gsub("--record-processors 16"; "--record-processors 1") |
+    if $placement_mode == "three" then
+      .spec.template.spec.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution.nodeSelectorTerms[0].matchExpressions[0].values += [$c]
+    else . end |
     if $reader_mode == "fixed" then
       .spec.template.spec.containers[0].env += [{"name":"PYTHONPATH","value":"/opt/aiperf-mmap-patch"}] |
       .spec.template.spec.containers[0].volumeMounts += [{"name":"aiperf-mmap-patch","mountPath":"/opt/aiperf-mmap-patch","readOnly":true}] |
@@ -161,6 +198,15 @@ export BENCHMARK_START_UNIX=$(( $(date -u +%s) + 120 ))
 
 echo "waiting for $job ($clients clients, barrier $BENCHMARK_START_UNIX)" >&2
 "${vc[@]}" wait --for=condition=complete "job/$job" --timeout=900s
+if [ "$placement_mode" = three ]; then
+  kubectl --kubeconfig "$VCLUSTER_KUBECONFIG" get pods -A -o json |
+    jq --arg a "$AIPERF_NODE_A" --arg b "$AIPERF_NODE_B" --arg c "$AIPERF_NODE_C" '
+      {captured_at:now|todateiso8601,
+       pods:[.items[] | select(.status.phase == "Running") |
+         select(.spec.nodeName == $a or .spec.nodeName == $b or .spec.nodeName == $c) |
+         {namespace:.metadata.namespace,name:.metadata.name,node:.spec.nodeName,phase:.status.phase}]}
+    ' > "$RESULT_DIR/occupancy-after-$job.json"
+fi
 out="$RESULT_DIR/raw_aiperf/$job"
 mkdir -p "$out"
 "${vc[@]}" exec -i dynamo-component-store-stager -- \
@@ -182,10 +228,11 @@ mkdir -p "$out"
          finished_at:.status.containerStatuses[0].state.terminated.finishedAt}]
     }
   ' > "$RESULT_DIR/execution-$job.json"
-jq -e --argjson clients "$clients" --arg a "$AIPERF_NODE_A" --arg b "$AIPERF_NODE_B" '
+jq -e --argjson clients "$clients" --arg a "$AIPERF_NODE_A" --arg b "$AIPERF_NODE_B" \
+  --arg c "${AIPERF_NODE_C:-}" --argjson node_count "${#client_nodes[@]}" '
   .job.succeeded == $clients and .job.failed == 0 and (.pods|length) == $clients and
-  ([.pods[].node] | group_by(.) | map(length) | sort) == [($clients/2),($clients/2)] and
-  ([.pods[].node] | unique | sort) == ([$a,$b] | sort)
+  ([.pods[].node] | group_by(.) | map(length) | all(. == ($clients/$node_count))) and
+  ([.pods[].node] | unique | sort) == ((if $node_count == 3 then [$a,$b,$c] else [$a,$b] end) | sort)
 ' "$RESULT_DIR/execution-$job.json" >/dev/null
 
 summaries=("$out"/*/profile_export_aiperf.json)
