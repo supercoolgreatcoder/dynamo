@@ -665,3 +665,12 @@ throughput. Combining 16 channels with bulk drain also remained near 6.2k
 RPS. Sparse stage timings instead localize the remaining static delay to
 prefill and selector RPC waits; the diagnostic binary and gateway were
 removed from the live fixture afterward.
+
+The paired [selector/prefill RPC timing run](results/2026-09-26-mocker-pd-rpc-timing/README.md)
+then held the four-preprocessor/four-selector/four-prefill/sixteen-decode
+fixture and frozen ISL4000 payload constant while sampling the facade
+handlers. Static/generic delivered 6,341/9,402 RPS; selector and prefill
+facade work remained sub-millisecond while static gateway stage waits were
+about 29 ms each. This narrows the remaining gap to gateway-side scheduling,
+transport, or queueing rather than Dynamo facade core work. The Nix diagnostic
+build, rollout scripts, Pod logs, and raw AIPerf summaries are retained.
