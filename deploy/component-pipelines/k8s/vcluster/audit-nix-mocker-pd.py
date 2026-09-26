@@ -73,6 +73,27 @@ def main() -> int:
     )
     check("vcluster_api", execution["vcluster_api_server"] == plan["execution"]["vcluster_server"])
     check("job_identity", execution["job"]["name"] == job)
+    if args.static and plan.get("candidate", {}).get("batch_bulk_drain_arms") == [0, 1]:
+        variant = execution.get("variant")
+        check("bulk_arm_identity", variant in ("static-bulk-off", "static-bulk-on"))
+        gateway_path = result_dir / f"gateway-{job}.json"
+        if gateway_path.is_file():
+            gateway = read_json(gateway_path)
+            container = gateway["spec"]["template"]["spec"]["containers"][0]
+            env = {item["name"]: item.get("value") for item in container["env"]}
+            check(
+                "bulk_gateway_binary",
+                container["command"][0]
+                == plan["candidate"]["agentgateway_nix_output"] + "/bin/agentgateway",
+            )
+            check(
+                "bulk_gateway_arm",
+                env.get("DYN_PREPROCESS_BATCH_BULK_DRAIN")
+                == ("1" if variant == "static-bulk-on" else None),
+            )
+            check("bulk_gateway_replicas", gateway["spec"]["replicas"] == 1)
+        else:
+            check("bulk_gateway_snapshot", False)
     check(
         "job_completion",
         execution["job"]["succeeded"] == 6

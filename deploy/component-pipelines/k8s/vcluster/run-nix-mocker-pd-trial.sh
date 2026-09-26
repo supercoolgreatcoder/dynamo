@@ -6,7 +6,7 @@
 # identity even when the AIPerf export validation fails.
 set -euo pipefail
 [[ $# -ge 2 && $# -le 3 && $1 =~ ^(short|isl4000|mooncake)$ && $2 =~ ^r[1-9][0-9]*$ ]] || {
-  echo "usage: $0 {short|isl4000|mooncake} rN [grace|envoy|envoy-unified|callouts|callouts-unified|static|static-unified|static-channels4|static-channels4-threads16|static-linger100|static-linger0|static-tuned-timing|static-batch-diagnostic|static-batch-diagnostic-off|static-batch-clock-only|static-batch64|static-summary-off|static-summary-on|static-batch16|static-shards1|static-shards2|static-sleep-drain-off|static-sleep-drain-on|static-ready-off|static-ready16|static-std-mutex|static-async-handler|generic-refresh|generic-metadata|generic-unified|generic-unified-rest|generic-step-stats-off|generic-step-stats-on|agw-records|envoy-records]" >&2
+  echo "usage: $0 {short|isl4000|mooncake} rN [grace|envoy|envoy-unified|callouts|callouts-unified|static|static-unified|static-channels4|static-channels4-threads16|static-linger100|static-linger0|static-tuned-timing|static-batch-diagnostic|static-batch-diagnostic-off|static-batch-clock-only|static-batch64|static-summary-off|static-summary-on|static-batch16|static-shards1|static-shards2|static-sleep-drain-off|static-sleep-drain-on|static-ready-off|static-ready16|static-std-mutex|static-bulk-off|static-bulk-on|static-async-handler|generic-refresh|generic-metadata|generic-unified|generic-unified-rest|generic-step-stats-off|generic-step-stats-on|agw-records|envoy-records]" >&2
   exit 2
 }
 workload=$1
@@ -196,6 +196,13 @@ elif [[ ${3:-} == static-std-mutex ]]; then
   job_prefix=nixpds
   arm=pd-agw-static
   export PD_RECORD_EXPORT=0
+elif [[ ${3:-} == static-bulk-off || ${3:-} == static-bulk-on ]]; then
+  [[ $workload == isl4000 ]] || exit 2
+  export RESULT_DIR=$script_dir/results/2026-09-26-mocker-pd-static-bulk-drain
+  plan_sha256=e252785f7a13c5498a0fb010ed7d6ca33fc71b05a1247d1cdbd27e3981d77607
+  job_prefix=nixpds
+  arm=pd-agw-static
+  export PD_RECORD_EXPORT=0
 elif [[ ${3:-} == static-async-handler ]]; then
   [[ $workload == isl4000 ]] || exit 2
   export RESULT_DIR=$script_dir/results/2026-09-26-mocker-pd-static-async-handler
@@ -309,10 +316,17 @@ if [[ $arm == pd-agw-static ]]; then
   expected_batch_summary=$(jq -r '.candidate.batch_summary_secs // 0 | tostring' "$plan")
   expected_batch_shards=$(jq -r '.candidate.batch_shards // 1 | tostring' "$plan")
   expected_sleep_drain=$(jq -r '.candidate.batch_sleep_drain // 0 | tostring' "$plan")
+  expected_bulk_drain=0
+  if [[ ${3:-} == static-bulk-off || ${3:-} == static-bulk-on ]]; then
+    jq -e '.candidate.batch_bulk_drain_arms == [0,1]' "$plan" >/dev/null
+    if [[ ${3:-} == static-bulk-on ]]; then
+      expected_bulk_drain=1
+    fi
+  fi
   expected_ready_threshold=$(jq -r '.candidate.batch_ready_threshold // 0 | tostring' "$plan")
   expected_rust_log=$(jq -r '.candidate.rust_log // ""' "$plan")
   "${vc[@]}" get deployment dynamo-pd-agw-static -o json |
-    jq -e --arg binary "$expected_binary" --arg linger "$expected_linger" --arg batch_max "$expected_batch_max" --arg timing "$expected_timing" --arg batch_stats "$expected_batch_stats" --arg summary "$expected_batch_summary" --arg shards "$expected_batch_shards" --arg sleep_drain "$expected_sleep_drain" --arg ready_threshold "$expected_ready_threshold" --arg rust_log "$expected_rust_log" --arg channels "$expected_channels" '
+    jq -e --arg binary "$expected_binary" --arg linger "$expected_linger" --arg batch_max "$expected_batch_max" --arg timing "$expected_timing" --arg batch_stats "$expected_batch_stats" --arg summary "$expected_batch_summary" --arg shards "$expected_batch_shards" --arg sleep_drain "$expected_sleep_drain" --arg bulk_drain "$expected_bulk_drain" --arg ready_threshold "$expected_ready_threshold" --arg rust_log "$expected_rust_log" --arg channels "$expected_channels" '
       .spec.template.spec.containers[0].command[0] == $binary
       and any(.spec.template.spec.containers[0].env[];
         .name == "DYN_PREFILL_ENDPOINT" and .value == "http://dynamo-pd-prefill:50051")
@@ -343,6 +357,12 @@ if [[ $arm == pd-agw-static ]]; then
           .name != "DYN_PREPROCESS_BATCH_SLEEP_DRAIN")
       else any(.spec.template.spec.containers[0].env[];
           .name == "DYN_PREPROCESS_BATCH_SLEEP_DRAIN" and .value == $sleep_drain)
+      end)
+      and (if $bulk_drain == "0" then
+        all(.spec.template.spec.containers[0].env[];
+          .name != "DYN_PREPROCESS_BATCH_BULK_DRAIN")
+      else any(.spec.template.spec.containers[0].env[];
+          .name == "DYN_PREPROCESS_BATCH_BULK_DRAIN" and .value == $bulk_drain)
       end)
       and (if $ready_threshold == "0" then
         all(.spec.template.spec.containers[0].env[];
@@ -396,6 +416,11 @@ AIPERF_NODE_A=$(jq -er '.execution.aiperf_nodes[0]' "$plan")
 AIPERF_NODE_B=$(jq -er '.execution.aiperf_nodes[1]' "$plan")
 export TOKENIZER_STORE_BASENAME=wjq1b3wfjpzak4yd4rmj9arwqk1gkiir-qwen-tokenizer
 job=${job_prefix}-${workload}-${arm}-${trial}
+if [[ $arm == pd-agw-static &&
+      ( ${3:-} == static-bulk-off || ${3:-} == static-bulk-on ) ]]; then
+  "${vc[@]}" get deployment dynamo-pd-agw-static -o json \
+    > "$RESULT_DIR/gateway-$job.json"
+fi
 actual_dataset_sha256=$("${vc[@]}" exec "$stager_pod" -- \
   sha256sum "/shared/nix${dataset_path#/shared}" | awk '{print $1}')
 [[ $actual_dataset_sha256 == "$dataset_sha256" ]] || {
@@ -452,7 +477,8 @@ if [[ ${3:-} == static-summary-on || ${3:-} == static-batch16 ||
       ${3:-} == static-shards1 || ${3:-} == static-shards2 ||
       ${3:-} == static-sleep-drain-off || ${3:-} == static-sleep-drain-on ||
       ${3:-} == static-ready-off || ${3:-} == static-ready16 ||
-      ${3:-} == static-std-mutex ]]; then
+      ${3:-} == static-std-mutex || ${3:-} == static-bulk-off ||
+      ${3:-} == static-bulk-on ]]; then
   gateway_pod=$("${vc[@]}" get pods -l app=dynamo-pd-agw-static -o json |
     jq -er '[.items[] | select(.metadata.deletionTimestamp == null) |
       select(.status.phase == "Running") |
@@ -482,8 +508,10 @@ jq -n --argjson job "$job_json" --argjson pods "$pods_json" \
   --arg status "$status" --arg server "$actual_server" \
   --arg plan "$plan" --arg hash "$plan_sha256" \
   --arg series "$series_id" --arg workload "$workload" \
+  --arg variant "${3:-}" \
   --arg question "$(jq -r '.question' "$plan")" '
   {status:$status,vcluster_api_server:$server,
+   variant:$variant,
    plan_path:$plan,plan_sha256:$hash,benchmark_series_id:$series,
    performance_question:$question,
    workload:$workload,
