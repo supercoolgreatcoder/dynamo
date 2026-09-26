@@ -20,6 +20,7 @@ done
 
 kubectl_bin=${KUBECTL_BIN:-kubectl}
 envsubst_bin=${ENVSUBST_BIN:-envsubst}
+stager_pod=${NIX_STAGER_POD:-dynamo-component-store-stager}
 command -v "$kubectl_bin" >/dev/null
 command -v "$envsubst_bin" >/dev/null
 
@@ -48,11 +49,11 @@ staged_facade="/shared/nix/store/${FACADE_STORE_PATH#/nix/store/}/bin/dynamo-com
 staged_engine="/shared/nix/store/${SGLANG_WORKER_ENV_PATH#/nix/store/}/bin/python"
 staged_gateway="/shared/nix/store/${GATEWAY_BUNDLE_PATH#/nix/store/}/bin/agentgateway"
 "$kubectl_bin" --kubeconfig "$VCLUSTER_KUBECONFIG" -n "$VCLUSTER_NAMESPACE" \
-  exec dynamo-component-store-stager -- test -x "$staged_facade"
+  exec "$stager_pod" -- test -x "$staged_facade"
 "$kubectl_bin" --kubeconfig "$VCLUSTER_KUBECONFIG" -n "$VCLUSTER_NAMESPACE" \
-  exec dynamo-component-store-stager -- test -x "$staged_engine"
+  exec "$stager_pod" -- test -x "$staged_engine"
 "$kubectl_bin" --kubeconfig "$VCLUSTER_KUBECONFIG" -n "$VCLUSTER_NAMESPACE" \
-  exec dynamo-component-store-stager -- test -x "$staged_gateway"
+  exec "$stager_pod" -- test -x "$staged_gateway"
 
 manifest="$(dirname "$0")/real-sglang-split.yaml.tmpl"
 substitutions='${VCLUSTER_NAMESPACE} ${FACADE_STORE_PATH} ${SGLANG_WORKER_ENV_PATH} ${NIX_STORE_NFS_SERVER} ${NIX_STORE_NFS_PATH} ${MODEL_NFS_SERVER} ${MODEL_NFS_PATH}'
