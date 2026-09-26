@@ -6,7 +6,7 @@
 # identity even when the AIPerf export validation fails.
 set -euo pipefail
 [[ $# -ge 2 && $# -le 3 && $1 =~ ^(short|isl4000|mooncake)$ && $2 =~ ^r[1-9][0-9]*$ ]] || {
-  echo "usage: $0 {short|isl4000|mooncake} rN [grace|envoy|agw-records|envoy-records]" >&2
+  echo "usage: $0 {short|isl4000|mooncake} rN [grace|envoy|callouts|agw-records|envoy-records]" >&2
   exit 2
 }
 workload=$1
@@ -32,6 +32,12 @@ elif [[ ${3:-} == envoy ]]; then
   plan_sha256=9d0c3b7fef51ff82173d97623016f8b99869a58e78e41cfa12ddf3bc2aff3d68
   job_prefix=nixpde
   arm=pd-envoy-generic
+  export PD_RECORD_EXPORT=0
+elif [[ ${3:-} == callouts ]]; then
+  export RESULT_DIR=$script_dir/results/2026-09-26-mocker-pd-envoy-callouts
+  plan_sha256=6ffb6d54ad1ab37b8aee979b90e8f2e80a1c684fbc34b67567ee226c7a8ad001
+  job_prefix=nixpdc
+  arm=pd-envoy-callouts
   export PD_RECORD_EXPORT=0
 elif [[ $# == 2 ]]; then
   export RESULT_DIR=$script_dir/results/2026-09-26-mocker-pd-generic
@@ -71,13 +77,27 @@ for inactive in agw-static agw-generic envoy-independent envoy-callouts \
   "${vc[@]}" get deployment "$inactive" -o json |
     jq -e '.spec.replicas == 0 and (.status.readyReplicas // 0) == 0' >/dev/null
 done
-if [[ $arm == pd-envoy-generic ]]; then
-  inactive_pd=dynamo-pd-agw-generic
-else
-  inactive_pd=dynamo-pd-envoy-generic
+for gateway in dynamo-pd-agw-generic dynamo-pd-envoy-generic dynamo-pd-envoy-callouts; do
+  [[ $gateway == dynamo-${arm} ]] && continue
+  inactive_json=$("${vc[@]}" get deployment "$gateway" --ignore-not-found -o json)
+  if [[ -n $inactive_json ]]; then
+    jq -e '.spec.replicas == 0 and (.status.readyReplicas // 0) == 0' \
+      <<<"$inactive_json" >/dev/null
+  fi
+done
+if [[ $arm == pd-envoy-callouts ]]; then
+  pod_ips=$("${vc[@]}" get pods -l app=dynamo-pd-decode -o json |
+    jq -r '.items[] | select(.metadata.deletionTimestamp == null) |
+      select(.status.phase == "Running") |
+      select(any(.status.conditions[]?; .type == "Ready" and .status == "True")) |
+      .status.podIP' | sort)
+  cluster_ips=$("${vc[@]}" get configmap dynamo-pd-envoy-callouts -o json |
+    jq -r '.data["envoy.yaml"] | scan("(?m)^    - name: \"([0-9.]+)\"$") | .[0]' | sort)
+  [[ $(wc -l <<<"$pod_ips") == 16 && $pod_ips == "$cluster_ips" ]] || {
+    echo "Envoy callout clusters do not match 16 Ready decode Pod IPs; refresh fixture" >&2
+    exit 2
+  }
 fi
-"${vc[@]}" get deployment "$inactive_pd" -o json |
-  jq -e '.spec.replicas == 0 and (.status.readyReplicas // 0) == 0' >/dev/null
 export AIPERF_NODE_A AIPERF_NODE_B
 AIPERF_NODE_A=$(jq -er '.execution.aiperf_nodes[0]' "$plan")
 AIPERF_NODE_B=$(jq -er '.execution.aiperf_nodes[1]' "$plan")

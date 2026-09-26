@@ -39,14 +39,15 @@ def main() -> int:
     parser.add_argument("trial")
     parser.add_argument("--grace", action="store_true", help="audit the distinct 46-second Mooncake series")
     parser.add_argument("--envoy", action="store_true", help="audit the Envoy generic P/D series")
+    parser.add_argument("--callouts", action="store_true", help="audit the Envoy callout P/D series")
     args = parser.parse_args()
     result_dir = args.result_dir
     if args.grace and args.workload != "mooncake":
         parser.error("--grace is supported only for Mooncake")
-    if args.grace and args.envoy:
-        parser.error("--grace and --envoy select different benchmark series")
-    job_prefix = "nixpde" if args.envoy else "nixpdg" if args.grace else "nixpd"
-    arm = "pd-envoy-generic" if args.envoy else "pd-agw-generic"
+    if sum((args.grace, args.envoy, args.callouts)) > 1:
+        parser.error("--grace, --envoy, and --callouts select different benchmark series")
+    job_prefix = "nixpdc" if args.callouts else "nixpde" if args.envoy else "nixpdg" if args.grace else "nixpd"
+    arm = "pd-envoy-callouts" if args.callouts else "pd-envoy-generic" if args.envoy else "pd-agw-generic"
     job = f"{job_prefix}-{args.workload}-{arm}-{args.trial}"
     plan_path = result_dir / "benchmark_plan.json"
     plan = read_json(plan_path)
