@@ -10,7 +10,7 @@ use std::{
     collections::HashMap,
     sync::{
         Arc,
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicU64, AtomicUsize, Ordering},
     },
 };
 
@@ -43,6 +43,18 @@ struct PreprocessBatchItem {
     enqueued_at: Option<Instant>,
 }
 
+#[derive(Default)]
+struct BatchSummary {
+    batches: AtomicU64,
+    items: AtomicU64,
+    queue_wait_us: AtomicU64,
+    collect_us: AtomicU64,
+    queue_depth: AtomicU64,
+    rpc_completed: AtomicU64,
+    rpc_transport_errors: AtomicU64,
+    rpc_us: AtomicU64,
+}
+
 #[derive(Clone)]
 struct PreprocessBatcher {
     sender: mpsc::Sender<PreprocessBatchItem>,
@@ -66,13 +78,44 @@ impl PreprocessBatcher {
             .and_then(|value| value.parse::<usize>().ok())
             .unwrap_or(0)
             .min(1_000_000);
+        let summary_secs = std::env::var("DYN_STATIC_BATCH_SUMMARY_SECS")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .unwrap_or(0)
+            .min(3600);
+        let summary = (summary_secs > 0).then(|| Arc::new(BatchSummary::default()));
+        if let Some(summary) = &summary {
+            let weak = Arc::downgrade(summary);
+            tokio::spawn(async move {
+                let mut timer = tokio::time::interval(Duration::from_secs(summary_secs));
+                timer.tick().await;
+                loop {
+                    timer.tick().await;
+                    let Some(summary) = weak.upgrade() else {
+                        break;
+                    };
+                    tracing::debug!(
+                        target: "dynamo_static_batch_summary",
+                        batches = summary.batches.load(Ordering::Relaxed),
+                        items = summary.items.load(Ordering::Relaxed),
+                        queue_wait_us = summary.queue_wait_us.load(Ordering::Relaxed),
+                        collect_us = summary.collect_us.load(Ordering::Relaxed),
+                        queue_depth = summary.queue_depth.load(Ordering::Relaxed),
+                        rpc_completed = summary.rpc_completed.load(Ordering::Relaxed),
+                        rpc_transport_errors = summary.rpc_transport_errors.load(Ordering::Relaxed),
+                        rpc_us = summary.rpc_us.load(Ordering::Relaxed),
+                        "static preprocessor batch summary",
+                    );
+                }
+            });
+        }
         let (sender, mut receiver) = mpsc::channel::<PreprocessBatchItem>(queue_capacity);
         tokio::spawn(async move {
             let mut batch_index = 0usize;
             while let Some(first) = receiver.recv().await {
                 batch_index = batch_index.wrapping_add(1);
                 let should_emit_stats = stats_every > 0 && batch_index % stats_every == 0;
-                let received_at = should_emit_stats.then(Instant::now);
+                let received_at = (should_emit_stats || summary.is_some()).then(Instant::now);
                 let mut batch = Vec::with_capacity(max_batch);
                 batch.push(first);
                 if linger_us == 0 {
@@ -110,8 +153,22 @@ impl PreprocessBatcher {
                         receiver.len(),
                     )
                 });
+                if let (Some(summary), Some((size, queue_wait_us, collect_us, queue_depth))) =
+                    (&summary, &diagnostics)
+                {
+                    summary.batches.fetch_add(1, Ordering::Relaxed);
+                    summary.items.fetch_add(*size as u64, Ordering::Relaxed);
+                    summary
+                        .queue_wait_us
+                        .fetch_add(*queue_wait_us, Ordering::Relaxed);
+                    summary.collect_us.fetch_add(*collect_us, Ordering::Relaxed);
+                    summary
+                        .queue_depth
+                        .fetch_add(*queue_depth as u64, Ordering::Relaxed);
+                }
                 let index = next_preprocessor.fetch_add(1, Ordering::Relaxed) % preprocessors.len();
                 let mut client = preprocessors[index].clone();
+                let summary = summary.clone();
                 tokio::spawn(async move {
                     let (requests, replies): (Vec<_>, Vec<_>) = batch
                         .into_iter()
@@ -127,15 +184,23 @@ impl PreprocessBatcher {
                             items: requests,
                         })
                         .await;
+                    let rpc_us = rpc_started_at.map(|start| duration_us(start.elapsed()));
+                    if let Some(summary) = summary {
+                        summary.rpc_completed.fetch_add(1, Ordering::Relaxed);
+                        summary
+                            .rpc_us
+                            .fetch_add(rpc_us.unwrap_or_default(), Ordering::Relaxed);
+                        if result.is_err() {
+                            summary.rpc_transport_errors.fetch_add(1, Ordering::Relaxed);
+                        }
+                    }
                     if let Some((size, enqueue_to_recv_us, collect_us, queue_depth)) = diagnostics {
                         tracing::trace!(
                             size = size as u64,
                             enqueue_to_recv_us,
                             collect_us,
                             queue_depth = queue_depth as u64,
-                            rpc_us = rpc_started_at
-                                .map(|start| duration_us(start.elapsed()))
-                                .unwrap_or_default(),
+                            rpc_us = rpc_us.unwrap_or_default(),
                             is_ok = result.is_ok(),
                             "static batch sample",
                         );
@@ -174,7 +239,7 @@ impl PreprocessBatcher {
         });
         Self {
             sender,
-            is_stats_enabled: stats_every > 0,
+            is_stats_enabled: stats_every > 0 || summary_secs > 0,
         }
     }
 
