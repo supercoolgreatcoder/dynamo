@@ -1,0 +1,453 @@
+{
+  "captured_at": "2026-09-26T04:53:04Z",
+  "client_nodes": [
+    "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+    "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4"
+  ],
+  "pods": [
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilfix-mooncake-envoy-callouts-c12-r1-10-xq8gb",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilfix-mooncake-envoy-callouts-c12-r1-2-mpwnh",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilfix-mooncake-envoy-callouts-c12-r1-3-bdt5q",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilfix-mooncake-envoy-callouts-c12-r1-7-hpxwq",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilfix-mooncake-envoy-callouts-c12-r1-8-g5t5f",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilfix-mooncake-envoy-callouts-c12-r1-9-cz4h5",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilfix-mooncake-envoy-callouts-c18-r1-1-7ntqj",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilfix-mooncake-envoy-callouts-c18-r1-10-j9jf7",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilfix-mooncake-envoy-callouts-c18-r1-12-4729z",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilfix-mooncake-envoy-callouts-c18-r1-13-9848w",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilfix-mooncake-envoy-callouts-c18-r1-15-2xrvr",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilfix-mooncake-envoy-callouts-c18-r1-17-mg4gh",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilfix-mooncake-envoy-callouts-c18-r1-2-kcdxq",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilfix-mooncake-envoy-callouts-c18-r1-3-xv7sj",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilfix-mooncake-envoy-callouts-c18-r1-5-2hj9z",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilfix-mooncake-envoy-callouts-c24-r1-1-km9v6",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilfix-mooncake-envoy-callouts-c24-r1-12-kcb7f",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilfix-mooncake-envoy-callouts-c24-r1-14-jmvbn",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilfix-mooncake-envoy-callouts-c24-r1-15-rvlcf",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilfix-mooncake-envoy-callouts-c24-r1-17-g24lv",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilfix-mooncake-envoy-callouts-c24-r1-2-txwfn",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilfix-mooncake-envoy-callouts-c24-r1-20-cqc5g",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilfix-mooncake-envoy-callouts-c24-r1-21-hjt6q",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilfix-mooncake-envoy-callouts-c24-r1-23-trgbg",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilfix-mooncake-envoy-callouts-c24-r1-6-qnfxh",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilfix-mooncake-envoy-callouts-c24-r1-7-llvrl",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilfix-mooncake-envoy-callouts-c24-r1-9-g2mn2",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilplace-mooncake-envoy-callouts-c24-r1-1-l7bsr",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilplace-mooncake-envoy-callouts-c24-r1-12-k8qfj",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilplace-mooncake-envoy-callouts-c24-r1-13-dtdnb",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilplace-mooncake-envoy-callouts-c24-r1-14-t2z5j",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilplace-mooncake-envoy-callouts-c24-r1-20-7chcl",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilplace-mooncake-envoy-callouts-c24-r1-21-r4df7",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilplace-mooncake-envoy-callouts-c24-r1-22-hx2lq",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilplace-mooncake-envoy-callouts-c24-r1-8-xrw8j",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilplace9-mooncake-envoy-callouts-c24-r1-13-cvjrf",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilplace9-mooncake-envoy-callouts-c24-r1-15-lwnvm",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilplace9-mooncake-envoy-callouts-c24-r1-3-lwrjb",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilplace9-mooncake-envoy-callouts-c24-r1-4-kklr6",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilplace9c512-mooncake-envoy-callouts-c12-r1-10-9dtw2",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilplace9c512-mooncake-envoy-callouts-c12-r1-5-7846b",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilplace9c512-mooncake-envoy-callouts-c24-r1-10-dzcnt",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilplace9c512-mooncake-envoy-callouts-c24-r1-12-gwx5h",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilplace9c512-mooncake-envoy-callouts-c24-r1-16-x58wh",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilplace9c512-mooncake-envoy-callouts-c24-r1-23-ddrd9",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilplace9c512g-mooncake-envoy-callouts-c12-r1-2-56fk8",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilplace9c512g-mooncake-envoy-callouts-c12-r1-8-x6zvt",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilplace9c512g-mooncake-envoy-callouts-c14-r1-3-xqbtg",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilplace9c512g-mooncake-envoy-callouts-c14-r1-4-8f2xq",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilplace9c512g-mooncake-envoy-callouts-c14-r2-1-4hg6g",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilplace9c512g-mooncake-envoy-callouts-c14-r2-9-vwrbz",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilplace9c512g-mooncake-envoy-callouts-c15-r1-3-v46vl",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilplace9c512g-mooncake-envoy-callouts-c15-r1-8-4ctm5",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilplace9c512g-mooncake-envoy-callouts-c16-r1-14-ckvd7",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilplace9c512g-mooncake-envoy-callouts-c16-r1-15-gdxtf",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "ceilplace9c512g-mooncake-envoy-callouts-c16-r1-4-6szkp",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "nixpd-isl4000-pd-agw-generic-r1-0-b58n7",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "nixpd-isl4000-pd-agw-generic-r1-1-l7pcx",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "nixpd-isl4000-pd-agw-generic-r1-2-zfsp2",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "nixpd-isl4000-pd-agw-generic-r1-3-b4pgq",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "nixpd-isl4000-pd-agw-generic-r1-4-lzzpv",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "nixpd-isl4000-pd-agw-generic-r1-5-gccf5",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "nixpd-short-pd-agw-generic-r1-0-8m788",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "nixpd-short-pd-agw-generic-r1-1-fx979",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "nixpd-short-pd-agw-generic-r1-2-cmjn9",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "nixpd-short-pd-agw-generic-r1-3-d9jxv",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "nixpd-short-pd-agw-generic-r1-4-t9w74",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "nixpd-short-pd-agw-generic-r1-5-tb4n9",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4",
+      "phase": "Succeeded"
+    },
+    {
+      "namespace": "gwo",
+      "name": "aiperf-6b74bff94-dmfgc",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "aiperf-6b74bff94-g4x7f",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "aiperf-6b74bff94-r5dnz",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "aiperf-6b74bff94-sdfx8",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "aiperf-6b74bff94-sm7c2",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "aiperf-6b74bff94-tkjv7",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4",
+      "phase": "Running"
+    }
+  ]
+}

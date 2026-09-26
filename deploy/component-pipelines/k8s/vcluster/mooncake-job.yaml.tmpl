@@ -86,7 +86,7 @@ spec:
                 --input-file "$dataset" \
                 --isl-block-size 512 \
                 --random-seed 42 \
-                --concurrency 128 --benchmark-duration 45 \
+                --concurrency 128 --benchmark-duration ${BENCHMARK_DURATION} \
                 --export-level summary \
                 --record-processors 16 \
                 --output-artifact-dir "$artifacts"
