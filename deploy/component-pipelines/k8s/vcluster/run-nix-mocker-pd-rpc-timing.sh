@@ -19,7 +19,7 @@ trial=$2
 [[ $VCLUSTER_NAMESPACE == dynamo-components-v2 ]] || exit 2
 [[ $PD_RPC_BINARY == /nix/store/*/bin/dynamo-component-facade ]] || exit 2
 correlated_timing=${PD_RPC_CORRELATED_TIMING:-0}
-[[ $correlated_timing == 0 || ( $correlated_timing == 1 && $arm == pd-agw-static ) ]] || exit 2
+[[ $correlated_timing == 0 || $correlated_timing == 1 ]] || exit 2
 if [[ $correlated_timing == 1 ]]; then
   : "${PD_CORRELATED_GATEWAY_BINARY:?}"
   [[ $PD_CORRELATED_GATEWAY_BINARY == /nix/store/*/bin/agentgateway ]] || exit 2
@@ -53,12 +53,15 @@ gateway=dynamo-${arm}
   jq -e '.spec.replicas == 1 and .status.readyReplicas == 1' >/dev/null
 if [[ $correlated_timing == 1 ]]; then
   "${vc[@]}" get deployment "$gateway" -o json |
-    jq -e --arg binary "$PD_CORRELATED_GATEWAY_BINARY" '
+    jq -e --arg binary "$PD_CORRELATED_GATEWAY_BINARY" --arg arm "$arm" '
       .spec.template.spec.containers[0].command[0] == $binary
       and any(.spec.template.spec.containers[0].env[];
-        .name == "DYN_STATIC_CORRELATED_TIMING" and .value == "1")
+        .name == (if $arm == "pd-agw-static" then "DYN_STATIC_CORRELATED_TIMING" else "DYN_GENERIC_CORRELATED_TIMING" end)
+        and .value == "1")
       and any(.spec.template.spec.containers[0].env[];
-        .name == "RUST_LOG" and .value == "warn,dynamo_static_rpc_split=debug,dynamo_static_selector_rpc=debug")
+        .name == "RUST_LOG" and .value == (if $arm == "pd-agw-static" then
+          "warn,dynamo_static_rpc_split=debug,dynamo_static_selector_rpc=debug"
+          else "warn,dynamo_generic_rpc_split=debug" end))
     ' >/dev/null
 fi
 for inactive in dynamo-pd-agw-static dynamo-pd-agw-generic dynamo-pd-envoy-generic dynamo-pd-envoy-callouts; do
