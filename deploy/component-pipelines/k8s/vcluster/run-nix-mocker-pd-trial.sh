@@ -6,7 +6,7 @@
 # identity even when the AIPerf export validation fails.
 set -euo pipefail
 [[ $# -ge 2 && $# -le 3 && $1 =~ ^(short|isl4000|mooncake)$ && $2 =~ ^r[1-9][0-9]*$ ]] || {
-  echo "usage: $0 {short|isl4000|mooncake} rN [grace|envoy|callouts|static|agw-records|envoy-records]" >&2
+  echo "usage: $0 {short|isl4000|mooncake} rN [grace|envoy|callouts|static|generic-refresh|agw-records|envoy-records]" >&2
   exit 2
 }
 workload=$1
@@ -40,10 +40,16 @@ elif [[ ${3:-} == callouts ]]; then
   arm=pd-envoy-callouts
   export PD_RECORD_EXPORT=0
 elif [[ ${3:-} == static ]]; then
-  export RESULT_DIR=$script_dir/results/2026-09-26-mocker-pd-agw-static-worker-pool
-  plan_sha256=7bc814f880e1d54af18d87298b0de04880aeca7af4c2835769773350793e1a36
+  export RESULT_DIR=$script_dir/results/2026-09-26-mocker-pd-agw-static-threads16
+  plan_sha256=121a1181eee1200704cebc45bff25dabcccfa57703b0de3e70d31b03590e3a48
   job_prefix=nixpds
   arm=pd-agw-static
+  export PD_RECORD_EXPORT=0
+elif [[ ${3:-} == generic-refresh ]]; then
+  export RESULT_DIR=$script_dir/results/2026-09-26-mocker-pd-agw-generic-refresh
+  plan_sha256=d02979978da7967bfd382b359a34029cfda4ae81368aae8ae5085a8934d9d7b3
+  job_prefix=nixpd
+  arm=pd-agw-generic
   export PD_RECORD_EXPORT=0
 elif [[ $# == 2 ]]; then
   export RESULT_DIR=$script_dir/results/2026-09-26-mocker-pd-generic
@@ -94,11 +100,19 @@ for gateway in dynamo-pd-agw-static dynamo-pd-agw-generic dynamo-pd-envoy-generi
 done
 if [[ $arm == pd-agw-static ]]; then
   expected_binary=$(jq -r '.candidate.agentgateway_nix_output + "/bin/agentgateway"' "$plan")
+  expected_linger=$(jq -r '.candidate.preprocess_batch_linger_us // 200 | tostring' "$plan")
+  expected_threads=$(jq -r '.candidate.gateway_worker_threads | tostring' "$plan")
   "${vc[@]}" get deployment dynamo-pd-agw-static -o json |
-    jq -e --arg binary "$expected_binary" '
+    jq -e --arg binary "$expected_binary" --arg linger "$expected_linger" '
       .spec.template.spec.containers[0].command[0] == $binary
       and any(.spec.template.spec.containers[0].env[];
         .name == "DYN_PREFILL_ENDPOINT" and .value == "http://dynamo-pd-prefill:50051")
+      and any(.spec.template.spec.containers[0].env[];
+        .name == "DYN_PREPROCESS_BATCH_LINGER_US" and .value == $linger)
+    ' >/dev/null
+  "${vc[@]}" get configmap dynamo-pd-agw-static -o json |
+    jq -e --arg threads "$expected_threads" '
+      .data["config.yaml"] | contains("workerThreads: " + $threads)
     ' >/dev/null
 fi
 if [[ $arm == pd-envoy-callouts ]]; then

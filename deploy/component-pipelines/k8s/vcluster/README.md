@@ -600,6 +600,27 @@ remaining static P/D bottleneck. Short and Mooncake were not run on this
 diagnostic candidate; the earlier prefill-pool series is the only complete
 three-workload static P/D characterization so far.
 
+Further single-pass ISL4000 diagnostics kept the same six-client dataset,
+vCluster nodes, and facade workers; the static setting trials also kept the
+same AGW binary. Each Job completed with six
+exports, zero errors and cancellations, and a valid frozen-plan audit:
+
+| AGW arm / setting | Global successful RPS | Mean request latency across clients | Interpretation |
+| --- | ---: | ---: | --- |
+| Static, 12 threads, 200 µs batch linger | 5,974.62 | 120.41 ms | Pooled worker baseline |
+| Static, 12 threads, 100 µs batch linger | 5,841.16 | — | Timer amount did not close gap |
+| Static, 12 threads, zero batch linger | 5,848.82 | — | Eliminating timer did not close gap |
+| Static, 16 threads, 200 µs batch linger | 5,897.06 | 121.43 ms | Matching generic thread count did not close gap |
+| Generic, 16 threads, fresh repeat | 9,372.84 | 38.19 ms | Current generic gateway still reproduces earlier result |
+
+The generic repeat uses the existing generic AGW binary and the same worker
+graph, but is a separate benchmark series. These single-pass runs isolate
+likely causes; they are not an interleaved, three-repetition promotion test.
+Static's mean AIPerf time to first token is about 121 ms versus 38 ms for
+the fresh generic run. Connection pooling, batch linger, and gateway worker
+thread count have not explained that wait. Opt-in per-stage timing in the
+static facade is the next diagnostic; it leaves Dynamo core unchanged.
+
 To reproduce, build the pinned envs flake, stage its output with
 `stage-nix-closure.sh` and a fresh stage ID, then set the explicit
 `VCLUSTER_KUBECONFIG`, `VCLUSTER_EXPECTED_SERVER`, `VCLUSTER_NAMESPACE`,

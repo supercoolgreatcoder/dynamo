@@ -18,6 +18,12 @@ vc=(kubectl --kubeconfig "$VCLUSTER_KUBECONFIG" -n "$VCLUSTER_NAMESPACE")
 stager_pod=${NIX_STAGER_POD:-dynamo-component-store-stager}
 dry_run=${PD_DRY_RUN:-0}
 [[ $dry_run == 0 || $dry_run == 1 ]] || exit 2
+preprocess_linger_us=${PD_PREPROCESS_BATCH_LINGER_US:-200}
+[[ $preprocess_linger_us =~ ^[0-9]+$ ]] &&
+  (( preprocess_linger_us <= 1000000 )) || exit 2
+worker_threads=${PD_WORKER_THREADS:-12}
+[[ $worker_threads =~ ^[1-9][0-9]*$ ]] &&
+  (( worker_threads <= 128 )) || exit 2
 "${vc[@]}" get jobs -o json |
   jq -e '[.items[] | select((.status.active // 0) > 0)] | length == 0' >/dev/null
 for component in dynamo-pd-preprocessor:4 dynamo-pd-selector:4 dynamo-pd-prefill:4 dynamo-pd-decode:16; do
@@ -40,18 +46,19 @@ apply_json() {
   fi
 }
 source_config=$("${vc[@]}" get configmap agw-static -o json)
-config=$(jq -c '
+config=$(jq -c --arg threads "$worker_threads" '
   {apiVersion,kind,metadata:{name:"dynamo-pd-agw-static"},data:.data}
   | .data["config.yaml"] |= (
       gsub("dynamo-preprocessor";"dynamo-pd-preprocessor")
       | gsub("dynamo-selector";"dynamo-pd-selector")
-      | gsub("dynamo-worker";"dynamo-pd-decode"))
+      | gsub("dynamo-worker";"dynamo-pd-decode")
+      | gsub("workerThreads: [0-9]+"; "workerThreads: " + $threads))
 ' <<<"$source_config")
 [[ $(jq -r '.data["config.yaml"]' <<<"$config") == *'mode: static'* ]] || exit 2
 apply_json "$config"
 
 source_deployment=$("${vc[@]}" get deployment agw-static -o json)
-deployment=$(jq -c --arg binary "$binary" '
+deployment=$(jq -c --arg binary "$binary" --arg linger "$preprocess_linger_us" '
   {apiVersion,kind,metadata:{name:"dynamo-pd-agw-static"},spec:.spec}
   | .spec.replicas=1
   | .spec.selector.matchLabels.app="dynamo-pd-agw-static"
@@ -59,6 +66,9 @@ deployment=$(jq -c --arg binary "$binary" '
   | .spec.template.spec.containers[0].command[0]=$binary
   | .spec.template.spec.containers[0].env +=
       [{name:"DYN_PREFILL_ENDPOINT",value:"http://dynamo-pd-prefill:50051"}]
+  | .spec.template.spec.containers[0].env |= map(
+      if .name == "DYN_PREPROCESS_BATCH_LINGER_US"
+      then .value=$linger else . end)
   | .spec.template.spec.volumes |= map(
       if .name == "config" then .configMap.name="dynamo-pd-agw-static" else . end)
 ' <<<"$source_deployment")
