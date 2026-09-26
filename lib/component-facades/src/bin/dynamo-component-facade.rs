@@ -71,7 +71,7 @@ enum Command {
     Postprocessor(PostprocessorArgs),
     Selector(SelectorArgs),
     /// CPU-only deterministic worker for facade/orchestrator benchmarks.
-    BenchmarkWorker(ModelArgs),
+    BenchmarkWorker(BenchmarkWorkerArgs),
     /// vLLM worker facade using Dynamo's native sidecar engine.
     VllmWorker(SidecarWorkerArgs),
     /// SGLang worker facade using Dynamo's native sidecar engine.
@@ -96,6 +96,22 @@ struct ModelArgs {
     max_batch_bytes: usize,
     #[arg(long, default_value_t = 8)]
     max_concurrency: usize,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
+enum BenchmarkWorkerMode {
+    Aggregate,
+    Prefill,
+    Decode,
+}
+
+#[derive(clap::Args)]
+struct BenchmarkWorkerArgs {
+    #[command(flatten)]
+    model: ModelArgs,
+    /// Only for synthetic P/D benchmark fixtures; production engines remain unchanged.
+    #[arg(long, value_enum, default_value_t = BenchmarkWorkerMode::Aggregate)]
+    benchmark_mode: BenchmarkWorkerMode,
 }
 
 #[derive(clap::Args)]
@@ -188,7 +204,9 @@ fn default_kv_event_port_stride() -> u16 {
     1
 }
 
-struct BenchmarkBackend;
+struct BenchmarkBackend {
+    mode: BenchmarkWorkerMode,
+}
 
 #[async_trait]
 impl AsyncEngine<SingleIn<PreprocessedRequest>, ManyOut<Annotated<BackendOutput>>, Error>
@@ -198,25 +216,48 @@ impl AsyncEngine<SingleIn<PreprocessedRequest>, ManyOut<Annotated<BackendOutput>
         &self,
         request: EngineContext<PreprocessedRequest>,
     ) -> Result<ManyOut<Annotated<BackendOutput>>, Error> {
-        let token_count = request
-            .stop_conditions
-            .max_tokens
-            .unwrap_or(1)
-            .clamp(1, 2048);
+        if self.mode == BenchmarkWorkerMode::Decode
+            && !request
+                .prefill_result
+                .as_ref()
+                .is_some_and(|result| result.disaggregated_params["benchmark_handoff"] == true)
+        {
+            anyhow::bail!("decode benchmark worker requires a prefill handoff");
+        }
+        let token_count = if self.mode == BenchmarkWorkerMode::Prefill {
+            1
+        } else {
+            request
+                .stop_conditions
+                .max_tokens
+                .unwrap_or(1)
+                .clamp(1, 2048)
+        };
         let context = request.context();
+        let mode = self.mode;
         let outputs = (0..token_count).map(move |index| {
             Annotated::from_data(BackendOutput {
-                token_ids: vec![42],
-                tokens: vec![Some("x".into())],
-                text: Some("x".into()),
+                token_ids: if mode == BenchmarkWorkerMode::Prefill {
+                    Vec::new()
+                } else {
+                    vec![42]
+                },
+                tokens: if mode == BenchmarkWorkerMode::Prefill {
+                    Vec::new()
+                } else {
+                    vec![Some("x".into())]
+                },
+                text: (mode != BenchmarkWorkerMode::Prefill).then(|| "x".into()),
                 cum_log_probs: None,
                 log_probs: None,
                 top_logprobs: None,
-                finish_reason: (index + 1 == token_count).then_some(FinishReason::Length),
+                finish_reason: (mode != BenchmarkWorkerMode::Prefill && index + 1 == token_count)
+                    .then_some(FinishReason::Length),
                 stop_reason: None,
                 index: Some(0),
                 completion_usage: None,
-                disaggregated_params: None,
+                disaggregated_params: (mode == BenchmarkWorkerMode::Prefill)
+                    .then(|| serde_json::json!({"benchmark_handoff": true})),
                 encoder_result: None,
                 worker_trace_link: None,
                 engine_data: None,
@@ -421,12 +462,14 @@ async fn main() -> anyhow::Result<()> {
                 .await?;
         }
         Command::BenchmarkWorker(config) => {
-            let engine: CanonicalBackendEngine = Arc::new(BenchmarkBackend);
+            let engine: CanonicalBackendEngine = Arc::new(BenchmarkBackend {
+                mode: config.benchmark_mode,
+            });
             let service = ChatWorkerFacade::new(
                 engine,
-                load_preprocessor(&config)?,
-                config.max_batch_bytes,
-                config.max_batch_bytes,
+                load_preprocessor(&config.model)?,
+                config.model.max_batch_bytes,
+                config.model.max_batch_bytes,
             )?;
             let (reporter, health) = tonic_health::server::health_reporter();
             reporter
@@ -548,4 +591,57 @@ async fn main() -> anyhow::Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod benchmark_worker_tests {
+    use super::*;
+    use dynamo_llm::protocols::common::{
+        OutputOptions, SamplingOptions, StopConditions, preprocessor::PrefillResult,
+    };
+    use futures::StreamExt;
+
+    fn request() -> PreprocessedRequest {
+        PreprocessedRequest::builder()
+            .model("test-model".to_string())
+            .token_ids(vec![1, 2, 3])
+            .stop_conditions(StopConditions::default())
+            .sampling_options(SamplingOptions::default())
+            .output_options(OutputOptions::default())
+            .build()
+            .unwrap()
+    }
+
+    fn context(request: PreprocessedRequest) -> EngineContext<PreprocessedRequest> {
+        EngineContext::with_id_and_metadata(request, "benchmark-test".into(), Default::default())
+    }
+
+    #[tokio::test]
+    async fn prefill_emits_only_a_handoff_and_decode_requires_it() {
+        let prefill = BenchmarkBackend {
+            mode: BenchmarkWorkerMode::Prefill,
+        };
+        let mut outputs = prefill.generate(context(request())).await.unwrap();
+        let handoff = outputs.next().await.unwrap().into_data().unwrap().unwrap();
+        assert!(handoff.token_ids.is_empty());
+        assert_eq!(
+            handoff.disaggregated_params,
+            Some(serde_json::json!({"benchmark_handoff": true}))
+        );
+        assert!(outputs.next().await.is_none());
+
+        let decode = BenchmarkBackend {
+            mode: BenchmarkWorkerMode::Decode,
+        };
+        assert!(decode.generate(context(request())).await.is_err());
+        let mut decode_request = request();
+        decode_request.prefill_result = Some(PrefillResult {
+            disaggregated_params: handoff.disaggregated_params.unwrap(),
+            prompt_tokens_details: None,
+        });
+        let mut outputs = decode.generate(context(decode_request)).await.unwrap();
+        let first = outputs.next().await.unwrap().into_data().unwrap().unwrap();
+        assert_eq!(first.token_ids, vec![42]);
+        assert!(first.disaggregated_params.is_none());
+    }
 }
