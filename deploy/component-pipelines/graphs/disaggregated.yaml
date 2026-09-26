@@ -37,6 +37,13 @@ steps:
         backend_request: "$.response.backend_request_json"
         selector_request: "$.response.selector_request_json"
         token_ids_le: "$.response.token_ids_le"
+        prompt_tokens: "$.response.prompt_tokens"
+        prompt_injected_reasoning: "$.response.prompt_injected_reasoning"
+        uses_tool_call_structural_tag: "$.response.uses_tool_call_structural_tag"
+        image_tokens: {optional: "$.response.image_tokens"}
+        image_count: "$.response.image_count"
+        video_count: "$.response.video_count"
+        audio_count: "$.response.audio_count"
       batch: {maxSize: 32, lingerUs: 100}
   - id: prefill
     call:
@@ -79,6 +86,13 @@ steps:
         normalized_openai_request_json: "$.vars.normalized_request"
         token_ids_le: "$.vars.token_ids_le"
         prefill_result_json: "$.vars.handoff"
+        prompt_tokens: "$.vars.prompt_tokens"
+        prompt_injected_reasoning: "$.vars.prompt_injected_reasoning"
+        uses_tool_call_structural_tag: "$.vars.uses_tool_call_structural_tag"
+        image_tokens: "$.vars.image_tokens"
+        image_count: "$.vars.image_count"
+        video_count: "$.vars.video_count"
+        audio_count: "$.vars.audio_count"
         deadline_unix_ms: 0
       stream: {}
       respond: true

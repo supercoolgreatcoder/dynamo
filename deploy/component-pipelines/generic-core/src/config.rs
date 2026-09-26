@@ -428,6 +428,11 @@ pub enum Expr {
     Length {
         length: Box<Expr>,
     },
+    /// `{optional: <expr>}` -- return null only when a referenced field is absent.
+    /// Other expression errors still fail the pipeline.
+    Optional {
+        optional: Box<Expr>,
+    },
     Literal(serde_json::Value),
 }
 

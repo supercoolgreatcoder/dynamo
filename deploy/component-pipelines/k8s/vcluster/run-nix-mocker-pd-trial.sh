@@ -40,8 +40,8 @@ elif [[ ${3:-} == callouts ]]; then
   arm=pd-envoy-callouts
   export PD_RECORD_EXPORT=0
 elif [[ ${3:-} == static ]]; then
-  export RESULT_DIR=$script_dir/results/2026-09-26-mocker-pd-agw-static-threads16
-  plan_sha256=121a1181eee1200704cebc45bff25dabcccfa57703b0de3e70d31b03590e3a48
+  export RESULT_DIR=$script_dir/results/2026-09-26-mocker-pd-agw-static-logwarn
+  plan_sha256=5688eba75b15413353f993fe222ad282e6271e44a679036df27077ae6d5eca3c
   job_prefix=nixpds
   arm=pd-agw-static
   export PD_RECORD_EXPORT=0
@@ -102,13 +102,19 @@ if [[ $arm == pd-agw-static ]]; then
   expected_binary=$(jq -r '.candidate.agentgateway_nix_output + "/bin/agentgateway"' "$plan")
   expected_linger=$(jq -r '.candidate.preprocess_batch_linger_us // 200 | tostring' "$plan")
   expected_threads=$(jq -r '.candidate.gateway_worker_threads | tostring' "$plan")
+  expected_timing=$(jq -r '.candidate.stage_timing_every // 0 | tostring' "$plan")
+  expected_rust_log=$(jq -r '.candidate.rust_log // ""' "$plan")
   "${vc[@]}" get deployment dynamo-pd-agw-static -o json |
-    jq -e --arg binary "$expected_binary" --arg linger "$expected_linger" '
+    jq -e --arg binary "$expected_binary" --arg linger "$expected_linger" --arg timing "$expected_timing" --arg rust_log "$expected_rust_log" '
       .spec.template.spec.containers[0].command[0] == $binary
       and any(.spec.template.spec.containers[0].env[];
         .name == "DYN_PREFILL_ENDPOINT" and .value == "http://dynamo-pd-prefill:50051")
       and any(.spec.template.spec.containers[0].env[];
         .name == "DYN_PREPROCESS_BATCH_LINGER_US" and .value == $linger)
+      and ($timing == "0" or any(.spec.template.spec.containers[0].env[];
+        .name == "DYN_STATIC_STAGE_TIMING_EVERY" and .value == $timing))
+      and ($rust_log == "" or any(.spec.template.spec.containers[0].env[];
+        .name == "RUST_LOG" and .value == $rust_log))
     ' >/dev/null
   "${vc[@]}" get configmap dynamo-pd-agw-static -o json |
     jq -e --arg threads "$expected_threads" '
@@ -149,6 +155,28 @@ printf '%s\t%s\t%s\n' "$workload" "$dataset_path" "$actual_dataset_sha256" \
         phase:.status.phase}]}
   ' > "$RESULT_DIR/occupancy-before-$job.json"
 
+log_pid=
+cleanup_log_follow() {
+  if [[ -n $log_pid ]]; then
+    kill "$log_pid" 2>/dev/null || true
+    wait "$log_pid" 2>/dev/null || true
+    log_pid=
+  fi
+}
+trap cleanup_log_follow EXIT
+if [[ $arm == pd-agw-static && $expected_timing != 0 ]]; then
+  gateway_pod=$("${vc[@]}" get pods -l app=dynamo-pd-agw-static -o json |
+    jq -er '[.items[] | select(.metadata.deletionTimestamp == null) |
+      select(.status.phase == "Running") |
+      select(any(.status.conditions[]?; .type == "Ready" and .status == "True")) |
+      .metadata.name] | if length == 1 then .[0] else error("expected one Ready static gateway") end')
+  "${vc[@]}" logs "$gateway_pod" --follow --since=1s \
+    > "$RESULT_DIR/raw-gateway-$job.log" \
+    2> "$RESULT_DIR/raw-gateway-$job.stderr" &
+  log_pid=$!
+  sleep 1
+  kill -0 "$log_pid"
+fi
 status=completed
 if ! bash "$script_dir/run-nix-mocker-trial.sh" "$arm" "$workload" "$trial"; then
   status=failed
@@ -162,6 +190,11 @@ fi
   ' > "$RESULT_DIR/occupancy-after-$job.json"
 job_json=$("${vc[@]}" get job "$job" -o json)
 pods_json=$("${vc[@]}" get pods -l "job-name=$job" -o json)
+cleanup_log_follow
+if [[ $arm == pd-agw-static && $expected_timing != 0 ]]; then
+  rg '^static_stage_us prepare=[0-9]+ prefill=[0-9]+ select=[0-9]+ decode=[0-9]+ total=[0-9]+$' \
+    "$RESULT_DIR/raw-gateway-$job.log" > "$RESULT_DIR/stage-timing-$job.log" || true
+fi
 jq -n --argjson job "$job_json" --argjson pods "$pods_json" \
   --arg status "$status" --arg server "$actual_server" \
   --arg plan "$plan" --arg hash "$plan_sha256" \
@@ -192,6 +225,12 @@ if [[ $workload == mooncake ]]; then
     printf '%s\t%s\n' "$pod" "$hit" >> "$cache_file"
   done < <(jq -r '.pods[].name' "$RESULT_DIR/execution-$job.json")
   [[ $(wc -l < "$cache_file") == 6 ]] || exit 1
+fi
+if [[ $arm == pd-agw-static && $expected_timing != 0 ]]; then
+  [[ $(wc -l < "$RESULT_DIR/stage-timing-$job.log") -ge 20 ]] || {
+    echo "fewer than 20 static stage timing samples" >&2
+    exit 1
+  }
 fi
 [[ $status == completed ]] || exit 1
 echo "P/D $workload AIPerf Job and execution evidence complete: $job"
