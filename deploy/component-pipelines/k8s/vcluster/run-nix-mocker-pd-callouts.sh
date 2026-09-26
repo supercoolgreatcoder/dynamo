@@ -14,10 +14,15 @@ actual_server=$(kubectl --kubeconfig "$VCLUSTER_KUBECONFIG" \
   config view --minify -o jsonpath='{.clusters[0].cluster.server}')
 [[ $actual_server == "$VCLUSTER_EXPECTED_SERVER" ]] || exit 2
 vc=(kubectl --kubeconfig "$VCLUSTER_KUBECONFIG" -n "$VCLUSTER_NAMESPACE")
+bundle=${PD_ENVOY_BUNDLE_PATH:-/nix/store/d9n60x9aylvjvj9j56654640xshsai1x-dynamo-component-pipelines-accf6af699}
+[[ $bundle == /nix/store/* && ${bundle#/nix/store/} != */* ]] || exit 2
+stager_pod=${NIX_STAGER_POD:-dynamo-component-store-stager}
 dry_run=${PD_DRY_RUN:-0}
 [[ $dry_run == 0 || $dry_run == 1 ]] || exit 2
 "${vc[@]}" get jobs -o json |
   jq -e '[.items[] | select((.status.active // 0) > 0)] | length == 0' >/dev/null
+"${vc[@]}" exec "$stager_pod" -- test -x "/shared/nix${bundle#/nix}/bin/envoy-static"
+"${vc[@]}" exec "$stager_pod" -- test -f "/shared/nix${bundle#/nix}/lib/libgeneric_pipeline.so"
 "${vc[@]}" get configmap dynamo-pd-contracts -o json |
   jq -e '.data["disaggregated.yaml"] and .binaryData["components_descriptor.bin"]' >/dev/null
 for component in dynamo-pd-preprocessor:4 dynamo-pd-selector:4 dynamo-pd-prefill:4 dynamo-pd-decode:16; do
@@ -82,15 +87,18 @@ config=$(jq -nc --arg data "$rendered" '{apiVersion:"v1",kind:"ConfigMap",
   metadata:{name:"dynamo-pd-envoy-callouts"},data:{"envoy.yaml":$data}}')
 apply_json "$config"
 source_deployment=$("${vc[@]}" get deployment envoy-callouts -o json)
-deployment=$(jq -c '
+deployment=$(jq -c --arg bundle "$bundle" '
   {apiVersion,kind,metadata:{name:"dynamo-pd-envoy-callouts"},spec:.spec}
   | .spec.replicas=1
   | .spec.selector.matchLabels.app="dynamo-pd-envoy-callouts"
   | .spec.template.metadata.labels.app="dynamo-pd-envoy-callouts"
+  | .spec.template.spec.containers[0].command[0]=($bundle+"/bin/envoy-static")
   | .spec.template.spec.containers[0].args |=
       map(if . == "20" then "6" else . end)
   | .spec.template.spec.containers[0].env |=
-      map(if .name == "GENERIC_PIPELINE_THREADS" then .value="8" else . end)
+      map(if .name == "GENERIC_PIPELINE_THREADS" then .value="8"
+          elif .name == "ENVOY_DYNAMIC_MODULES_SEARCH_PATH"
+          then .value=($bundle+"/lib") else . end)
   | .spec.template.spec.volumes |= map(
       if .name == "config" then .configMap.name="dynamo-pd-envoy-callouts"
       elif .name == "pipeline" then
