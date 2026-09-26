@@ -12,6 +12,7 @@ use std::{
         Arc,
         atomic::{AtomicU64, AtomicUsize, Ordering},
     },
+    task::{Context, Poll},
 };
 
 use dynamo_component_facades::proto::{
@@ -24,7 +25,12 @@ use tokio::{
     sync::{Mutex, mpsc, oneshot},
     time::{Duration, Instant},
 };
-use tonic::{Streaming, transport::Channel};
+use tonic::{
+    Streaming,
+    body::Body,
+    codegen::{Service, http},
+    transport::Channel,
+};
 
 const GRPC_STREAM_WINDOW_BYTES: u32 = 8 * 1024 * 1024;
 const GRPC_CONNECTION_WINDOW_BYTES: u32 = 16 * 1024 * 1024;
@@ -358,6 +364,40 @@ struct ChannelPool {
     next: AtomicUsize,
 }
 
+struct SampledChannel {
+    inner: Channel,
+    request_id: String,
+    rpc_started_at: Instant,
+    ready_started_at: Option<Instant>,
+}
+
+impl Service<http::Request<Body>> for SampledChannel {
+    type Response = <Channel as Service<http::Request<Body>>>::Response;
+    type Error = <Channel as Service<http::Request<Body>>>::Error;
+    type Future = <Channel as Service<http::Request<Body>>>::Future;
+
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        let started_at = *self.ready_started_at.get_or_insert_with(Instant::now);
+        let ready = self.inner.poll_ready(cx);
+        if ready.is_ready() {
+            tracing::debug!(
+                target: "dynamo_static_buffer_ready",
+                request_id = %self.request_id,
+                ready_us = duration_us(started_at.elapsed()),
+                ready_offset_us = duration_us(self.rpc_started_at.elapsed()),
+                is_ok = matches!(&ready, Poll::Ready(Ok(()))),
+                "static prefill channel buffer readiness"
+            );
+            self.ready_started_at = None;
+        }
+        ready
+    }
+
+    fn call(&mut self, request: http::Request<Body>) -> Self::Future {
+        self.inner.call(request)
+    }
+}
+
 impl ChannelPool {
     fn next(&self) -> Channel {
         let index = self.next.fetch_add(1, Ordering::Relaxed) % self.channels.len();
@@ -549,24 +589,38 @@ impl StaticAggregatePipeline {
             let index = self.next_prefill.fetch_add(1, Ordering::Relaxed) % channels.len();
             let channel = channels[index].clone();
             let rpc_started_at = timing_start.map(|_| Instant::now());
-            let mut stream = ChatWorkerBridgeClient::new(channel)
-                .generate_raw(ChatWorkerRequest {
-                    request_id: request_id.clone(),
-                    backend_request_json: prepared.backend_request_json.clone(),
-                    normalized_openai_request_json: Vec::new(),
-                    prompt_injected_reasoning: false,
-                    uses_tool_call_structural_tag: false,
-                    prompt_tokens: prepared.prompt_tokens,
-                    image_tokens: prepared.image_tokens,
-                    image_count: prepared.image_count,
-                    video_count: prepared.video_count,
-                    audio_count: prepared.audio_count,
-                    deadline_unix_ms,
-                    token_ids: Vec::new(),
-                    token_ids_le: prepared.token_ids_le.clone(),
-                    prefill_result_json: Vec::new(),
-                })
-                .await
+            let prefill_request = ChatWorkerRequest {
+                request_id: request_id.clone(),
+                backend_request_json: prepared.backend_request_json.clone(),
+                normalized_openai_request_json: Vec::new(),
+                prompt_injected_reasoning: false,
+                uses_tool_call_structural_tag: false,
+                prompt_tokens: prepared.prompt_tokens,
+                image_tokens: prepared.image_tokens,
+                image_count: prepared.image_count,
+                video_count: prepared.video_count,
+                audio_count: prepared.audio_count,
+                deadline_unix_ms,
+                token_ids: Vec::new(),
+                token_ids_le: prepared.token_ids_le.clone(),
+                prefill_result_json: Vec::new(),
+            };
+            let response =
+                if let (true, Some(rpc_started_at)) = (self.is_correlated_timing, rpc_started_at) {
+                    ChatWorkerBridgeClient::new(SampledChannel {
+                        inner: channel,
+                        request_id: request_id.clone(),
+                        rpc_started_at,
+                        ready_started_at: None,
+                    })
+                    .generate_raw(prefill_request)
+                    .await
+                } else {
+                    ChatWorkerBridgeClient::new(channel)
+                        .generate_raw(prefill_request)
+                        .await
+                };
+            let mut stream = response
                 .map_err(PipelineError::PrefillTransport)?
                 .into_inner();
             let headers_at = timing_start.map(|_| Instant::now());

@@ -59,9 +59,11 @@ if [[ $correlated_timing == 1 ]]; then
         .name == (if $arm == "pd-agw-static" then "DYN_STATIC_CORRELATED_TIMING" else "DYN_GENERIC_CORRELATED_TIMING" end)
         and .value == "1")
       and any(.spec.template.spec.containers[0].env[];
-        .name == "RUST_LOG" and .value == (if $arm == "pd-agw-static" then
-          "warn,dynamo_static_rpc_split=debug,dynamo_static_selector_rpc=debug"
-          else "warn,dynamo_generic_rpc_split=debug" end))
+        .name == "RUST_LOG" and
+        (if $arm == "pd-agw-static" then
+          (.value == "warn,dynamo_static_rpc_split=debug,dynamo_static_selector_rpc=debug"
+           or .value == "warn,dynamo_static_rpc_split=debug,dynamo_static_selector_rpc=debug,dynamo_static_buffer_ready=debug")
+         else .value == "warn,dynamo_generic_rpc_split=debug" end))
     ' >/dev/null
 fi
 for inactive in dynamo-pd-agw-static dynamo-pd-agw-generic dynamo-pd-envoy-generic dynamo-pd-envoy-callouts; do

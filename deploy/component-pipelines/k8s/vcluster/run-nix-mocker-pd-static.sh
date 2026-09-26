@@ -56,7 +56,8 @@ rust_log=${PD_RUST_LOG:-}
    $rust_log == warn,dynamo_static_pipeline=trace ||
    $rust_log == warn,dynamo_static_batch_summary=debug ||
    $rust_log == warn,dynamo_static_rpc_split=debug ||
-   $rust_log == warn,dynamo_static_rpc_split=debug,dynamo_static_selector_rpc=debug ]] || exit 2
+   $rust_log == warn,dynamo_static_rpc_split=debug,dynamo_static_selector_rpc=debug ||
+   $rust_log == warn,dynamo_static_rpc_split=debug,dynamo_static_selector_rpc=debug,dynamo_static_buffer_ready=debug ]] || exit 2
 "${vc[@]}" get jobs -o json |
   jq -e '[.items[] | select((.status.active // 0) > 0)] | length == 0' >/dev/null
 for component in dynamo-pd-preprocessor:4 dynamo-pd-selector:4 dynamo-pd-prefill:4 dynamo-pd-decode:16; do
