@@ -33,6 +33,8 @@ stage_timing_every=${PD_STAGE_TIMING_EVERY:-0}
   (( stage_timing_every <= 1000000 )) || exit 2
 lazy_channels=${PD_LAZY_CHANNELS:-0}
 [[ $lazy_channels == 0 || $lazy_channels == 1 ]] || exit 2
+correlated_timing=${PD_STATIC_CORRELATED_TIMING:-0}
+[[ $correlated_timing == 0 || $correlated_timing == 1 ]] || exit 2
 batch_stats_every=${PD_BATCH_STATS_EVERY:-0}
 [[ $batch_stats_every =~ ^[0-9]+$ ]] &&
   (( batch_stats_every <= 1000000 )) || exit 2
@@ -53,7 +55,8 @@ rust_log=${PD_RUST_LOG:-}
 [[ -z $rust_log || $rust_log == warn ||
    $rust_log == warn,dynamo_static_pipeline=trace ||
    $rust_log == warn,dynamo_static_batch_summary=debug ||
-   $rust_log == warn,dynamo_static_rpc_split=debug ]] || exit 2
+   $rust_log == warn,dynamo_static_rpc_split=debug ||
+   $rust_log == warn,dynamo_static_rpc_split=debug,dynamo_static_selector_rpc=debug ]] || exit 2
 "${vc[@]}" get jobs -o json |
   jq -e '[.items[] | select((.status.active // 0) > 0)] | length == 0' >/dev/null
 for component in dynamo-pd-preprocessor:4 dynamo-pd-selector:4 dynamo-pd-prefill:4 dynamo-pd-decode:16; do
@@ -89,7 +92,7 @@ config=$(jq -c --arg threads "$worker_threads" '
 apply_json "$config"
 
 source_deployment=$("${vc[@]}" get deployment agw-static -o json)
-deployment=$(jq -c --arg binary "$binary" --arg linger "$preprocess_linger_us" --arg batch_max "$preprocess_batch_max" --arg channels "$grpc_channels" --arg timing "$stage_timing_every" --arg lazy "$lazy_channels" --arg batch_stats "$batch_stats_every" --arg summary_secs "$batch_summary_secs" --arg batch_shards "$batch_shards" --arg sleep_drain "$sleep_drain" --arg bulk_drain "$bulk_drain" --arg ready_threshold "$ready_threshold" --arg rust_log "$rust_log" '
+deployment=$(jq -c --arg binary "$binary" --arg linger "$preprocess_linger_us" --arg batch_max "$preprocess_batch_max" --arg channels "$grpc_channels" --arg timing "$stage_timing_every" --arg lazy "$lazy_channels" --arg correlated "$correlated_timing" --arg batch_stats "$batch_stats_every" --arg summary_secs "$batch_summary_secs" --arg batch_shards "$batch_shards" --arg sleep_drain "$sleep_drain" --arg bulk_drain "$bulk_drain" --arg ready_threshold "$ready_threshold" --arg rust_log "$rust_log" '
   {apiVersion,kind,metadata:{name:"dynamo-pd-agw-static"},spec:.spec}
   | .spec.replicas=1
   | .spec.selector.matchLabels.app="dynamo-pd-agw-static"
@@ -103,6 +106,9 @@ deployment=$(jq -c --arg binary "$binary" --arg linger "$preprocess_linger_us" -
   | .spec.template.spec.containers[0].env +=
       (if $lazy == "0" then []
        else [{name:"DYN_STATIC_LAZY_CHANNELS",value:$lazy}] end)
+  | .spec.template.spec.containers[0].env +=
+      (if $correlated == "0" then []
+       else [{name:"DYN_STATIC_CORRELATED_TIMING",value:$correlated}] end)
   | .spec.template.spec.containers[0].env +=
       (if $batch_stats == "0" then []
        else [{name:"DYN_STATIC_BATCH_STATS_EVERY",value:$batch_stats}] end)

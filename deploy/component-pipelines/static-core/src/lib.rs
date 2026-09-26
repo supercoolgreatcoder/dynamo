@@ -349,6 +349,7 @@ pub struct StaticAggregatePipeline {
     worker_channels: Arc<Mutex<HashMap<String, Arc<ChannelPool>>>>,
     worker_channels_per_endpoint: usize,
     stage_timing_every: usize,
+    is_correlated_timing: bool,
     next_stage_timing: Arc<AtomicUsize>,
 }
 
@@ -377,6 +378,7 @@ impl StaticAggregatePipeline {
             worker_channels: Arc::new(Mutex::new(HashMap::new())),
             worker_channels_per_endpoint: 1,
             stage_timing_every: 0,
+            is_correlated_timing: false,
             next_stage_timing: Arc::new(AtomicUsize::new(0)),
         }
     }
@@ -413,6 +415,10 @@ impl StaticAggregatePipeline {
             .ok()
             .and_then(|value| value.parse().ok())
             .unwrap_or(0usize);
+        let is_correlated_timing = std::env::var("DYN_STATIC_CORRELATED_TIMING")
+            .ok()
+            .as_deref()
+            == Some("1");
         // Diagnostic only: compare startup-established connections with the lazy
         // channels used by the generic transport. Eager remains the default.
         let lazy_channels = std::env::var("DYN_STATIC_LAZY_CHANNELS").ok().as_deref() == Some("1");
@@ -468,6 +474,7 @@ impl StaticAggregatePipeline {
             worker_channels: Arc::new(Mutex::new(HashMap::new())),
             worker_channels_per_endpoint: pool_size,
             stage_timing_every,
+            is_correlated_timing,
             next_stage_timing: Arc::new(AtomicUsize::new(0)),
         })
     }
@@ -499,10 +506,14 @@ impl StaticAggregatePipeline {
         deadline_unix_ms: i64,
     ) -> Result<Streaming<PostprocessOutput>, PipelineError> {
         // Opt-in diagnostics only: no clock reads or logging on the normal path.
-        let timing_start = (self.stage_timing_every > 0
-            && self.next_stage_timing.fetch_add(1, Ordering::Relaxed) % self.stage_timing_every
-                == 0)
-            .then(Instant::now);
+        let timing_start = (if self.is_correlated_timing {
+            request_id.ends_with("00")
+        } else {
+            self.stage_timing_every > 0
+                && self.next_stage_timing.fetch_add(1, Ordering::Relaxed) % self.stage_timing_every
+                    == 0
+        })
+        .then(Instant::now);
         let request = PreprocessItem {
             item_id: request_id.clone(),
             openai_request_json,
@@ -593,6 +604,7 @@ impl StaticAggregatePipeline {
                 let completed = Instant::now();
                 tracing::debug!(
                     target: "dynamo_static_rpc_split",
+                    request_id = %request_id,
                     headers_us = duration_us(headers.duration_since(start)),
                     stream_us = duration_us(completed.duration_since(headers)),
                     "static prefill RPC split"
@@ -606,6 +618,7 @@ impl StaticAggregatePipeline {
 
         let selector_index =
             self.next_selector.fetch_add(1, Ordering::Relaxed) % self.selectors.len();
+        let select_started_at = timing_start.map(|_| Instant::now());
         let selected = self.selectors[selector_index]
             .clone()
             .select(JsonItem {
@@ -618,6 +631,14 @@ impl StaticAggregatePipeline {
             .await
             .map_err(PipelineError::SelectorTransport)?
             .into_inner();
+        if let Some(start) = select_started_at {
+            tracing::debug!(
+                target: "dynamo_static_selector_rpc",
+                request_id = %request_id,
+                elapsed_us = duration_us(start.elapsed()),
+                "static selector RPC"
+            );
+        }
         if let Some(error) = selected.error.as_ref() {
             return Err(PipelineError::SelectorItem {
                 kind: error.kind.clone(),
