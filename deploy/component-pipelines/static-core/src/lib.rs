@@ -9,7 +9,7 @@
 use std::{
     collections::HashMap,
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicU64, AtomicUsize, Ordering},
     },
 };
@@ -21,7 +21,7 @@ use dynamo_component_facades::proto::{
 };
 use serde::Deserialize;
 use tokio::{
-    sync::{Mutex, mpsc, oneshot},
+    sync::{mpsc, oneshot},
     time::{Duration, Instant},
 };
 use tonic::{Streaming, transport::Channel};
@@ -480,8 +480,10 @@ impl StaticAggregatePipeline {
         })
     }
 
-    async fn worker_channel(&self, endpoint: &str) -> Result<Channel, PipelineError> {
-        let mut pools = self.worker_channels.lock().await;
+    fn worker_channel(&self, endpoint: &str) -> Result<Channel, PipelineError> {
+        let mut pools = self.worker_channels.lock().map_err(|error| {
+            PipelineError::Endpoint(format!("worker channel pool lock poisoned: {error}"))
+        })?;
         if let Some(pool) = pools.get(endpoint) {
             return Ok(pool.next());
         }
@@ -623,7 +625,7 @@ impl StaticAggregatePipeline {
         let selected: SelectedEndpoint = serde_json::from_slice(&selected.payload_json)
             .map_err(PipelineError::SelectorResponse)?;
         let select_end = timing_start.map(|start| start.elapsed().as_micros());
-        let channel = self.worker_channel(&selected.endpoint).await?;
+        let channel = self.worker_channel(&selected.endpoint)?;
         let stream = ChatWorkerBridgeClient::new(channel)
             .generate(ChatWorkerRequest {
                 request_id,
