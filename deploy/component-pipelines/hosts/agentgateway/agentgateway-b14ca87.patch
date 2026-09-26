@@ -64,7 +64,7 @@ new file mode 100644
 index 0000000..3ad4283
 --- /dev/null
 +++ b/crates/agentgateway/src/dynamo_components.rs
-@@ -0,0 +1,255 @@
+@@ -0,0 +1,252 @@
 +// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 +// SPDX-License-Identifier: Apache-2.0
 +
@@ -185,7 +185,7 @@ index 0000000..3ad4283
 +
 +		let request_id = uuid::Uuid::new_v4().to_string();
 +		match self {
-+			Self::Static(pipeline) => static_response(pipeline.clone(), request_id, body.to_vec()),
++			Self::Static(pipeline) => static_response(pipeline, request_id, body.to_vec()).await,
 +			Self::Generic {
 +				prepared,
 +				transport,
@@ -214,20 +214,17 @@ index 0000000..3ad4283
 +		.expect("static response is valid")
 +}
 +
-+fn static_response(
-+	pipeline: StaticAggregatePipeline,
++async fn static_response(
++	pipeline: &StaticAggregatePipeline,
 +	request_id: String,
 +	body: Vec<u8>,
 +) -> Response {
++	let mut stream = match pipeline.execute(request_id, body, 0).await {
++		Ok(stream) => stream,
++		Err(error) => return error_response(http::StatusCode::BAD_GATEWAY, error),
++	};
 +	let (tx, rx) = tokio::sync::mpsc::channel(256);
 +	tokio::spawn(async move {
-+		let mut stream = match pipeline.execute(request_id, body, 0).await {
-+			Ok(stream) => stream,
-+			Err(error) => {
-+				let _ = tx.send(Ok(frame_error(error))).await;
-+				return;
-+			},
-+		};
 +		while let Some(item) = stream.next().await {
 +			match item {
 +				Ok(item) if item.error.is_none() && !item.openai_chunk_json.is_empty() => {
