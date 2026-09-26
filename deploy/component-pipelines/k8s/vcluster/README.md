@@ -642,3 +642,11 @@ Audit each with `python3 audit-nix-mocker-pd.py RESULT_DIR WORKLOAD r3
 six-client exports remain in its ignored `raw_aiperf/` folder; committed
 summaries retain their hashes, plan identity, vCluster Job identities,
 occupancy, and cache-hit evidence.
+
+The later [static synchronous-lock experiment](results/2026-09-26-mocker-pd-static-std-mutex/README.md)
+interleaved three valid ISL4000 runs per binary with the async-lock control.
+Its candidate/control medians were 6,410/6,344 normalized RPS, with paired
+differences of mixed sign. Replacing the static worker-channel map's async
+mutex did not materially narrow the static/generic gap; the candidate Nix
+output and raw audit evidence remain available for reproduction, while the
+default static implementation keeps its prior lock.
