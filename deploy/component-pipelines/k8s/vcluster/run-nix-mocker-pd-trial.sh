@@ -6,7 +6,7 @@
 # identity even when the AIPerf export validation fails.
 set -euo pipefail
 [[ $# -ge 2 && $# -le 3 && $1 =~ ^(short|isl4000|mooncake)$ && $2 =~ ^r[1-9][0-9]*$ ]] || {
-  echo "usage: $0 {short|isl4000|mooncake} rN [grace|envoy|envoy-unified|callouts|callouts-unified|static|static-unified|static-channels4|static-channels4-threads16|generic-refresh|generic-metadata|generic-unified|generic-unified-rest|agw-records|envoy-records]" >&2
+  echo "usage: $0 {short|isl4000|mooncake} rN [grace|envoy|envoy-unified|callouts|callouts-unified|static|static-unified|static-channels4|static-channels4-threads16|static-tuned-timing|static-async-handler|generic-refresh|generic-metadata|generic-unified|generic-unified-rest|agw-records|envoy-records]" >&2
   exit 2
 }
 workload=$1
@@ -74,6 +74,20 @@ elif [[ ${3:-} == static-channels4-threads16 ]]; then
   [[ $workload == isl4000 ]] || exit 2
   export RESULT_DIR=$script_dir/results/2026-09-26-mocker-pd-static-channels4-threads16
   plan_sha256=cb4b6c055c417084049f80dbbf2d21948cafbcdf77bf6733929e8117653bf375
+  job_prefix=nixpds
+  arm=pd-agw-static
+  export PD_RECORD_EXPORT=0
+elif [[ ${3:-} == static-tuned-timing ]]; then
+  [[ $workload == isl4000 ]] || exit 2
+  export RESULT_DIR=$script_dir/results/2026-09-26-mocker-pd-static-tuned-timing
+  plan_sha256=2ed34f91ab833795e1cae52026bbf2f51c5e5db447e06370810792b64c4d417c
+  job_prefix=nixpds
+  arm=pd-agw-static
+  export PD_RECORD_EXPORT=0
+elif [[ ${3:-} == static-async-handler ]]; then
+  [[ $workload == isl4000 ]] || exit 2
+  export RESULT_DIR=$script_dir/results/2026-09-26-mocker-pd-static-async-handler
+  plan_sha256=425a128b766e631dd0d2c0297fad0c0b3e36925c4f0da6d604f0b59ae0081b9a
   job_prefix=nixpds
   arm=pd-agw-static
   export PD_RECORD_EXPORT=0

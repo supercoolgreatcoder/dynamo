@@ -23,3 +23,10 @@ Mooncake is trace-paced and close in both arms. This is not a variance
 estimate or causal attribution. Raw AIPerf exports remain local and on the
 vCluster benchmark store; the frozen plan, execution records, summaries,
 cache proofs, and audits are retained here.
+
+A later ISL4000 diagnostic, `nixpde-isl4000-pd-envoy-generic-r22`, enabled
+gateway stage counters and passed the same six-client audit with 403,365
+successful requests, zero errors or cancellations, and 8,943.45 globally
+normalized requests/s. This is a diagnostic run, not an additional matrix
+sample or a new ceiling estimate; the per-stage gateway log was not
+retained in this result directory.
