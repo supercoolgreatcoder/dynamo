@@ -40,14 +40,15 @@ def main() -> int:
     parser.add_argument("--grace", action="store_true", help="audit the distinct 46-second Mooncake series")
     parser.add_argument("--envoy", action="store_true", help="audit the Envoy generic P/D series")
     parser.add_argument("--callouts", action="store_true", help="audit the Envoy callout P/D series")
+    parser.add_argument("--static", action="store_true", help="audit the AGW static P/D series")
     args = parser.parse_args()
     result_dir = args.result_dir
     if args.grace and args.workload != "mooncake":
         parser.error("--grace is supported only for Mooncake")
-    if sum((args.grace, args.envoy, args.callouts)) > 1:
-        parser.error("--grace, --envoy, and --callouts select different benchmark series")
-    job_prefix = "nixpdc" if args.callouts else "nixpde" if args.envoy else "nixpdg" if args.grace else "nixpd"
-    arm = "pd-envoy-callouts" if args.callouts else "pd-envoy-generic" if args.envoy else "pd-agw-generic"
+    if sum((args.grace, args.envoy, args.callouts, args.static)) > 1:
+        parser.error("--grace, --envoy, --callouts, and --static select different benchmark series")
+    job_prefix = "nixpds" if args.static else "nixpdc" if args.callouts else "nixpde" if args.envoy else "nixpdg" if args.grace else "nixpd"
+    arm = "pd-agw-static" if args.static else "pd-envoy-callouts" if args.callouts else "pd-envoy-generic" if args.envoy else "pd-agw-generic"
     job = f"{job_prefix}-{args.workload}-{arm}-{args.trial}"
     plan_path = result_dir / "benchmark_plan.json"
     plan = read_json(plan_path)
