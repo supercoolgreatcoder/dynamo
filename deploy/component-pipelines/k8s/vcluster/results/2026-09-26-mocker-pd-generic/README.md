@@ -17,6 +17,8 @@ The immutable [benchmark plan](benchmark_plan.json) has SHA-256 `36e98edcd8ae900
 
 The Mooncake 45-second phase drops exactly 20 boundary-timestamp requests per client from AIPerf's completed count despite no reported errors. That result is retained as a diagnostic observation, **not** a trace-complete parity number. A distinct 46-second completion-grace series is recorded separately in `../2026-09-26-mocker-pd-mooncake-grace/`; it retains the same trace timestamps and serving topology but changes the measurement window and must not be presented as the same-series 45-second RPS.
 
+An unchanged ISL4000 repeat, `nixpd-isl4000-pd-agw-generic-r2`, also passed audit: 434,012 successful requests, zero errors/cancellations, 9,607.01 summed-client RPS, and 9,296.84 global-window RPS. Its 1.664-second client-start spread differs from the much tighter Envoy generic P/D repeats; see the [paired Envoy comparison](../2026-09-26-mocker-pd-envoy-generic/README.md) before attributing an ISL4000 difference to either gateway.
+
 `summed-client RPS` adds six AIPerf client-reported rates; `global-window RPS` divides all successful requests by the interval from the earliest client start to the latest client end. The latter is conservative when clients have skew. AIPerf 0.12.0 did not report output-token throughput for short or ISL4000; the audit records it as unavailable, not zero. Only six summary exports were captured, so merged latency percentiles and per-request ID completeness cannot be independently recomputed. The P/D topology and client-node placement also differ from the older aggregate/Claude replay, so these numbers are not a same-series improvement claim.
 
 ## Reproduce inside the existing vCluster

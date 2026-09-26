@@ -38,12 +38,16 @@ def main() -> int:
     parser.add_argument("workload", choices=("short", "isl4000", "mooncake"))
     parser.add_argument("trial")
     parser.add_argument("--grace", action="store_true", help="audit the distinct 46-second Mooncake series")
+    parser.add_argument("--envoy", action="store_true", help="audit the Envoy generic P/D series")
     args = parser.parse_args()
     result_dir = args.result_dir
     if args.grace and args.workload != "mooncake":
         parser.error("--grace is supported only for Mooncake")
-    job_prefix = "nixpdg" if args.grace else "nixpd"
-    job = f"{job_prefix}-{args.workload}-pd-agw-generic-{args.trial}"
+    if args.grace and args.envoy:
+        parser.error("--grace and --envoy select different benchmark series")
+    job_prefix = "nixpde" if args.envoy else "nixpdg" if args.grace else "nixpd"
+    arm = "pd-envoy-generic" if args.envoy else "pd-agw-generic"
+    job = f"{job_prefix}-{args.workload}-{arm}-{args.trial}"
     plan_path = result_dir / "benchmark_plan.json"
     plan = read_json(plan_path)
     plan_hash = sha256(plan_path)
@@ -122,7 +126,8 @@ def main() -> int:
         )
         check(
             f"phase_{index}",
-            phase["duration"] == plan["execution"]["benchmark_duration_seconds"]
+            phase["duration"]
+            == dataset.get("benchmark_duration_seconds", plan["execution"]["benchmark_duration_seconds"])
             and (
                 phase["type"] == "fixed_schedule" and phase["requests"] == dataset["rows_per_client"]
                 if args.workload == "mooncake"

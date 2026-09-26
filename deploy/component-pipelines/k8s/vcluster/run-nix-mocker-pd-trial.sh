@@ -6,7 +6,7 @@
 # identity even when the AIPerf export validation fails.
 set -euo pipefail
 [[ $# -ge 2 && $# -le 3 && $1 =~ ^(short|isl4000|mooncake)$ && $2 =~ ^r[1-9][0-9]*$ ]] || {
-  echo "usage: $0 {short|isl4000|mooncake} rN [grace]" >&2
+  echo "usage: $0 {short|isl4000|mooncake} rN [grace|envoy]" >&2
   exit 2
 }
 workload=$1
@@ -18,17 +18,27 @@ if [[ ${3:-} == grace && $workload == mooncake ]]; then
   export BENCHMARK_DURATION=46
   plan_sha256=66375e549497c63ee944eca1c499f959371e339eae78b8fa5762067d9ced458c
   job_prefix=nixpdg
+  arm=pd-agw-generic
+elif [[ ${3:-} == envoy ]]; then
+  export RESULT_DIR=$script_dir/results/2026-09-26-mocker-pd-envoy-generic
+  plan_sha256=9d0c3b7fef51ff82173d97623016f8b99869a58e78e41cfa12ddf3bc2aff3d68
+  job_prefix=nixpde
+  arm=pd-envoy-generic
 elif [[ $# == 2 ]]; then
   export RESULT_DIR=$script_dir/results/2026-09-26-mocker-pd-generic
   export BENCHMARK_DURATION=45
   plan_sha256=36e98edcd8ae9007724870ae3072e46d45b0037a53e21485c1b0f695a2b6dccc
   job_prefix=nixpd
+  arm=pd-agw-generic
 else
   echo "grace is supported only for Mooncake" >&2
   exit 2
 fi
 plan=$RESULT_DIR/benchmark_plan.json
 echo "$plan_sha256  $plan" | sha256sum --check --status
+export BENCHMARK_DURATION
+BENCHMARK_DURATION=$(jq -er --arg workload "$workload" \
+  '.workloads[$workload].benchmark_duration_seconds // .execution.benchmark_duration_seconds' "$plan")
 series_id=$(jq -er --arg workload "$workload" \
   '.benchmark_series_id_by_workload[$workload]' "$plan")
 dataset_path=$(jq -er --arg workload "$workload" '.workloads[$workload].path' "$plan")
@@ -49,11 +59,18 @@ for inactive in agw-static agw-generic envoy-independent envoy-callouts \
   "${vc[@]}" get deployment "$inactive" -o json |
     jq -e '.spec.replicas == 0 and (.status.readyReplicas // 0) == 0' >/dev/null
 done
+if [[ $arm == pd-envoy-generic ]]; then
+  inactive_pd=dynamo-pd-agw-generic
+else
+  inactive_pd=dynamo-pd-envoy-generic
+fi
+"${vc[@]}" get deployment "$inactive_pd" -o json |
+  jq -e '.spec.replicas == 0 and (.status.readyReplicas // 0) == 0' >/dev/null
 export AIPERF_NODE_A AIPERF_NODE_B
 AIPERF_NODE_A=$(jq -er '.execution.aiperf_nodes[0]' "$plan")
 AIPERF_NODE_B=$(jq -er '.execution.aiperf_nodes[1]' "$plan")
 export TOKENIZER_STORE_BASENAME=wjq1b3wfjpzak4yd4rmj9arwqk1gkiir-qwen-tokenizer
-job=${job_prefix}-${workload}-pd-agw-generic-${trial}
+job=${job_prefix}-${workload}-${arm}-${trial}
 actual_dataset_sha256=$("${vc[@]}" exec dynamo-component-store-stager -- \
   sha256sum "/shared/nix${dataset_path#/shared}" | awk '{print $1}')
 [[ $actual_dataset_sha256 == "$dataset_sha256" ]] || {
@@ -71,7 +88,7 @@ printf '%s\t%s\t%s\n' "$workload" "$dataset_path" "$actual_dataset_sha256" \
   ' > "$RESULT_DIR/occupancy-before-$job.json"
 
 status=completed
-if ! bash "$script_dir/run-nix-mocker-trial.sh" pd-agw-generic "$workload" "$trial"; then
+if ! bash "$script_dir/run-nix-mocker-trial.sh" "$arm" "$workload" "$trial"; then
   status=failed
 fi
 "${vc[@]}" get pods -A -o json |
@@ -89,7 +106,7 @@ jq -n --argjson job "$job_json" --argjson pods "$pods_json" \
   --arg series "$series_id" --arg workload "$workload" '
   {status:$status,vcluster_api_server:$server,
    plan_path:$plan,plan_sha256:$hash,benchmark_series_id:$series,
-   performance_question:"P/D generic AGW absolute characterization on frozen reference traffic",
+   performance_question:"P/D generic gateway host characterization on frozen reference traffic",
    workload:$workload,
    job:{name:$job.metadata.name,uid:$job.metadata.uid,
      created_at:$job.metadata.creationTimestamp,
