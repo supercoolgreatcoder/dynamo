@@ -22,3 +22,11 @@ generic refresh supports parity, but does not by itself attribute the
 mixed-pin loss to one component or quantify run-to-run variance. Raw AIPerf
 exports remain local and on the vCluster benchmark store. The frozen plan,
 execution record, normalized summary, and validation audit are retained here.
+
+A contemporaneous control run after the static-stage timing experiment,
+`nixpd-isl4000-pd-agw-generic-r24`, passed the same six-client audit with
+440,384 successful requests, zero errors or cancellations, and 9,513.54
+globally normalized requests/s. This confirms the large static/generic
+gap remained in the later fixture state; one run does not quantify
+variance. Its execution record, normalized summary, and audit are retained
+here.
