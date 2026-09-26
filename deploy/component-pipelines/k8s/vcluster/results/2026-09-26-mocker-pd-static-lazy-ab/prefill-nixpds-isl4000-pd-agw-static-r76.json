@@ -1,0 +1,193 @@
+{
+    "apiVersion": "apps/v1",
+    "kind": "Deployment",
+    "metadata": {
+        "annotations": {
+            "deployment.kubernetes.io/revision": "9",
+            "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"apps/v1\",\"kind\":\"Deployment\",\"metadata\":{\"annotations\":{},\"name\":\"dynamo-pd-prefill\",\"namespace\":\"dynamo-components-v2\"},\"spec\":{\"progressDeadlineSeconds\":600,\"replicas\":4,\"revisionHistoryLimit\":10,\"selector\":{\"matchLabels\":{\"app\":\"dynamo-pd-prefill\"}},\"strategy\":{\"rollingUpdate\":{\"maxSurge\":\"25%\",\"maxUnavailable\":\"25%\"},\"type\":\"RollingUpdate\"},\"template\":{\"metadata\":{\"annotations\":{\"dynamo.nvidia.com/worker-metadata\":\"{\\\"schema_version\\\":\\\"v1\\\",\\\"model_name\\\":\\\"Qwen/Qwen2.5-0.5B-Instruct\\\",\\\"routing_group\\\":\\\"default\\\",\\\"block_size\\\":512,\\\"total_kv_blocks\\\":32768,\\\"max_num_batched_tokens\\\":8192,\\\"router_hint_worker_type\\\":\\\"prefill\\\"}\",\"kubectl.kubernetes.io/restartedAt\":\"2026-09-23T14:49:14Z\"},\"labels\":{\"app\":\"dynamo-pd-prefill\"}},\"spec\":{\"affinity\":{\"nodeAffinity\":{\"requiredDuringSchedulingIgnoredDuringExecution\":{\"nodeSelectorTerms\":[{\"matchExpressions\":[{\"key\":\"kubernetes.io/hostname\",\"operator\":\"In\",\"values\":[\"cluster-0967a26d-pool-1f83edbe-mj5s4-79r2b\",\"cluster-0967a26d-pool-1f83edbe-mj5s4-bf5w2\",\"cluster-0967a26d-pool-1f83edbe-mj5s4-nwjkn\"]}]}]}}},\"automountServiceAccountToken\":false,\"containers\":[{\"args\":[\"--listen\",\"0.0.0.0:50051\",\"benchmark-worker\",\"--model-path\",\"/nix/store/wjq1b3wfjpzak4yd4rmj9arwqk1gkiir-qwen-tokenizer\",\"--max-batch-items\",\"128\",\"--max-batch-bytes\",\"67108864\",\"--max-concurrency\",\"1024\",\"--benchmark-mode\",\"prefill\"],\"command\":[\"/nix/store/ip5h1yq7nz5gdbg9yja58b0fcng537gj-dynamo-component-pipelines-cb970285af/bin/dynamo-component-facade\"],\"env\":[{\"name\":\"RUST_LOG\",\"value\":\"warn\"}],\"image\":\"busybox:1.36\",\"imagePullPolicy\":\"IfNotPresent\",\"name\":\"facade\",\"ports\":[{\"containerPort\":50051,\"protocol\":\"TCP\"}],\"readinessProbe\":{\"failureThreshold\":3,\"periodSeconds\":1,\"successThreshold\":1,\"tcpSocket\":{\"port\":50051},\"timeoutSeconds\":1},\"resources\":{},\"terminationMessagePath\":\"/dev/termination-log\",\"terminationMessagePolicy\":\"File\",\"volumeMounts\":[{\"mountPath\":\"/nix/store\",\"name\":\"nix\",\"readOnly\":true,\"subPath\":\"store\"},{\"mountPath\":\"/model\",\"name\":\"model\",\"readOnly\":true}]}],\"dnsPolicy\":\"ClusterFirst\",\"nodeSelector\":{\"topology.unikorn-cloud.org/node-pool\":\"cpu-pool\"},\"restartPolicy\":\"Always\",\"schedulerName\":\"default-scheduler\",\"securityContext\":{},\"terminationGracePeriodSeconds\":30,\"topologySpreadConstraints\":[{\"labelSelector\":{\"matchLabels\":{\"app\":\"dynamo-benchmark-worker\"}},\"maxSkew\":1,\"topologyKey\":\"kubernetes.io/hostname\",\"whenUnsatisfiable\":\"DoNotSchedule\"}],\"volumes\":[{\"name\":\"nix\",\"nfs\":{\"path\":\"/unikorn-identity-03cfadd31877-551/pvc-19aeb650-5f77-45c4-8b8b-0a3b88542f39\",\"readOnly\":true,\"server\":\"192.168.0.220\"}},{\"configMap\":{\"defaultMode\":420,\"name\":\"benchmark-model\"},\"name\":\"model\"}]}}}}\n"
+        },
+        "creationTimestamp": "2026-09-26T04:33:44Z",
+        "generation": 9,
+        "name": "dynamo-pd-prefill",
+        "namespace": "dynamo-components-v2",
+        "resourceVersion": "12209662",
+        "uid": "b2be33a8-77c2-48ed-adb9-aba65d06393b"
+    },
+    "spec": {
+        "progressDeadlineSeconds": 600,
+        "replicas": 4,
+        "revisionHistoryLimit": 10,
+        "selector": {
+            "matchLabels": {
+                "app": "dynamo-pd-prefill"
+            }
+        },
+        "strategy": {
+            "rollingUpdate": {
+                "maxSurge": "25%",
+                "maxUnavailable": "25%"
+            },
+            "type": "RollingUpdate"
+        },
+        "template": {
+            "metadata": {
+                "annotations": {
+                    "dynamo.nvidia.com/worker-metadata": "{\"schema_version\":\"v1\",\"model_name\":\"Qwen/Qwen2.5-0.5B-Instruct\",\"routing_group\":\"default\",\"block_size\":512,\"total_kv_blocks\":32768,\"max_num_batched_tokens\":8192,\"router_hint_worker_type\":\"prefill\"}",
+                    "kubectl.kubernetes.io/restartedAt": "2026-09-23T14:49:14Z"
+                },
+                "labels": {
+                    "app": "dynamo-pd-prefill"
+                }
+            },
+            "spec": {
+                "affinity": {
+                    "nodeAffinity": {
+                        "requiredDuringSchedulingIgnoredDuringExecution": {
+                            "nodeSelectorTerms": [
+                                {
+                                    "matchExpressions": [
+                                        {
+                                            "key": "kubernetes.io/hostname",
+                                            "operator": "In",
+                                            "values": [
+                                                "cluster-0967a26d-pool-1f83edbe-mj5s4-79r2b",
+                                                "cluster-0967a26d-pool-1f83edbe-mj5s4-bf5w2",
+                                                "cluster-0967a26d-pool-1f83edbe-mj5s4-nwjkn"
+                                            ]
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                },
+                "automountServiceAccountToken": false,
+                "containers": [
+                    {
+                        "args": [
+                            "--listen",
+                            "0.0.0.0:50051",
+                            "benchmark-worker",
+                            "--model-path",
+                            "/nix/store/wjq1b3wfjpzak4yd4rmj9arwqk1gkiir-qwen-tokenizer",
+                            "--max-batch-items",
+                            "128",
+                            "--max-batch-bytes",
+                            "67108864",
+                            "--max-concurrency",
+                            "1024",
+                            "--benchmark-mode",
+                            "prefill"
+                        ],
+                        "command": [
+                            "/nix/store/ip5h1yq7nz5gdbg9yja58b0fcng537gj-dynamo-component-pipelines-cb970285af/bin/dynamo-component-facade"
+                        ],
+                        "env": [
+                            {
+                                "name": "RUST_LOG",
+                                "value": "warn"
+                            }
+                        ],
+                        "image": "busybox:1.36",
+                        "imagePullPolicy": "IfNotPresent",
+                        "name": "facade",
+                        "ports": [
+                            {
+                                "containerPort": 50051,
+                                "protocol": "TCP"
+                            }
+                        ],
+                        "readinessProbe": {
+                            "failureThreshold": 3,
+                            "periodSeconds": 1,
+                            "successThreshold": 1,
+                            "tcpSocket": {
+                                "port": 50051
+                            },
+                            "timeoutSeconds": 1
+                        },
+                        "resources": {},
+                        "terminationMessagePath": "/dev/termination-log",
+                        "terminationMessagePolicy": "File",
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/nix/store",
+                                "name": "nix",
+                                "readOnly": true,
+                                "subPath": "store"
+                            },
+                            {
+                                "mountPath": "/model",
+                                "name": "model",
+                                "readOnly": true
+                            }
+                        ]
+                    }
+                ],
+                "dnsPolicy": "ClusterFirst",
+                "nodeSelector": {
+                    "topology.unikorn-cloud.org/node-pool": "cpu-pool"
+                },
+                "restartPolicy": "Always",
+                "schedulerName": "default-scheduler",
+                "securityContext": {},
+                "terminationGracePeriodSeconds": 30,
+                "topologySpreadConstraints": [
+                    {
+                        "labelSelector": {
+                            "matchLabels": {
+                                "app": "dynamo-benchmark-worker"
+                            }
+                        },
+                        "maxSkew": 1,
+                        "topologyKey": "kubernetes.io/hostname",
+                        "whenUnsatisfiable": "DoNotSchedule"
+                    }
+                ],
+                "volumes": [
+                    {
+                        "name": "nix",
+                        "nfs": {
+                            "path": "/unikorn-identity-03cfadd31877-551/pvc-19aeb650-5f77-45c4-8b8b-0a3b88542f39",
+                            "readOnly": true,
+                            "server": "192.168.0.220"
+                        }
+                    },
+                    {
+                        "configMap": {
+                            "defaultMode": 420,
+                            "name": "benchmark-model"
+                        },
+                        "name": "model"
+                    }
+                ]
+            }
+        }
+    },
+    "status": {
+        "availableReplicas": 4,
+        "conditions": [
+            {
+                "lastTransitionTime": "2026-09-26T04:33:46Z",
+                "lastUpdateTime": "2026-09-26T04:33:46Z",
+                "message": "Deployment has minimum availability.",
+                "reason": "MinimumReplicasAvailable",
+                "status": "True",
+                "type": "Available"
+            },
+            {
+                "lastTransitionTime": "2026-09-26T04:33:44Z",
+                "lastUpdateTime": "2026-09-26T19:44:09Z",
+                "message": "ReplicaSet \"dynamo-pd-prefill-66974dc6f4\" has successfully progressed.",
+                "reason": "NewReplicaSetAvailable",
+                "status": "True",
+                "type": "Progressing"
+            }
+        ],
+        "observedGeneration": 9,
+        "readyReplicas": 4,
+        "replicas": 4,
+        "terminatingReplicas": 0,
+        "updatedReplicas": 4
+    }
+}
