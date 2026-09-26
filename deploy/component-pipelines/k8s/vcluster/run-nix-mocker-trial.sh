@@ -7,7 +7,7 @@
 set -euo pipefail
 
 if [ "$#" -ne 3 ]; then
-  echo "usage: $0 {agw-static|agw-generic|envoy-generic|envoy-callouts|dynamo-reference|pd-agw-generic} {short|isl4000|mooncake} rN" >&2
+  echo "usage: $0 {agw-static|agw-generic|envoy-generic|envoy-callouts|dynamo-reference|pd-agw-generic|pd-envoy-generic} {short|isl4000|mooncake} rN" >&2
   exit 2
 fi
 
@@ -21,6 +21,7 @@ case "$arm" in
   envoy-callouts) service=envoy-callouts ;;
   dynamo-reference) service=dynamo-frontend-reference ;;
   pd-agw-generic) service=dynamo-pd-agw-generic ;;
+  pd-envoy-generic) service=dynamo-pd-envoy-generic ;;
   *) echo "unsupported arm: $arm" >&2; exit 2 ;;
 esac
 case "$workload" in
@@ -52,7 +53,9 @@ if [ "$actual_server" != "$VCLUSTER_EXPECTED_SERVER" ]; then
 fi
 
 kubectl_vc=(kubectl --kubeconfig "$VCLUSTER_KUBECONFIG" -n "$VCLUSTER_NAMESPACE")
-if [ "$arm" = pd-agw-generic ] && [ "$workload" = mooncake ] && [ "${BENCHMARK_DURATION:-45}" = 46 ]; then
+if [ "$arm" = pd-envoy-generic ]; then
+  job="nixpde-${workload}-${arm}-${trial}"
+elif [ "$arm" = pd-agw-generic ] && [ "$workload" = mooncake ] && [ "${BENCHMARK_DURATION:-45}" = 46 ]; then
   job="nixpdg-${workload}-${arm}-${trial}"
 elif [ "$arm" = pd-agw-generic ]; then
   job="nixpd-${workload}-${arm}-${trial}"
@@ -68,7 +71,7 @@ fi
     echo "gateway deployment $service must be exactly 1/1 Ready" >&2
     exit 2
   }
-if [ "$arm" = pd-agw-generic ]; then
+if [ "$arm" = pd-agw-generic ] || [ "$arm" = pd-envoy-generic ]; then
   components=(dynamo-pd-preprocessor:4 dynamo-pd-selector:4 dynamo-pd-prefill:4 dynamo-pd-decode:16)
 else
   components=(dynamo-preprocessor:4 dynamo-selector:1 dynamo-benchmark-worker:16)
@@ -97,7 +100,7 @@ export BENCHMARK_START_UNIX=$(( $(date -u +%s) + 90 ))
 if [ "$workload" = mooncake ]; then
   export BENCHMARK_DURATION=${BENCHMARK_DURATION:-45}
   [[ $BENCHMARK_DURATION == 45 ]] || {
-    [[ $arm == pd-agw-generic && $BENCHMARK_DURATION == 46 ]] || exit 2
+    [[ ( $arm == pd-agw-generic || $arm == pd-envoy-generic ) && $BENCHMARK_DURATION == 46 ]] || exit 2
   }
   export JOB_NAME=$job ARM_NAME=$arm
   export TARGET_URL="http://${service}:8080/v1/chat/completions"

@@ -1,0 +1,6 @@
+nixpde-mooncake-pd-envoy-generic-r1-0-rm79n	05:16:12.995 INFO     Memory-mapped dataset cache HIT (key=4632ec92287b39f9033acd98c8c8b55f); skipping tokenizer + composer. (dataset_manager.py:194)
+nixpde-mooncake-pd-envoy-generic-r1-1-jfk7d	05:16:13.041 INFO     Memory-mapped dataset cache HIT (key=4632ec92287b39f9033acd98c8c8b55f); skipping tokenizer + composer. (dataset_manager.py:194)
+nixpde-mooncake-pd-envoy-generic-r1-2-tcqnf	05:16:12.746 INFO     Memory-mapped dataset cache HIT (key=4632ec92287b39f9033acd98c8c8b55f); skipping tokenizer + composer. (dataset_manager.py:194)
+nixpde-mooncake-pd-envoy-generic-r1-3-9wmmj	05:16:13.346 INFO     Memory-mapped dataset cache HIT (key=4632ec92287b39f9033acd98c8c8b55f); skipping tokenizer + composer. (dataset_manager.py:194)
+nixpde-mooncake-pd-envoy-generic-r1-4-cvmtf	05:16:13.300 INFO     Memory-mapped dataset cache HIT (key=4632ec92287b39f9033acd98c8c8b55f); skipping tokenizer + composer. (dataset_manager.py:194)
+nixpde-mooncake-pd-envoy-generic-r1-5-mkhs5	05:16:13.117 INFO     Memory-mapped dataset cache HIT (key=4632ec92287b39f9033acd98c8c8b55f); skipping tokenizer + composer. (dataset_manager.py:194)
