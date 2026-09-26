@@ -1,0 +1,69 @@
+{
+  "plan_id": "mocker-pd-agw-static-isl4000-linger0-v1",
+  "benchmark_series_id_by_workload": {
+    "isl4000": "mocker-pd-agw-static-isl4000-linger0-v1-2026-09-26"
+  },
+  "question": "Does removing the static gateway batch-collector timer improve ISL4000 throughput against the same-binary 200 us control?",
+  "intent": "single-variable batching scheduler diagnostic; not a standalone promotion",
+  "candidate": {
+    "static_core_source_commit": "cc2b2d7eac",
+    "facade_source_commit": "cb970285af",
+    "agentgateway_nix_output": "/nix/store/rw0xr8qw38yj4lcn90kzbsa2066g4f3k-agentgateway-component-pipeline-0.0.0-b14ca87d0a",
+    "facade_nix_output": "/nix/store/ip5h1yq7nz5gdbg9yja58b0fcng537gj-dynamo-component-pipelines-cb970285af",
+    "pipeline": "compiled prepare -> GenerateRaw prefill -> select -> Generate decode",
+    "gateway_replicas": 1,
+    "gateway_worker_threads": 16,
+    "grpc_channels_per_endpoint": 4,
+    "preprocess_batch_linger_us": 0,
+    "preprocess_batch_max": 32,
+    "batch_stats_every": 0,
+    "rust_log": "warn",
+    "stage_timing_every": 0,
+    "preprocessor_replicas": 4,
+    "selector_replicas": 4,
+    "prefill_replicas": 4,
+    "decode_replicas": 16,
+    "worker_kind": "synthetic benchmark-only Dynamo AsyncEngine behind the real facade",
+    "worker_handoff_contract": "prefill emits benchmark_handoff; decode rejects requests without it"
+  },
+  "execution": {
+    "vcluster_server": "https://gateway-poc.mkhadkevich-dev:443",
+    "namespace": "dynamo-components-v2",
+    "endpoint": "http://dynamo-pd-agw-static:8080/v1/chat/completions",
+    "model": "Qwen/Qwen2.5-0.5B-Instruct",
+    "tokenizer": "Qwen/Qwen2.5-0.5B-Instruct",
+    "endpoint_type": "chat",
+    "streaming": true,
+    "clients": 6,
+    "concurrency_per_client": 128,
+    "benchmark_duration_seconds": 45,
+    "repetitions_per_workload": 1,
+    "seed": 42,
+    "aiperf_version": "0.12.0",
+    "aiperf_image": "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
+    "aiperf_version_resolution": "Frozen reference-reproduction exception: AIPerf 0.13.0 changes measurement semantics and failed Mooncake preparation before measurement",
+    "aiperf_nodes": [
+      "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4"
+    ],
+    "measurement_limit_seconds": 1800,
+    "raw_summary_export": true,
+    "per_request_export": false
+  },
+  "workloads": {
+    "isl4000": {
+      "source": "frozen_reference_raw_payload",
+      "path": "/shared/aiperf/static-qwen2.5-0.5b/isl4000-claude-sonnet-raw.jsonl",
+      "sha256": "3ad382586f5417f4255d7eea774700d9817bc39acbc7b537e2efa7d89145c743",
+      "schedule": "concurrency_128_per_client"
+    }
+  },
+  "metrics": [
+    "successful_requests_per_second",
+    "request_latency",
+    "errors",
+    "cancelled"
+  ],
+  "quality_gates": "One active P/D gateway, six pinned clients, zero errors/cancellations, exact dataset hash, same diagnostic AGW binary, 16 threads, four channels, batch stats disabled",
+  "comparison_limit": "The 200 us control varies across runs; only a repeated interleaved comparison can resolve small effects."
+}
