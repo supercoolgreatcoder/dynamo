@@ -6,7 +6,7 @@
 # identity even when the AIPerf export validation fails.
 set -euo pipefail
 [[ $# -ge 2 && $# -le 3 && $1 =~ ^(short|isl4000|mooncake)$ && $2 =~ ^r[1-9][0-9]*$ ]] || {
-  echo "usage: $0 {short|isl4000|mooncake} rN [grace|envoy|envoy-unified|callouts|callouts-unified|static|static-unified|static-channels4|static-channels4-threads16|static-linger100|static-linger0|static-tuned-timing|static-batch-diagnostic|static-batch-diagnostic-off|static-batch-clock-only|static-batch64|static-summary-off|static-summary-on|static-batch16|static-shards1|static-shards2|static-sleep-drain-off|static-sleep-drain-on|static-async-handler|generic-refresh|generic-metadata|generic-unified|generic-unified-rest|generic-step-stats-off|generic-step-stats-on|agw-records|envoy-records]" >&2
+  echo "usage: $0 {short|isl4000|mooncake} rN [grace|envoy|envoy-unified|callouts|callouts-unified|static|static-unified|static-channels4|static-channels4-threads16|static-linger100|static-linger0|static-tuned-timing|static-batch-diagnostic|static-batch-diagnostic-off|static-batch-clock-only|static-batch64|static-summary-off|static-summary-on|static-batch16|static-shards1|static-shards2|static-sleep-drain-off|static-sleep-drain-on|static-ready-off|static-ready16|static-async-handler|generic-refresh|generic-metadata|generic-unified|generic-unified-rest|generic-step-stats-off|generic-step-stats-on|agw-records|envoy-records]" >&2
   exit 2
 }
 workload=$1
@@ -175,6 +175,20 @@ elif [[ ${3:-} == static-sleep-drain-on ]]; then
   job_prefix=nixpds
   arm=pd-agw-static
   export PD_RECORD_EXPORT=0
+elif [[ ${3:-} == static-ready-off ]]; then
+  [[ $workload == isl4000 ]] || exit 2
+  export RESULT_DIR=$script_dir/results/2026-09-26-mocker-pd-static-ready-off
+  plan_sha256=67e5a9c60a800f7b4496f27d3de542340a3f17587072cf6178de9172363758de
+  job_prefix=nixpds
+  arm=pd-agw-static
+  export PD_RECORD_EXPORT=0
+elif [[ ${3:-} == static-ready16 ]]; then
+  [[ $workload == isl4000 ]] || exit 2
+  export RESULT_DIR=$script_dir/results/2026-09-26-mocker-pd-static-ready16
+  plan_sha256=3e7cc08fa554166fbf03771e59eca33d9a029c0cf6c379a8d1b40f6f1b261d37
+  job_prefix=nixpds
+  arm=pd-agw-static
+  export PD_RECORD_EXPORT=0
 elif [[ ${3:-} == static-async-handler ]]; then
   [[ $workload == isl4000 ]] || exit 2
   export RESULT_DIR=$script_dir/results/2026-09-26-mocker-pd-static-async-handler
@@ -288,9 +302,10 @@ if [[ $arm == pd-agw-static ]]; then
   expected_batch_summary=$(jq -r '.candidate.batch_summary_secs // 0 | tostring' "$plan")
   expected_batch_shards=$(jq -r '.candidate.batch_shards // 1 | tostring' "$plan")
   expected_sleep_drain=$(jq -r '.candidate.batch_sleep_drain // 0 | tostring' "$plan")
+  expected_ready_threshold=$(jq -r '.candidate.batch_ready_threshold // 0 | tostring' "$plan")
   expected_rust_log=$(jq -r '.candidate.rust_log // ""' "$plan")
   "${vc[@]}" get deployment dynamo-pd-agw-static -o json |
-    jq -e --arg binary "$expected_binary" --arg linger "$expected_linger" --arg batch_max "$expected_batch_max" --arg timing "$expected_timing" --arg batch_stats "$expected_batch_stats" --arg summary "$expected_batch_summary" --arg shards "$expected_batch_shards" --arg sleep_drain "$expected_sleep_drain" --arg rust_log "$expected_rust_log" --arg channels "$expected_channels" '
+    jq -e --arg binary "$expected_binary" --arg linger "$expected_linger" --arg batch_max "$expected_batch_max" --arg timing "$expected_timing" --arg batch_stats "$expected_batch_stats" --arg summary "$expected_batch_summary" --arg shards "$expected_batch_shards" --arg sleep_drain "$expected_sleep_drain" --arg ready_threshold "$expected_ready_threshold" --arg rust_log "$expected_rust_log" --arg channels "$expected_channels" '
       .spec.template.spec.containers[0].command[0] == $binary
       and any(.spec.template.spec.containers[0].env[];
         .name == "DYN_PREFILL_ENDPOINT" and .value == "http://dynamo-pd-prefill:50051")
@@ -321,6 +336,12 @@ if [[ $arm == pd-agw-static ]]; then
           .name != "DYN_PREPROCESS_BATCH_SLEEP_DRAIN")
       else any(.spec.template.spec.containers[0].env[];
           .name == "DYN_PREPROCESS_BATCH_SLEEP_DRAIN" and .value == $sleep_drain)
+      end)
+      and (if $ready_threshold == "0" then
+        all(.spec.template.spec.containers[0].env[];
+          .name != "DYN_PREPROCESS_BATCH_READY_THRESHOLD")
+      else any(.spec.template.spec.containers[0].env[];
+          .name == "DYN_PREPROCESS_BATCH_READY_THRESHOLD" and .value == $ready_threshold)
       end)
       and ($rust_log == "" or any(.spec.template.spec.containers[0].env[];
         .name == "RUST_LOG" and .value == $rust_log))
@@ -422,7 +443,8 @@ pods_json=$("${vc[@]}" get pods -l "job-name=$job" -o json)
 cleanup_log_follow
 if [[ ${3:-} == static-summary-on || ${3:-} == static-batch16 ||
       ${3:-} == static-shards1 || ${3:-} == static-shards2 ||
-      ${3:-} == static-sleep-drain-off || ${3:-} == static-sleep-drain-on ]]; then
+      ${3:-} == static-sleep-drain-off || ${3:-} == static-sleep-drain-on ||
+      ${3:-} == static-ready-off || ${3:-} == static-ready16 ]]; then
   gateway_pod=$("${vc[@]}" get pods -l app=dynamo-pd-agw-static -o json |
     jq -er '[.items[] | select(.metadata.deletionTimestamp == null) |
       select(.status.phase == "Running") |
