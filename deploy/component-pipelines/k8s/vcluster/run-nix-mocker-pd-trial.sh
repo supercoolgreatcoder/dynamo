@@ -6,7 +6,7 @@
 # identity even when the AIPerf export validation fails.
 set -euo pipefail
 [[ $# -ge 2 && $# -le 3 && $1 =~ ^(short|isl4000|mooncake)$ && $2 =~ ^r[1-9][0-9]*$ ]] || {
-  echo "usage: $0 {short|isl4000|mooncake} rN [grace|envoy|callouts|static|generic-refresh|generic-metadata|agw-records|envoy-records]" >&2
+  echo "usage: $0 {short|isl4000|mooncake} rN [grace|envoy|callouts|static|generic-refresh|generic-metadata|generic-unified|agw-records|envoy-records]" >&2
   exit 2
 }
 workload=$1
@@ -55,6 +55,13 @@ elif [[ ${3:-} == generic-metadata ]]; then
   [[ $workload == isl4000 ]] || exit 2
   export RESULT_DIR=$script_dir/results/2026-09-26-mocker-pd-agw-generic-metadata
   plan_sha256=049b0d440ed5516c07e60dc1c5c39999704e2731a0bcfb5665c55425bce8900a
+  job_prefix=nixpd
+  arm=pd-agw-generic
+  export PD_RECORD_EXPORT=0
+elif [[ ${3:-} == generic-unified ]]; then
+  [[ $workload == isl4000 ]] || exit 2
+  export RESULT_DIR=$script_dir/results/2026-09-26-mocker-pd-agw-generic-unified
+  plan_sha256=0bcc9e931bb183fd12db3e7ddd32bc437c3945dba14a7304af9d4d404771b1cc
   job_prefix=nixpd
   arm=pd-agw-generic
   export PD_RECORD_EXPORT=0
