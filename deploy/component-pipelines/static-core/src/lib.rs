@@ -182,7 +182,8 @@ pub struct StaticAggregatePipeline {
     next_preprocessor: Arc<AtomicUsize>,
     preprocess_batcher: Option<PreprocessBatcher>,
     selector: SelectorClient<Channel>,
-    prefill_endpoint: Option<String>,
+    prefill_channels: Option<Arc<Vec<Channel>>>,
+    next_prefill: Arc<AtomicUsize>,
     worker_channels: Arc<Mutex<HashMap<String, Channel>>>,
 }
 
@@ -193,7 +194,8 @@ impl StaticAggregatePipeline {
             next_preprocessor: Arc::new(AtomicUsize::new(0)),
             preprocess_batcher: None,
             selector: SelectorClient::new(selector),
-            prefill_endpoint: None,
+            prefill_channels: None,
+            next_prefill: Arc::new(AtomicUsize::new(0)),
             worker_channels: Arc::new(Mutex::new(HashMap::new())),
         }
     }
@@ -259,12 +261,30 @@ impl StaticAggregatePipeline {
             max_batch,
             linger_us,
         ));
+        // A cloned tonic Channel shares its HTTP/2 connection. Open independent
+        // connections so the Kubernetes Service can distribute prefill streams
+        // across replicas, just as it does for the preprocessor pool.
+        let prefill_channels = if let Some(endpoint) = prefill_endpoint {
+            let mut channels = Vec::with_capacity(pool_size);
+            for _ in 0..pool_size {
+                channels.push(
+                    configured_endpoint(endpoint.clone())?
+                        .connect()
+                        .await
+                        .map_err(|error| PipelineError::Endpoint(error.to_string()))?,
+                );
+            }
+            Some(Arc::new(channels))
+        } else {
+            None
+        };
         Ok(Self {
             preprocessors,
             next_preprocessor,
             preprocess_batcher,
             selector: SelectorClient::new(selector),
-            prefill_endpoint,
+            prefill_channels,
+            next_prefill: Arc::new(AtomicUsize::new(0)),
             worker_channels: Arc::new(Mutex::new(HashMap::new())),
         })
     }
@@ -325,8 +345,9 @@ impl StaticAggregatePipeline {
             });
         }
 
-        let prefill_result_json = if let Some(endpoint) = &self.prefill_endpoint {
-            let channel = self.worker_channel(endpoint).await?;
+        let prefill_result_json = if let Some(channels) = &self.prefill_channels {
+            let index = self.next_prefill.fetch_add(1, Ordering::Relaxed) % channels.len();
+            let channel = channels[index].clone();
             let mut stream = ChatWorkerBridgeClient::new(channel)
                 .generate_raw(ChatWorkerRequest {
                     request_id: request_id.clone(),
