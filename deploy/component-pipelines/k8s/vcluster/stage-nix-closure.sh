@@ -38,6 +38,8 @@ if [[ "$actual_server" != "$VCLUSTER_EXPECTED_SERVER" ]]; then
   exit 2
 fi
 vc=(kubectl --kubeconfig "$VCLUSTER_KUBECONFIG" -n "$VCLUSTER_NAMESPACE")
+stager_pod=${NIX_STAGER_POD:-dynamo-component-store-stager}
+"${vc[@]}" wait --for=condition=Ready "pod/$stager_pod" --timeout=120s >/dev/null
 job_name="nixstage-$stage_id"
 if "${vc[@]}" get job "$job_name" >/dev/null 2>&1; then
   echo "refusing to reuse staging Job $job_name" >&2
@@ -58,7 +60,7 @@ fi
 mapfile -t missing < <(
   comm -23 \
     <(nix-store -qR "$closure" | sed 's,.*/,,' | sort) \
-    <("${vc[@]}" exec dynamo-component-store-stager -- ls /shared/nix/store | sort)
+    <("${vc[@]}" exec "$stager_pod" -- ls /shared/nix/store | sort)
 )
 if [[ ${#missing[@]} == 0 ]]; then
   echo "closure already staged: $closure"
@@ -89,7 +91,7 @@ export NIX_BRIDGE_NFS_SERVER NIX_BRIDGE_NFS_PATH
 mapfile -t remaining < <(
   comm -23 \
     <(nix-store -qR "$closure" | sed 's,.*/,,' | sort) \
-    <("${vc[@]}" exec dynamo-component-store-stager -- ls /shared/nix/store | sort)
+    <("${vc[@]}" exec "$stager_pod" -- ls /shared/nix/store | sort)
 )
 if [[ ${#remaining[@]} != 0 ]]; then
   printf 'Nix paths still missing from vCluster store: %s\n' "${remaining[@]}" >&2

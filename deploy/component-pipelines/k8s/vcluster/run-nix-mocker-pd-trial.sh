@@ -6,7 +6,7 @@
 # identity even when the AIPerf export validation fails.
 set -euo pipefail
 [[ $# -ge 2 && $# -le 3 && $1 =~ ^(short|isl4000|mooncake)$ && $2 =~ ^r[1-9][0-9]*$ ]] || {
-  echo "usage: $0 {short|isl4000|mooncake} rN [grace|envoy|callouts|agw-records|envoy-records]" >&2
+  echo "usage: $0 {short|isl4000|mooncake} rN [grace|envoy|callouts|static|agw-records|envoy-records]" >&2
   exit 2
 }
 workload=$1
@@ -39,6 +39,12 @@ elif [[ ${3:-} == callouts ]]; then
   job_prefix=nixpdc
   arm=pd-envoy-callouts
   export PD_RECORD_EXPORT=0
+elif [[ ${3:-} == static ]]; then
+  export RESULT_DIR=$script_dir/results/2026-09-26-mocker-pd-agw-static-pool
+  plan_sha256=57863f8e4666996e82db06e2728da738c6845387b625139f8f6af7c58f079240
+  job_prefix=nixpds
+  arm=pd-agw-static
+  export PD_RECORD_EXPORT=0
 elif [[ $# == 2 ]]; then
   export RESULT_DIR=$script_dir/results/2026-09-26-mocker-pd-generic
   export BENCHMARK_DURATION=45
@@ -70,6 +76,7 @@ actual_server=$(kubectl --kubeconfig "$VCLUSTER_KUBECONFIG" \
   config view --minify -o jsonpath='{.clusters[0].cluster.server}')
 [[ $actual_server == "$VCLUSTER_EXPECTED_SERVER" ]] || exit 2
 vc=(kubectl --kubeconfig "$VCLUSTER_KUBECONFIG" -n "$VCLUSTER_NAMESPACE")
+stager_pod=${NIX_STAGER_POD:-dynamo-component-store-stager}
 "${vc[@]}" get jobs -o json |
   jq -e '[.items[] | select((.status.active // 0) > 0)] | length == 0' >/dev/null
 for inactive in agw-static agw-generic envoy-independent envoy-callouts \
@@ -77,7 +84,7 @@ for inactive in agw-static agw-generic envoy-independent envoy-callouts \
   "${vc[@]}" get deployment "$inactive" -o json |
     jq -e '.spec.replicas == 0 and (.status.readyReplicas // 0) == 0' >/dev/null
 done
-for gateway in dynamo-pd-agw-generic dynamo-pd-envoy-generic dynamo-pd-envoy-callouts; do
+for gateway in dynamo-pd-agw-static dynamo-pd-agw-generic dynamo-pd-envoy-generic dynamo-pd-envoy-callouts; do
   [[ $gateway == dynamo-${arm} ]] && continue
   inactive_json=$("${vc[@]}" get deployment "$gateway" --ignore-not-found -o json)
   if [[ -n $inactive_json ]]; then
@@ -85,6 +92,15 @@ for gateway in dynamo-pd-agw-generic dynamo-pd-envoy-generic dynamo-pd-envoy-cal
       <<<"$inactive_json" >/dev/null
   fi
 done
+if [[ $arm == pd-agw-static ]]; then
+  expected_binary=$(jq -r '.candidate.agentgateway_nix_output + "/bin/agentgateway"' "$plan")
+  "${vc[@]}" get deployment dynamo-pd-agw-static -o json |
+    jq -e --arg binary "$expected_binary" '
+      .spec.template.spec.containers[0].command[0] == $binary
+      and any(.spec.template.spec.containers[0].env[];
+        .name == "DYN_PREFILL_ENDPOINT" and .value == "http://dynamo-pd-prefill:50051")
+    ' >/dev/null
+fi
 if [[ $arm == pd-envoy-callouts ]]; then
   pod_ips=$("${vc[@]}" get pods -l app=dynamo-pd-decode -o json |
     jq -r '.items[] | select(.metadata.deletionTimestamp == null) |
@@ -103,7 +119,7 @@ AIPERF_NODE_A=$(jq -er '.execution.aiperf_nodes[0]' "$plan")
 AIPERF_NODE_B=$(jq -er '.execution.aiperf_nodes[1]' "$plan")
 export TOKENIZER_STORE_BASENAME=wjq1b3wfjpzak4yd4rmj9arwqk1gkiir-qwen-tokenizer
 job=${job_prefix}-${workload}-${arm}-${trial}
-actual_dataset_sha256=$("${vc[@]}" exec dynamo-component-store-stager -- \
+actual_dataset_sha256=$("${vc[@]}" exec "$stager_pod" -- \
   sha256sum "/shared/nix${dataset_path#/shared}" | awk '{print $1}')
 [[ $actual_dataset_sha256 == "$dataset_sha256" ]] || {
   echo "dataset SHA-256 does not match frozen plan: $workload" >&2

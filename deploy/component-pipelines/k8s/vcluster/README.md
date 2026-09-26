@@ -121,8 +121,10 @@ bash deploy/component-pipelines/k8s/vcluster/run-nix-mocker-trial.sh \
   envoy-callouts short r3
 ```
 
-The runner still requires the vCluster-only `dynamo-component-store-stager` Pod
-for evidence collection. A successful Job alone is not accepted as a result:
+The runner still requires a vCluster-only Nix-store helper Pod for evidence
+collection. It defaults to `dynamo-component-store-stager`; set
+`NIX_STAGER_POD` to a new Ready Pod with the same NFS mount if the original
+24-hour helper has completed. A successful Job alone is not accepted as a result:
 the script also parses all six exports and reports errors and cancellations.
 For a newly pinned bundle, use `run-nix-mocker-recheck.sh` with the same
 environment and a fresh `RESULT_DIR`, for example `TRIAL=r21 WORKLOAD=short`.
@@ -538,3 +540,65 @@ vCluster NFS locations and hashes, but not machine-local `result` symlinks or
 Nix store closures. Rebuild the refactored bundle
 with the envs flake above; a `/nix/store/...` symlink from the machine that performed the run is
 not portable evidence.
+
+## Static AGW disaggregated prefill/decode reproduction (2026-09-26)
+
+The compiled static host now invokes the Dynamo facade's `GenerateRaw` prefill
+RPC, forwards only its opaque disaggregated handoff, and invokes the facade's
+decode `Generate` RPC. It does not copy Dynamo's engine, tokenizer, selector,
+or postprocessor logic. The first build (`743fe6254f`) multiplexed all
+prefill traffic over one HTTP/2 connection. Its short run had 9,067 request
+errors; [the audit](results/2026-09-26-mocker-pd-agw-static/audit-nixpds-short-pd-agw-static-r1.json)
+marks it invalid, so its apparent throughput must not be compared.
+
+The corrected source is Dynamo commit `1dcc540c6b`, built by the envs flake
+`gateway-pipeline#component-pipeline-agentgateway` on branch
+`feat/dynamo-component-pipeline-static-pd`. Its Nix output is
+`/nix/store/g8mr1z39cy1pnb75rvxvxs2gbf58cr2h-agentgateway-component-pipeline-0.0.0-b14ca87d0a`.
+The host opens 32 independent prefill gRPC connections via
+`DYN_GRPC_CHANNELS_PER_ENDPOINT=32`, allowing the Kubernetes Service to spread
+streams across four prefill replicas. One AGW replica, four preprocessors,
+four selectors, four prefill workers, and 16 decode workers ran in
+`dynamo-components-v2` on the explicit vCluster API. All workers are synthetic
+Dynamo `AsyncEngine` benchmark fixtures behind the production facade, not GPU
+measurements. The prefill marker is mandatory at decode, so the
+`smoke-nix-mocker-pd.sh` streamed OpenAI response proves the handoff path.
+
+The [frozen plan](results/2026-09-26-mocker-pd-agw-static-pool/benchmark_plan.json)
+has SHA-256 `57863f8e4666996e82db06e2728da738c6845387b625139f8f6af7c58f079240`.
+Its three separate, zero-error audits report:
+
+| Workload | Summed client RPS | Globally normalized successful RPS | Audit |
+| --- | ---: | ---: | --- |
+| Short | 9,870.96 | 9,569.90 | valid |
+| ISL4000 | 5,851.48 | 5,712.81 | valid |
+| Mooncake | 3,024.04 | 2,965.97 | valid; full trace and mmap cache hits |
+
+These are one-pass, summary-level characterizations. Earlier generic and
+callout P/D series used distinct plans and run windows; their numbers are
+context, not promotion-grade paired deltas. In particular, ISL4000 is below
+the earlier generic and callout results, so static P/D parity is not yet
+established. Mooncake is near the six-client offered-load ceiling; this is not
+a gateway-capacity measurement.
+
+To reproduce, build the pinned envs flake, stage its output with
+`stage-nix-closure.sh` and a fresh stage ID, then set the explicit
+`VCLUSTER_KUBECONFIG`, `VCLUSTER_EXPECTED_SERVER`, `VCLUSTER_NAMESPACE`,
+`NIX_STAGER_POD`, `NIX_STORE_NFS_SERVER/PATH`, and `ENVSUBST_BIN` used above.
+Use a Ready helper Pod with `/shared/nix` mounted from the same vCluster NFS
+store. Run `run-nix-mocker-pd-static.sh`, then
+`PD_GATEWAY_SERVICE=dynamo-pd-agw-static smoke-nix-mocker-pd.sh`. With every
+other gateway scaled to zero and no active Job, run a fresh trial ID for each
+workload:
+
+```bash
+bash deploy/component-pipelines/k8s/vcluster/run-nix-mocker-pd-trial.sh short r3 static
+bash deploy/component-pipelines/k8s/vcluster/run-nix-mocker-pd-trial.sh isl4000 r3 static
+bash deploy/component-pipelines/k8s/vcluster/run-nix-mocker-pd-trial.sh mooncake r3 static
+```
+
+Audit each with `python3 audit-nix-mocker-pd.py RESULT_DIR WORKLOAD r3
+--static`, where `RESULT_DIR` is the static-pool plan directory. The raw
+six-client exports remain in its ignored `raw_aiperf/` folder; committed
+summaries retain their hashes, plan identity, vCluster Job identities,
+occupancy, and cache-hit evidence.

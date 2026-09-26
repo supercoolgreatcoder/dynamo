@@ -1,0 +1,206 @@
+{
+  "status": "completed",
+  "vcluster_api_server": "https://gateway-poc.mkhadkevich-dev:443",
+  "plan_path": "/work/dynamo-epp/deploy/component-pipelines/k8s/vcluster/results/2026-09-26-mocker-pd-agw-static-pool/benchmark_plan.json",
+  "plan_sha256": "57863f8e4666996e82db06e2728da738c6845387b625139f8f6af7c58f079240",
+  "benchmark_series_id": "mocker-pd-agw-static-pool-mooncake-grace-v1-2026-09-26",
+  "performance_question": "Does a single AGW static gateway with independent prefill gRPC connections complete the frozen short, ISL4000, and Mooncake P/D workloads without errors, and at what throughput?",
+  "workload": "mooncake",
+  "job": {
+    "name": "nixpds-mooncake-pd-agw-static-r2",
+    "uid": "edd798f1-9099-4d61-bc36-8d32838db4b2",
+    "created_at": "2026-09-26T07:18:09Z",
+    "completed_at": "2026-09-26T07:20:38Z",
+    "succeeded": 6,
+    "failed": 0,
+    "spec": {
+      "backoffLimit": 0,
+      "completionMode": "Indexed",
+      "completions": 6,
+      "manualSelector": false,
+      "parallelism": 6,
+      "podReplacementPolicy": "TerminatingOrFailed",
+      "selector": {
+        "matchLabels": {
+          "batch.kubernetes.io/controller-uid": "edd798f1-9099-4d61-bc36-8d32838db4b2"
+        }
+      },
+      "suspend": false,
+      "template": {
+        "metadata": {
+          "labels": {
+            "arm": "pd-agw-static",
+            "batch.kubernetes.io/controller-uid": "edd798f1-9099-4d61-bc36-8d32838db4b2",
+            "batch.kubernetes.io/job-name": "nixpds-mooncake-pd-agw-static-r2",
+            "benchmark": "mooncake-corrected",
+            "controller-uid": "edd798f1-9099-4d61-bc36-8d32838db4b2",
+            "job-name": "nixpds-mooncake-pd-agw-static-r2"
+          }
+        },
+        "spec": {
+          "affinity": {
+            "nodeAffinity": {
+              "requiredDuringSchedulingIgnoredDuringExecution": {
+                "nodeSelectorTerms": [
+                  {
+                    "matchExpressions": [
+                      {
+                        "key": "kubernetes.io/hostname",
+                        "operator": "In",
+                        "values": [
+                          "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+                          "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4"
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          "automountServiceAccountToken": false,
+          "containers": [
+            {
+              "args": [
+                "set -euo pipefail\nwhile [ \"$(date +%s)\" -lt \"1790407179\" ]; do sleep 0.2; done\nexport HF_HOME=/tmp/hf HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1\ncache=/tmp/hf/hub/models--Qwen--Qwen2.5-0.5B-Instruct\nmkdir -p \"$cache/snapshots\" \"$cache/refs\"\nln -s /model/tokenizer \"$cache/snapshots/nix\"\nprintf nix > \"$cache/refs/main\"\n\ndataset=/shared/aiperf/mooncake-qwen2.5-0.5b/mooncake-512-context.jsonl\ntest -s \"$dataset\"\nartifacts=/shared/aiperf/results/nixpds-mooncake-pd-agw-static-r2/$JOB_COMPLETION_INDEX\nmkdir -p \"$artifacts\"\nexec aiperf profile \\\n  --url \"http://dynamo-pd-agw-static:8080/v1/chat/completions\" \\\n  --model Qwen/Qwen2.5-0.5B-Instruct \\\n  --tokenizer Qwen/Qwen2.5-0.5B-Instruct \\\n  --endpoint-type chat --streaming --use-server-token-count \\\n  --use-legacy-max-tokens \\\n  --custom-dataset-type mooncake-trace \\\n  --input-file \"$dataset\" \\\n  --isl-block-size 512 \\\n  --random-seed 42 \\\n  --concurrency 128 --benchmark-duration 46 \\\n  --export-level summary \\\n  --record-processors 16 \\\n  --output-artifact-dir \"$artifacts\"\n"
+              ],
+              "command": [
+                "/bin/bash",
+                "-lc"
+              ],
+              "env": [
+                {
+                  "name": "BENCHMARK_START_UNIX",
+                  "value": "1790407179"
+                },
+                {
+                  "name": "JOB_COMPLETION_INDEX",
+                  "valueFrom": {
+                    "fieldRef": {
+                      "apiVersion": "v1",
+                      "fieldPath": "metadata.annotations['batch.kubernetes.io/job-completion-index']"
+                    }
+                  }
+                },
+                {
+                  "name": "AIPERF_DATASET_MMAP_CACHE_ENABLED",
+                  "value": "true"
+                },
+                {
+                  "name": "AIPERF_DATASET_MMAP_CACHE_DIR",
+                  "value": "/shared/aiperf/mooncake-qwen2.5-0.5b/mmap-cache"
+                },
+                {
+                  "name": "AIPERF_DATASET_MMAP_BASE_PATH",
+                  "value": "/shared/aiperf/mooncake-qwen2.5-0.5b/run-mmaps"
+                }
+              ],
+              "image": "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
+              "imagePullPolicy": "IfNotPresent",
+              "name": "benchmark",
+              "resources": {},
+              "securityContext": {
+                "runAsUser": 0
+              },
+              "terminationMessagePath": "/dev/termination-log",
+              "terminationMessagePolicy": "File",
+              "volumeMounts": [
+                {
+                  "mountPath": "/nix/store",
+                  "name": "nix-store",
+                  "readOnly": true,
+                  "subPath": "store"
+                },
+                {
+                  "mountPath": "/model/tokenizer",
+                  "name": "nix-store",
+                  "readOnly": true,
+                  "subPath": "store/wjq1b3wfjpzak4yd4rmj9arwqk1gkiir-qwen-tokenizer"
+                },
+                {
+                  "mountPath": "/shared",
+                  "name": "nix-store"
+                }
+              ]
+            }
+          ],
+          "dnsPolicy": "ClusterFirst",
+          "nodeSelector": {
+            "topology.unikorn-cloud.org/node-pool": "cpu-pool"
+          },
+          "restartPolicy": "Never",
+          "schedulerName": "default-scheduler",
+          "securityContext": {},
+          "terminationGracePeriodSeconds": 30,
+          "topologySpreadConstraints": [
+            {
+              "labelSelector": {
+                "matchLabels": {
+                  "arm": "pd-agw-static",
+                  "benchmark": "mooncake-corrected"
+                }
+              },
+              "maxSkew": 1,
+              "topologyKey": "kubernetes.io/hostname",
+              "whenUnsatisfiable": "DoNotSchedule"
+            }
+          ],
+          "volumes": [
+            {
+              "name": "nix-store",
+              "nfs": {
+                "path": "/unikorn-identity-03cfadd31877-551/pvc-19aeb650-5f77-45c4-8b8b-0a3b88542f39",
+                "server": "192.168.0.220"
+              }
+            }
+          ]
+        }
+      },
+      "ttlSecondsAfterFinished": 86400
+    }
+  },
+  "pods": [
+    {
+      "name": "nixpds-mooncake-pd-agw-static-r2-0-8qqll",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4",
+      "phase": "Succeeded",
+      "started_at": "2026-09-26T07:18:09Z",
+      "finished_at": "2026-09-26T07:20:34Z"
+    },
+    {
+      "name": "nixpds-mooncake-pd-agw-static-r2-1-42vjz",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded",
+      "started_at": "2026-09-26T07:18:09Z",
+      "finished_at": "2026-09-26T07:20:34Z"
+    },
+    {
+      "name": "nixpds-mooncake-pd-agw-static-r2-2-57n8x",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded",
+      "started_at": "2026-09-26T07:18:09Z",
+      "finished_at": "2026-09-26T07:20:34Z"
+    },
+    {
+      "name": "nixpds-mooncake-pd-agw-static-r2-3-nxfwt",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4",
+      "phase": "Succeeded",
+      "started_at": "2026-09-26T07:18:09Z",
+      "finished_at": "2026-09-26T07:20:35Z"
+    },
+    {
+      "name": "nixpds-mooncake-pd-agw-static-r2-4-jpj7l",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded",
+      "started_at": "2026-09-26T07:18:09Z",
+      "finished_at": "2026-09-26T07:20:34Z"
+    },
+    {
+      "name": "nixpds-mooncake-pd-agw-static-r2-5-xz68q",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4",
+      "phase": "Succeeded",
+      "started_at": "2026-09-26T07:18:09Z",
+      "finished_at": "2026-09-26T07:20:35Z"
+    }
+  ]
+}

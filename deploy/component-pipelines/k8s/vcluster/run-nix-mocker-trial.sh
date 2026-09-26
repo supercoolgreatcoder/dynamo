@@ -7,7 +7,7 @@
 set -euo pipefail
 
 if [ "$#" -ne 3 ]; then
-  echo "usage: $0 {agw-static|agw-generic|envoy-generic|envoy-callouts|dynamo-reference|pd-agw-generic|pd-envoy-generic|pd-envoy-callouts} {short|isl4000|mooncake} rN" >&2
+  echo "usage: $0 {agw-static|agw-generic|envoy-generic|envoy-callouts|dynamo-reference|pd-agw-static|pd-agw-generic|pd-envoy-generic|pd-envoy-callouts} {short|isl4000|mooncake} rN" >&2
   exit 2
 fi
 
@@ -21,6 +21,7 @@ case "$arm" in
   envoy-callouts) service=envoy-callouts ;;
   dynamo-reference) service=dynamo-frontend-reference ;;
   pd-agw-generic) service=dynamo-pd-agw-generic ;;
+  pd-agw-static) service=dynamo-pd-agw-static ;;
   pd-envoy-generic) service=dynamo-pd-envoy-generic ;;
   pd-envoy-callouts) service=dynamo-pd-envoy-callouts ;;
   *) echo "unsupported arm: $arm" >&2; exit 2 ;;
@@ -61,6 +62,8 @@ fi
 kubectl_vc=(kubectl --kubeconfig "$VCLUSTER_KUBECONFIG" -n "$VCLUSTER_NAMESPACE")
 if [[ $record_export == 1 ]]; then
   job="nixpdr-${workload}-${arm}-${trial}"
+elif [ "$arm" = pd-agw-static ]; then
+  job="nixpds-${workload}-${arm}-${trial}"
 elif [ "$arm" = pd-envoy-generic ]; then
   job="nixpde-${workload}-${arm}-${trial}"
 elif [ "$arm" = pd-envoy-callouts ]; then
@@ -81,7 +84,7 @@ fi
     echo "gateway deployment $service must be exactly 1/1 Ready" >&2
     exit 2
   }
-if [ "$arm" = pd-agw-generic ] || [ "$arm" = pd-envoy-generic ] || [ "$arm" = pd-envoy-callouts ]; then
+if [ "$arm" = pd-agw-static ] || [ "$arm" = pd-agw-generic ] || [ "$arm" = pd-envoy-generic ] || [ "$arm" = pd-envoy-callouts ]; then
   components=(dynamo-pd-preprocessor:4 dynamo-pd-selector:4 dynamo-pd-prefill:4 dynamo-pd-decode:16)
 else
   components=(dynamo-preprocessor:4 dynamo-selector:1 dynamo-benchmark-worker:16)
@@ -110,7 +113,7 @@ export BENCHMARK_START_UNIX=$(( $(date -u +%s) + 90 ))
 if [ "$workload" = mooncake ]; then
   export BENCHMARK_DURATION=${BENCHMARK_DURATION:-45}
   [[ $BENCHMARK_DURATION == 45 ]] || {
-    [[ ( $arm == pd-agw-generic || $arm == pd-envoy-generic || $arm == pd-envoy-callouts ) && $BENCHMARK_DURATION == 46 ]] || exit 2
+    [[ ( $arm == pd-agw-static || $arm == pd-agw-generic || $arm == pd-envoy-generic || $arm == pd-envoy-callouts ) && $BENCHMARK_DURATION == 46 ]] || exit 2
   }
   export JOB_NAME=$job ARM_NAME=$arm
   export TARGET_URL="http://${service}:8080/v1/chat/completions"
@@ -134,11 +137,11 @@ echo "waiting for $job (start barrier $BENCHMARK_START_UNIX)" >&2
 out="$RESULT_DIR/raw_aiperf/$job"
 mkdir -p "$out"
 if [[ $record_export == 1 ]]; then
-  "${kubectl_vc[@]}" exec -i dynamo-component-store-stager -- \
+  "${kubectl_vc[@]}" exec -i "${NIX_STAGER_POD:-dynamo-component-store-stager}" -- \
     sh -c "cd /shared/nix/aiperf/results/$job && tar -cf - ?/profile_export_aiperf.json ?/profile_export_aiperf.csv ?/profile_export_console.txt ?/profile_export.jsonl" |
     tar -C "$out" -xf -
 else
-  "${kubectl_vc[@]}" exec -i dynamo-component-store-stager -- \
+  "${kubectl_vc[@]}" exec -i "${NIX_STAGER_POD:-dynamo-component-store-stager}" -- \
     sh -c "cd /shared/nix/aiperf/results/$job && tar -cf - ?/profile_export_aiperf.json ?/profile_export_aiperf.csv ?/profile_export_console.txt" |
     tar -C "$out" -xf -
 fi

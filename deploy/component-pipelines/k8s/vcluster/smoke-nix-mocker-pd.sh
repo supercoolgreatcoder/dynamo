@@ -18,7 +18,8 @@ actual_server=$(kubectl --kubeconfig "$VCLUSTER_KUBECONFIG" \
 }
 vc=(kubectl --kubeconfig "$VCLUSTER_KUBECONFIG" -n "$VCLUSTER_NAMESPACE")
 service=${PD_GATEWAY_SERVICE:-dynamo-pd-agw-generic}
-[[ $service == dynamo-pd-agw-generic || $service == dynamo-pd-envoy-generic ||
+[[ $service == dynamo-pd-agw-generic || $service == dynamo-pd-agw-static ||
+   $service == dynamo-pd-envoy-generic ||
    $service == dynamo-pd-envoy-callouts ]] || exit 2
 "${vc[@]}" get deployment "$service" -o json |
   jq -e '.status.readyReplicas == 1' >/dev/null
