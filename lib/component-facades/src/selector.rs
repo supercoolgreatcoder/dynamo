@@ -191,14 +191,15 @@ impl Selector for SelectorFacade {
         &self,
         request: Request<crate::proto::JsonItem>,
     ) -> Result<Response<JsonResult>, Status> {
-        let started_at = crate::rpc_sample_start();
         let item = request.into_inner();
+        let started_at = crate::rpc_sample_start(&item.item_id);
         let shape = started_at.map(|start| {
             (
                 start,
                 item.payload_json.len(),
                 item.token_ids_le.len(),
                 item.token_ids.len(),
+                item.item_id.clone(),
             )
         });
         let mut response = self
@@ -211,11 +212,14 @@ impl Selector for SelectorFacade {
                 },
             )
             .await?;
-        if let Some((start, payload_bytes, packed_token_bytes, repeated_token_count)) = shape {
+        if let Some((start, payload_bytes, packed_token_bytes, repeated_token_count, request_id)) =
+            shape
+        {
             tracing::debug!(
                 target: "dynamo_component_rpc_sample",
                 component = "selector",
                 operation = "select",
+                request_id = %request_id,
                 elapsed_us = crate::rpc_sample_elapsed_us(start),
                 payload_bytes,
                 packed_token_bytes,

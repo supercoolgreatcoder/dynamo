@@ -15,6 +15,8 @@ component=$1
 [[ $PD_RPC_BINARY == /nix/store/*/bin/dynamo-component-facade ]] || exit 2
 sample_every=${PD_RPC_SAMPLE_EVERY:-0}
 [[ $sample_every == 0 || $sample_every == 1 || $sample_every == 1000 ]] || exit 2
+correlated_timing=${PD_RPC_CORRELATED_TIMING:-0}
+[[ $correlated_timing == 0 || $correlated_timing == 1 ]] || exit 2
 actual_server=$(kubectl --kubeconfig "$VCLUSTER_KUBECONFIG" \
   config view --minify -o jsonpath='{.clusters[0].cluster.server}')
 [[ $actual_server == "$VCLUSTER_EXPECTED_SERVER" ]] || exit 2
@@ -26,15 +28,17 @@ stager_pod=${NIX_STAGER_POD:-dynamo-component-store-stager}
 name=dynamo-pd-$component
 source_deployment=$("${vc[@]}" get deployment "$name" -o json)
 deployment=$(jq -c --arg name "$name" --arg binary "$PD_RPC_BINARY" \
-  --arg interval "$sample_every" '
+  --arg interval "$sample_every" --arg correlated "$correlated_timing" '
   {apiVersion,kind,metadata:{name:$name},spec:.spec}
   | .spec.replicas=4
   | .spec.template.spec.containers[0].command[0]=$binary
   | .spec.template.spec.containers[0].env |=
-      (map(select(.name != "DYN_COMPONENT_RPC_SAMPLE_EVERY" and .name != "RUST_LOG"))
-       + [{name:"RUST_LOG",value:(if $interval == "0" then "warn" else "warn,dynamo_component_rpc_sample=debug" end)}]
+      (map(select(.name != "DYN_COMPONENT_RPC_SAMPLE_EVERY" and .name != "DYN_COMPONENT_CORRELATED_TIMING" and .name != "RUST_LOG"))
+       + [{name:"RUST_LOG",value:(if $interval == "0" and $correlated == "0" then "warn" else "warn,dynamo_component_rpc_sample=debug" end)}]
        + (if $interval == "0" then []
-          else [{name:"DYN_COMPONENT_RPC_SAMPLE_EVERY",value:$interval}] end))
+          else [{name:"DYN_COMPONENT_RPC_SAMPLE_EVERY",value:$interval}] end)
+       + (if $correlated == "0" then []
+          else [{name:"DYN_COMPONENT_CORRELATED_TIMING",value:$correlated}] end))
 ' <<<"$source_deployment")
 printf '%s\n' "$deployment" | "${vc[@]}" apply --dry-run=server -f - >/dev/null
 printf '%s\n' "$deployment" | "${vc[@]}" apply -f -

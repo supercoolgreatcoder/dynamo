@@ -25,7 +25,16 @@ use std::{
     time::Instant,
 };
 
-fn rpc_sample_start() -> Option<Instant> {
+fn rpc_sample_start(request_id: &str) -> Option<Instant> {
+    static CORRELATED: OnceLock<bool> = OnceLock::new();
+    if *CORRELATED.get_or_init(|| {
+        std::env::var("DYN_COMPONENT_CORRELATED_TIMING")
+            .ok()
+            .as_deref()
+            == Some("1")
+    }) {
+        return request_id.ends_with("00").then(Instant::now);
+    }
     static INTERVAL: OnceLock<Option<u64>> = OnceLock::new();
     static NEXT: AtomicU64 = AtomicU64::new(0);
     let every = INTERVAL.get_or_init(|| {

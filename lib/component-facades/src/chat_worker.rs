@@ -192,8 +192,8 @@ impl ChatWorkerBridge for ChatWorkerFacade {
         &self,
         request: Request<ChatWorkerRequest>,
     ) -> Result<Response<Self::GenerateRawStream>, Status> {
-        let started_at = crate::rpc_sample_start();
         let mut request = request.into_inner();
+        let started_at = crate::rpc_sample_start(&request.request_id);
         let shape = started_at.map(|start| {
             (
                 start,
@@ -227,6 +227,7 @@ impl ChatWorkerBridge for ChatWorkerFacade {
                 component = "worker",
                 operation = "generate_raw",
                 phase = "handler",
+                request_id = %request_id,
                 elapsed_us = crate::rpc_sample_elapsed_us(start),
                 backend_bytes,
                 packed_token_bytes,
@@ -266,6 +267,7 @@ impl ChatWorkerBridge for ChatWorkerFacade {
                     component = "worker",
                     operation = "generate_raw",
                     phase = "terminal",
+                    request_id = %request_id,
                     elapsed_us = crate::rpc_sample_elapsed_us(start),
                     backend_bytes,
                     packed_token_bytes,

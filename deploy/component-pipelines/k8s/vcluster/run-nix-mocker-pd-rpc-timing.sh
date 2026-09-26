@@ -18,6 +18,12 @@ trial=$2
 [[ $VCLUSTER_EXPECTED_SERVER == https://gateway-poc.mkhadkevich-dev:443 ]] || exit 2
 [[ $VCLUSTER_NAMESPACE == dynamo-components-v2 ]] || exit 2
 [[ $PD_RPC_BINARY == /nix/store/*/bin/dynamo-component-facade ]] || exit 2
+correlated_timing=${PD_RPC_CORRELATED_TIMING:-0}
+[[ $correlated_timing == 0 || ( $correlated_timing == 1 && $arm == pd-agw-static ) ]] || exit 2
+if [[ $correlated_timing == 1 ]]; then
+  : "${PD_CORRELATED_GATEWAY_BINARY:?}"
+  [[ $PD_CORRELATED_GATEWAY_BINARY == /nix/store/*/bin/agentgateway ]] || exit 2
+fi
 actual_server=$(kubectl --kubeconfig "$VCLUSTER_KUBECONFIG" \
   config view --minify -o jsonpath='{.clusters[0].cluster.server}')
 [[ $actual_server == "$VCLUSTER_EXPECTED_SERVER" ]] || exit 2
@@ -26,13 +32,17 @@ vc=(kubectl --kubeconfig "$VCLUSTER_KUBECONFIG" -n "$VCLUSTER_NAMESPACE")
   jq -e '[.items[] | select((.status.active // 0) > 0)] | length == 0' >/dev/null
 for component in selector prefill; do
   "${vc[@]}" get deployment "dynamo-pd-$component" -o json |
-    jq -e --arg binary "$PD_RPC_BINARY" '
+    jq -e --arg binary "$PD_RPC_BINARY" --arg correlated "$correlated_timing" '
       .spec.replicas == 4 and .status.readyReplicas == 4
       and .spec.template.spec.containers[0].command[0] == $binary
       and any(.spec.template.spec.containers[0].env[];
         .name == "DYN_COMPONENT_RPC_SAMPLE_EVERY" and .value == "1000")
       and any(.spec.template.spec.containers[0].env[];
         .name == "RUST_LOG" and .value == "warn,dynamo_component_rpc_sample=debug")
+      and (if $correlated == "0" then
+        all(.spec.template.spec.containers[0].env[]; .name != "DYN_COMPONENT_CORRELATED_TIMING")
+        else any(.spec.template.spec.containers[0].env[];
+          .name == "DYN_COMPONENT_CORRELATED_TIMING" and .value == "1") end)
     ' >/dev/null
 done
 "${vc[@]}" get deployment dynamo-pd-preprocessor -o json |
@@ -41,6 +51,16 @@ done
 gateway=dynamo-${arm}
 "${vc[@]}" get deployment "$gateway" -o json |
   jq -e '.spec.replicas == 1 and .status.readyReplicas == 1' >/dev/null
+if [[ $correlated_timing == 1 ]]; then
+  "${vc[@]}" get deployment "$gateway" -o json |
+    jq -e --arg binary "$PD_CORRELATED_GATEWAY_BINARY" '
+      .spec.template.spec.containers[0].command[0] == $binary
+      and any(.spec.template.spec.containers[0].env[];
+        .name == "DYN_STATIC_CORRELATED_TIMING" and .value == "1")
+      and any(.spec.template.spec.containers[0].env[];
+        .name == "RUST_LOG" and .value == "warn,dynamo_static_rpc_split=debug,dynamo_static_selector_rpc=debug")
+    ' >/dev/null
+fi
 for inactive in dynamo-pd-agw-static dynamo-pd-agw-generic dynamo-pd-envoy-generic dynamo-pd-envoy-callouts; do
   [[ $inactive == "$gateway" ]] && continue
   "${vc[@]}" get deployment "$inactive" -o json |
@@ -48,7 +68,7 @@ for inactive in dynamo-pd-agw-static dynamo-pd-agw-generic dynamo-pd-envoy-gener
 done
 
 script_dir=$(cd "$(dirname "$0")" && pwd)
-export RESULT_DIR=$script_dir/results/2026-09-26-mocker-pd-rpc-timing
+export RESULT_DIR=${PD_RPC_RESULT_DIR:-$script_dir/results/2026-09-26-mocker-pd-rpc-timing}
 export TOKENIZER_STORE_BASENAME=wjq1b3wfjpzak4yd4rmj9arwqk1gkiir-qwen-tokenizer
 export ENVSUBST_BIN=${ENVSUBST_BIN:-/nix/store/g4ylgfr6jw3wrvgqh0ifvvjpnn6rabzv-gettext-1.0/bin/envsubst}
 export PD_RECORD_EXPORT=0
