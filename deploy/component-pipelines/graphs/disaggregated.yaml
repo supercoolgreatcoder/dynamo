@@ -54,6 +54,11 @@ steps:
         request_id: "$.request.id"
         backend_request_json: "$.vars.backend_request"
         token_ids_le: "$.vars.token_ids_le"
+        prompt_tokens: "$.vars.prompt_tokens"
+        image_tokens: "$.vars.image_tokens"
+        image_count: "$.vars.image_count"
+        video_count: "$.vars.video_count"
+        audio_count: "$.vars.audio_count"
         deadline_unix_ms: 0
       stream:
         emitToClient: false
