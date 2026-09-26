@@ -11,7 +11,7 @@ serving container or upstream package is edited. Each Job proves activation
 before profiling and all client logs prove a cache HIT with tokenizer and
 composer skipped. All resources were deployed **inside the vCluster only**.
 
-| Clients | Nominal offered RPS | Achieved RPS | Output tokens/s | Mean output tokens | Mean latency | Errors |
+| Clients | Nominal offered RPS | Sum of client-reported RPS | Output tokens/s | Mean output tokens | Mean latency | Errors |
 |---:|---:|---:|---:|---:|---:|---:|
 | 12 | 6,053.07 | 6,043.38 | 1,034,611.08 | 171.20 | 25.63 ms | 0 |
 | 18 | 9,079.60 | 8,234.63 | 1,411,468.54 | 171.41 | 71.41 ms | 0 |
@@ -21,6 +21,13 @@ All Jobs completed every client Pod (12/12, 18/18, and 24/24), with exactly
 half the clients on each of two CPU nodes. Every raw export reports AIPerf
 0.12.0, fixed-schedule mode, the same 22,699-row trace per client, 128
 concurrency per client, one record processor, no errors, and no cancellation.
+However, a later replay-fidelity audit found **18/18** clients at the 18-client
+point and **24/24** at the 24-client point reported degraded schedules. Their
+measured starts spanned 4.15 and 5.09 seconds respectively. The 12-client
+point had no replay degradation and a 2.08-second start spread. Thus the two
+high-load rows are diagnostic observations, not valid fixed-schedule gateway
+capacity measurements. Summing rates from their different client windows is
+not a synchronized single-gateway throughput statistic.
 The source trace SHA256 is
 `28a94e9bc1b63fdc88e5217bdd5c647a0487c08c83bdc64a814ec0840562f550`.
 The [frozen plan](benchmark_plan.json) and [summary audit](benchmark_audit.json)
@@ -28,9 +35,10 @@ record the full identities and limitations. Raw AIPerf JSON/CSV/console
 exports, execution/Pod ledgers, and cache-hit TSVs are retained for all three
 points.
 
-The 18-to-24-client achieved rate increased by only **0.22%**, despite 33%
-more nominal arrivals. That is a plateau of the *measured two-node client plus
-serving setup*, not proof of an Envoy gateway ceiling. In a 15-second window
+The 18-to-24-client reported rate increased by only **0.22%**, despite 33%
+more nominal arrivals. Because both fixed schedules degraded and their client
+windows were staggered, this does not establish a valid capacity plateau of
+either the gateway or the complete setup. In a 15-second window
 during the 24-client measured phase, the gateway cgroup CPU counter increased
 from 3,463,611,474 to 3,646,628,034 microseconds: about 12.20 cores, with
 zero cgroup CPU-throttling periods. The vCluster Metrics API was unavailable,
@@ -41,7 +49,7 @@ sampled during the measurements. Therefore client contention and other
 downstream limits remain live hypotheses; do not attribute the plateau to
 gateway CPU or promote it as a hard ceiling.
 
-The 12-client bridge is numerically close to the unpatched clean 6,043.92 RPS
+The 12-client bridge is numerically close to the unpatched zero-error 6,043.92 RPS
 point, but changing the AIPerf reader created a new series. The old point is
 context, not a same-series gain/loss reference. AIPerf's `--export-level
 summary` did not emit request-level JSONL, so request-ID completeness,

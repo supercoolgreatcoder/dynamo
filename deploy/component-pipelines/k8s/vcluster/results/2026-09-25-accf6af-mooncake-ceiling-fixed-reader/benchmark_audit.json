@@ -1,5 +1,7 @@
 {
   "series_id": "accf6af-mooncake-capacity-fixed-reader-2026-09-25",
+  "status": "invalid",
+  "next_action": "stop",
   "evidence_scope": "summary-level mocker throughput characterization, not a promotion-grade request-ID, tail-SLO, or GPU audit",
   "plan_sha256": "787bb593a7841345c4ccdc25405ce91454ccddc7ddaef402deee28383ce06a7e",
   "trace_sha256": "28a94e9bc1b63fdc88e5217bdd5c647a0487c08c83bdc64a814ec0840562f550",
@@ -7,9 +9,9 @@
   "aiperf_overlay_sha256": "f03b650796bb1de5f4ed3dea2bd65545a102e9d0fd089e3e436b574cec38e418",
   "instrument_activation": "Every Job Pod executed a pre-profile assertion that MemoryMapDatasetClient.get_conversation.__module__ is sitecustomize; all Jobs completed, and their captured Pod specs contain the digest-named ConfigMap mount and PYTHONPATH.",
   "points": [
-    {"clients": 12, "job_succeeded": 12, "job_failed": 0, "aiperf_errors": 0, "cancelled": false, "cache_hit_clients": 12, "client_nodes": 2},
-    {"clients": 18, "job_succeeded": 18, "job_failed": 0, "aiperf_errors": 0, "cancelled": false, "cache_hit_clients": 18, "client_nodes": 2},
-    {"clients": 24, "job_succeeded": 24, "job_failed": 0, "aiperf_errors": 0, "cancelled": false, "cache_hit_clients": 24, "client_nodes": 2}
+    {"clients": 12, "job_succeeded": 12, "job_failed": 0, "aiperf_errors": 0, "cancelled": false, "cache_hit_clients": 12, "client_nodes": 2, "replay_degraded_clients": 0, "measured_start_spread_seconds": 2.084884, "capacity_eligible": true},
+    {"clients": 18, "job_succeeded": 18, "job_failed": 0, "aiperf_errors": 0, "cancelled": false, "cache_hit_clients": 18, "client_nodes": 2, "replay_degraded_clients": 18, "measured_start_spread_seconds": 4.154233, "capacity_eligible": false},
+    {"clients": 24, "job_succeeded": 24, "job_failed": 0, "aiperf_errors": 0, "cancelled": false, "cache_hit_clients": 24, "client_nodes": 2, "replay_degraded_clients": 24, "measured_start_spread_seconds": 5.086821, "capacity_eligible": false}
   ],
   "integrity_checks": [
     "Frozen plan SHA256 and trace SHA256 checked before each run.",
@@ -18,10 +20,11 @@
     "All client Pod logs prove mmap-cache HIT and tokenizer/composer skip."
   ],
   "limitations": [
+    "Later replay-fidelity audit invalidated both high-load points for fixed-schedule capacity use: every 18- and 24-client export flags degraded replay and the independently measured client windows start more than four seconds apart.",
     "AIPerf summary export has no request-level JSONL, so request-ID completeness and tail-metric recomputation are not independently auditable.",
     "Other-namespace client-node occupancy was observed after the runs but not sampled during them.",
     "vCluster Metrics API was unavailable; one Envoy cgroup CPU sample was collected during the 24-client measured phase, but no synchronized per-stage/client profile exists.",
     "No user SLO was specified, and the worker is synthetic rather than a production GPU worker."
   ],
-  "decision": "Three zero-error summary-level points establish that the two-node load-generation-plus-serving setup plateaus near 8250 RPS at 18-24 clients. They do not establish the single-gateway hard ceiling. Control client placement and measure stage/client CPU before attributing the plateau."
+  "decision": "Only the 12-client point passes replay-fidelity screening. The 18- and 24-client zero-error rows are diagnostics, not valid capacity measurements; their summed rates cannot establish an 8250 RPS plateau or a hard gateway ceiling. A new series needs faithful replay, aligned profiling windows, and synchronized stage/client CPU measurements."
 }
