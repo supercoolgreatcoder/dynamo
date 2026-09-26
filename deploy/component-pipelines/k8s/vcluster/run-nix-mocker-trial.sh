@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# Run one isolated six-client capacity trial. Scale and verify the chosen gateway
+# Run one isolated capacity trial. Scale and verify the chosen gateway
 # before invoking this script; the runner never changes component deployments.
 set -euo pipefail
 
@@ -53,6 +53,26 @@ command -v "$envsubst_bin" >/dev/null || { echo "envsubst is unavailable: $envsu
 test -f "$VCLUSTER_KUBECONFIG"
 test "$AIPERF_NODE_A" != "$AIPERF_NODE_B"
 test -d "$RESULT_DIR"
+client_count=${PD_AIPERF_CLIENTS:-6}
+[[ $client_count == 6 || $client_count == 12 ]] || {
+  echo "PD_AIPERF_CLIENTS must be 6 or 12" >&2
+  exit 2
+}
+[[ $client_count == 6 || $workload != mooncake ]] || {
+  echo "twelve-client mode currently supports only frozen raw short/ISL4000" >&2
+  exit 2
+}
+extra_node_values=
+if [[ $client_count == 12 ]]; then
+  : "${AIPERF_NODE_C:?set load-generator node C for twelve clients}"
+  : "${AIPERF_NODE_D:?set load-generator node D for twelve clients}"
+  [[ $AIPERF_NODE_C =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ &&
+     $AIPERF_NODE_D =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ ]] || exit 2
+  [[ $AIPERF_NODE_C != "$AIPERF_NODE_A" && $AIPERF_NODE_C != "$AIPERF_NODE_B" &&
+     $AIPERF_NODE_D != "$AIPERF_NODE_A" && $AIPERF_NODE_D != "$AIPERF_NODE_B" &&
+     $AIPERF_NODE_C != "$AIPERF_NODE_D" ]] || exit 2
+  extra_node_values=$(printf '                      - %s\n                      - %s' "$AIPERF_NODE_C" "$AIPERF_NODE_D")
+fi
 actual_server=$(kubectl --kubeconfig "$VCLUSTER_KUBECONFIG" config view --minify -o jsonpath='{.clusters[0].cluster.server}')
 if [ "$actual_server" != "$VCLUSTER_EXPECTED_SERVER" ]; then
   echo "kubeconfig server $actual_server does not match expected vCluster server" >&2
@@ -60,6 +80,13 @@ if [ "$actual_server" != "$VCLUSTER_EXPECTED_SERVER" ]; then
 fi
 
 kubectl_vc=(kubectl --kubeconfig "$VCLUSTER_KUBECONFIG" -n "$VCLUSTER_NAMESPACE")
+if [[ $client_count == 12 ]]; then
+  for load_node in "$AIPERF_NODE_A" "$AIPERF_NODE_B" "$AIPERF_NODE_C" "$AIPERF_NODE_D"; do
+    "${kubectl_vc[@]}" get node "$load_node" -o json |
+      jq -e '.metadata.labels["topology.unikorn-cloud.org/node-pool"] == "cpu-pool" and
+        any(.status.conditions[]; .type == "Ready" and .status == "True")' >/dev/null
+  done
+fi
 stager_pod=${NIX_STAGER_POD:-dynamo-component-store-stager}
 "${kubectl_vc[@]}" get pod "$stager_pod" -o json |
   jq -e '.status.phase == "Running" and
@@ -116,6 +143,7 @@ fi
 
 export VCLUSTER_NAMESPACE AIPERF_NODE_A AIPERF_NODE_B
 export NIX_STORE_NFS_SERVER NIX_STORE_NFS_PATH
+export AIPERF_CLIENTS=$client_count AIPERF_EXTRA_NODE_VALUES=$extra_node_values
 export BENCHMARK_START_UNIX=$(( $(date -u +%s) + 90 ))
 if [ "$workload" = mooncake ]; then
   export BENCHMARK_DURATION=${BENCHMARK_DURATION:-45}
@@ -129,7 +157,7 @@ if [ "$workload" = mooncake ]; then
 else
   export RUN_NAME=$job ARM_SERVICE=$service DATASET=$dataset
   export TOKENIZER_STORE_BASENAME
-  rendered=$("$envsubst_bin" '${RUN_NAME} ${VCLUSTER_NAMESPACE} ${ARM_SERVICE} ${DATASET} ${AIPERF_NODE_A} ${AIPERF_NODE_B} ${BENCHMARK_START_UNIX} ${TOKENIZER_STORE_BASENAME} ${NIX_STORE_NFS_SERVER} ${NIX_STORE_NFS_PATH}' \
+  rendered=$("$envsubst_bin" '${RUN_NAME} ${VCLUSTER_NAMESPACE} ${ARM_SERVICE} ${DATASET} ${AIPERF_NODE_A} ${AIPERF_NODE_B} ${AIPERF_CLIENTS} ${AIPERF_EXTRA_NODE_VALUES} ${BENCHMARK_START_UNIX} ${TOKENIZER_STORE_BASENAME} ${NIX_STORE_NFS_SERVER} ${NIX_STORE_NFS_PATH}' \
     < "$(dirname "$0")/frozen-raw-capacity-job.yaml.tmpl")
   if [[ $record_export == 1 ]]; then
     rendered=$(sed 's/--export-level summary/--export-level records --slice-duration 1/' <<<"$rendered")
@@ -145,17 +173,17 @@ out="$RESULT_DIR/raw_aiperf/$job"
 mkdir -p "$out"
 if [[ $record_export == 1 ]]; then
   "${kubectl_vc[@]}" exec -i "$stager_pod" -- \
-    sh -c "cd /shared/nix/aiperf/results/$job && tar -cf - ?/profile_export_aiperf.json ?/profile_export_aiperf.csv ?/profile_export_console.txt ?/profile_export.jsonl" |
+    sh -c "cd /shared/nix/aiperf/results/$job && tar -cf - */profile_export_aiperf.json */profile_export_aiperf.csv */profile_export_console.txt */profile_export.jsonl" |
     tar -C "$out" -xf -
 else
   "${kubectl_vc[@]}" exec -i "$stager_pod" -- \
-    sh -c "cd /shared/nix/aiperf/results/$job && tar -cf - ?/profile_export_aiperf.json ?/profile_export_aiperf.csv ?/profile_export_console.txt" |
+    sh -c "cd /shared/nix/aiperf/results/$job && tar -cf - */profile_export_aiperf.json */profile_export_aiperf.csv */profile_export_console.txt" |
     tar -C "$out" -xf -
 fi
 jq -es --arg job "$job" '{job:$job,clients:length,rps:(map(.request_throughput.avg)|add),requests:(map(.request_count.avg)|add),errors:(map(.error_summary|map(.count)|add // 0)|add),cancelled:(map(.was_cancelled)|any)}' \
-  "$out"/?/profile_export_aiperf.json
-jq -es 'length == 6 and all(.[]; (.error_summary | length) == 0 and .was_cancelled == false)' \
-  "$out"/?/profile_export_aiperf.json >/dev/null || {
-    echo "benchmark $job completed but its six-client exports are not error-free" >&2
+  "$out"/*/profile_export_aiperf.json
+jq -es --argjson expected "$client_count" 'length == $expected and all(.[]; (.error_summary | length) == 0 and .was_cancelled == false)' \
+  "$out"/*/profile_export_aiperf.json >/dev/null || {
+    echo "benchmark $job completed but its $client_count client exports are not error-free" >&2
     exit 1
   }
