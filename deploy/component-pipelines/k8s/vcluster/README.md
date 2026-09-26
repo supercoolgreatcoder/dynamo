@@ -674,3 +674,10 @@ facade work remained sub-millisecond while static gateway stage waits were
 about 29 ms each. This narrows the remaining gap to gateway-side scheduling,
 transport, or queueing rather than Dynamo facade core work. The Nix diagnostic
 build, rollout scripts, Pod logs, and raw AIPerf summaries are retained.
+
+The [generic P/D metadata follow-up](results/2026-09-26-mocker-pd-graph-metadata/README.md)
+fixed a separate contract gap: generic prefill now receives the prompt and
+multimodal counts that the static path already forwarded. A vCluster gRPC
+smoke confirmed `prompt_tokens=32` at prefill; the corrected graph's first
+six-client ISL4000 run delivered 9,609 RPS with no errors. This does not
+explain or close the static gateway's throughput gap.
