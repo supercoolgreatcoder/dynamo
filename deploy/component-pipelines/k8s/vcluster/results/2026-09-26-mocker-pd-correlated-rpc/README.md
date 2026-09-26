@@ -3,7 +3,7 @@ SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All 
 SPDX-License-Identifier: Apache-2.0
 -->
 
-# Request-correlated static gateway/facade RPC timing
+# Request-correlated static and generic gateway/facade RPC timing
 
 One diagnostic ISL4000 run (`nixpds-isl4000-pd-agw-static-r77`) used the
 frozen raw dataset with SHA256
@@ -54,13 +54,66 @@ averaged 29 µs from response headers to terminal processing.
 The prior static runs `r75` and `r76` reached 6,325.84 and 6,374.03 RPS
 with the same workload and topology, so this probe did not show a large
 throughput perturbation. The earlier generic reference reached about
-9,402 RPS, but it is a different orchestration implementation and was not
-rerun in this diagnostic series. Its result is context, not a direct gain
-claim. Earlier 16-channel static testing distributed traffic to all four
+9,402 RPS. The paired generic diagnostic below reproduces that level with
+the same frozen load and facade fleet. Earlier 16-channel static testing
+distributed traffic to all four
 preprocessors without closing the gap, so connection pinning alone is also
 insufficient to explain it.
 
-To reproduce, build the `component-pipeline-agentgateway-static-correlated`
+## Paired generic run
+
+`nixpd-isl4000-pd-agw-generic-r78` ran the same dataset SHA, six AIPerf
+0.12.0 clients at concurrency 128 for 45 seconds, one 16-thread AGW gateway,
+four gRPC channels per endpoint, and the same 4/4/4/16 component replica
+counts. AGW used the isolated Nix output
+`/nix/store/rsjialbb84x7l8b6x6h08rgwm2ylglsz-agentgateway-component-pipeline-0.0.0-b14ca87d0a`,
+which pins Dynamo probe commit `bb3fa9f6fa` and is published by the envs
+flake at commit `ccaee2a`. Selector and prefill used the same correlated
+facade binary as `r77`. The gateway ran on the same node as `r77`; the
+config map sets `workerThreads: 16` for both modes. The streamed P/D smoke
+passed. All six Job Pods succeeded, with no failed Pods. Raw exports report
+424,489 requests, **9,406.79 summed client RPS**, zero errors/cancellations,
+and a 29.78–34.75 ms client mean-latency range. As with `r77`, this is a
+diagnostic run, not a canonical optimization-loop audit.
+
+The analyzer joined **all 1,712 generic sampled IDs** across gateway,
+prefill handler/terminal, and selector handler. Timing is in milliseconds:
+
+| Mode and RPC | Gateway wait, mean / P95 | Facade handler, mean / P95 | Outside handler, mean / P95 |
+| --- | ---: | ---: | ---: |
+| Static `r77` prefill headers | 28.07 / 36.97 | 0.109 / 0.165 | 27.96 / 36.84 |
+| Generic `r78` prefill headers | 3.183 / 6.532 | 0.121 / 0.202 | 3.062 / 6.397 |
+| Static `r77` selector | 28.02 / 36.16 | 0.415 / 1.105 | 27.61 / 35.70 |
+| Generic `r78` selector | 3.044 / 6.435 | 0.162 / 0.503 | 2.882 / 6.254 |
+
+The generic gateway waited about 25 ms less per prefill-header and selector
+RPC, while the facade handler times remained sub-millisecond. Generic RPS
+was 1.46× static. These are different requests sampled in separate runs,
+not a per-request A/B. Both gateway timers start immediately before their
+tonic call; generic also includes its explicit `client.ready().await`, so
+that boundary does not explain the shorter generic wait. Both paths use four
+channels, TCP_NODELAY, and the same HTTP/2 stream and connection windows.
+The evidence localizes the large difference outside the Dynamo-backed
+facade handlers, but does **not** yet distinguish gateway task scheduling,
+tonic/H2 queueing, network transit, or another transport effect. Cross-Pod
+wall-clock timestamp subtraction has negative values in the generic run
+and is not a reliable attribution of the subsegments.
+
+To reproduce the generic pair, build and stage
+`component-pipeline-agentgateway-generic-correlated` from envs commit
+`ccaee2a` and the correlated facade output above. Roll selector and prefill
+with `PD_RPC_SAMPLE_EVERY=1000` and `PD_RPC_CORRELATED_TIMING=1` as for
+`r77`. Roll AGW with `run-nix-mocker-pd-generic-stats.sh`, setting
+`PD_GENERIC_STATS_INTERVAL_SECS=0`, `PD_GENERIC_CORRELATED_TIMING=1`, and
+`PD_RUST_LOG=warn,dynamo_generic_rpc_split=debug`. After the streamed smoke,
+run `run-nix-mocker-pd-rpc-timing.sh pd-agw-generic rNEW` with
+`PD_RPC_CORRELATED_TIMING=1` and both exact diagnostic binary paths, then
+analyze `nixpd-isl4000-pd-agw-generic-rNEW`. The required vCluster,
+stager, AIPerf-node, and NFS variables are the same as the static command
+below. The package's generated lockfile is separate from the baseline AGW
+lock, so the default Nix output is unchanged.
+
+To reproduce the static run, build the `component-pipeline-agentgateway-static-correlated`
 and `component-pipeline-facade-correlated` outputs from the pinned envs
 flake, stage both closures with `stage-nix-closure.sh`, and roll the two
 facades with `run-nix-mocker-pd-rpc-stats.sh` using
@@ -79,8 +132,8 @@ python3 analyze-correlated-rpc.py RESULTS_DIR nixpds-isl4000-pd-agw-static-rNEW
 ```
 
 The runner preserves raw client exports, the dataset-hash record, Job and
-Deployment snapshots, and all gateway/facade logs here. After `r77`, the
-static gateway was restored to its previous pinned spec at zero replicas;
+Deployment snapshots, and all gateway/facade logs here. After each run, the
+tested gateway was restored to its previous pinned spec at zero replicas;
 all four gateway variants were verified at zero, and selector/prefill were
 restored to their default facade binaries at 4/4 Ready. No deployment
 outside the vCluster was changed.
