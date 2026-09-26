@@ -6,7 +6,7 @@
 # identity even when the AIPerf export validation fails.
 set -euo pipefail
 [[ $# -ge 2 && $# -le 3 && $1 =~ ^(short|isl4000|mooncake)$ && $2 =~ ^r[1-9][0-9]*$ ]] || {
-  echo "usage: $0 {short|isl4000|mooncake} rN [grace|envoy|envoy-unified|callouts|callouts-unified|static|static-unified|generic-refresh|generic-metadata|generic-unified|generic-unified-rest|agw-records|envoy-records]" >&2
+  echo "usage: $0 {short|isl4000|mooncake} rN [grace|envoy|envoy-unified|callouts|callouts-unified|static|static-unified|static-channels4|static-channels4-threads16|generic-refresh|generic-metadata|generic-unified|generic-unified-rest|agw-records|envoy-records]" >&2
   exit 2
 }
 workload=$1
@@ -60,6 +60,20 @@ elif [[ ${3:-} == static ]]; then
 elif [[ ${3:-} == static-unified ]]; then
   export RESULT_DIR=$script_dir/results/2026-09-26-mocker-pd-agw-static-unified
   plan_sha256=cf91374466861e5dfef2bc9f21382325b2ae0f61af7507ef95e7da480e267a9a
+  job_prefix=nixpds
+  arm=pd-agw-static
+  export PD_RECORD_EXPORT=0
+elif [[ ${3:-} == static-channels4 ]]; then
+  [[ $workload == isl4000 ]] || exit 2
+  export RESULT_DIR=$script_dir/results/2026-09-26-mocker-pd-static-channels4
+  plan_sha256=0b7f9b0b3d66e01b7a0d984c69e6be5cdb2f5aa13c27e255895594dd366f8384
+  job_prefix=nixpds
+  arm=pd-agw-static
+  export PD_RECORD_EXPORT=0
+elif [[ ${3:-} == static-channels4-threads16 ]]; then
+  [[ $workload == isl4000 ]] || exit 2
+  export RESULT_DIR=$script_dir/results/2026-09-26-mocker-pd-static-channels4-threads16
+  plan_sha256=cb4b6c055c417084049f80dbbf2d21948cafbcdf77bf6733929e8117653bf375
   job_prefix=nixpds
   arm=pd-agw-static
   export PD_RECORD_EXPORT=0
@@ -148,15 +162,18 @@ if [[ $arm == pd-agw-static ]]; then
   expected_binary=$(jq -r '.candidate.agentgateway_nix_output + "/bin/agentgateway"' "$plan")
   expected_linger=$(jq -r '.candidate.preprocess_batch_linger_us // 200 | tostring' "$plan")
   expected_threads=$(jq -r '.candidate.gateway_worker_threads | tostring' "$plan")
+  expected_channels=$(jq -r '.candidate.grpc_channels_per_endpoint // empty | tostring' "$plan")
   expected_timing=$(jq -r '.candidate.stage_timing_every // 0 | tostring' "$plan")
   expected_rust_log=$(jq -r '.candidate.rust_log // ""' "$plan")
   "${vc[@]}" get deployment dynamo-pd-agw-static -o json |
-    jq -e --arg binary "$expected_binary" --arg linger "$expected_linger" --arg timing "$expected_timing" --arg rust_log "$expected_rust_log" '
+    jq -e --arg binary "$expected_binary" --arg linger "$expected_linger" --arg timing "$expected_timing" --arg rust_log "$expected_rust_log" --arg channels "$expected_channels" '
       .spec.template.spec.containers[0].command[0] == $binary
       and any(.spec.template.spec.containers[0].env[];
         .name == "DYN_PREFILL_ENDPOINT" and .value == "http://dynamo-pd-prefill:50051")
       and any(.spec.template.spec.containers[0].env[];
         .name == "DYN_PREPROCESS_BATCH_LINGER_US" and .value == $linger)
+      and ($channels == "" or any(.spec.template.spec.containers[0].env[];
+        .name == "DYN_GRPC_CHANNELS_PER_ENDPOINT" and .value == $channels))
       and ($timing == "0" or any(.spec.template.spec.containers[0].env[];
         .name == "DYN_STATIC_STAGE_TIMING_EVERY" and .value == $timing))
       and ($rust_log == "" or any(.spec.template.spec.containers[0].env[];
