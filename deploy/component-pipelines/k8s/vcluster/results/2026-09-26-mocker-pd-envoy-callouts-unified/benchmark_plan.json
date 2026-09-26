@@ -1,0 +1,76 @@
+{
+  "plan_id": "mocker-pd-envoy-callouts-unified-three-workloads-v1",
+  "benchmark_series_id_by_workload": {
+    "short": "mocker-pd-envoy-callouts-unified-short-v1-2026-09-26",
+    "isl4000": "mocker-pd-envoy-callouts-unified-isl4000-v1-2026-09-26",
+    "mooncake": "mocker-pd-envoy-callouts-unified-mooncake-grace-v1-2026-09-26"
+  },
+  "question": "Does the corrected Dynamo cb970285af Envoy callout module retain three-workload P/D throughput with exact selected-Pod routing?",
+  "intent": "three-workload diagnostic of the metadata-correct same-revision graph, facade and callout module with one Envoy replica",
+  "candidate": {
+    "source_commit": "cb970285af",
+    "facade_source_commit": "cb970285af",
+    "envoy_module_source_commit": "cb970285af",
+    "facade_nix_output": "/nix/store/if70chidxbz35bw239gda006wif3c9nx-dynamo-component-pipelines-cb970285af",
+    "gateway_nix_output": "/nix/store/if70chidxbz35bw239gda006wif3c9nx-dynamo-component-pipelines-cb970285af",
+    "graph": "deploy/component-pipelines/graphs/disaggregated.yaml",
+    "gateway_replicas": 1,
+    "gateway_concurrency": 6,
+    "generic_pipeline_threads": 8,
+    "preprocessor_replicas": 4,
+    "selector_replicas": 4,
+    "prefill_replicas": 4,
+    "decode_replicas": 16,
+    "worker_kind": "synthetic benchmark-only Dynamo AsyncEngine behind the real facade",
+    "worker_handoff_contract": "prefill emits benchmark_handoff; decode rejects requests without it",
+    "decode_discovery": "16 static per-Pod Envoy HTTP/2 clusters snapshotted from Ready decode Pods before each trial; production requires CDS/xDS"
+  },
+  "execution": {
+    "vcluster_server": "https://gateway-poc.mkhadkevich-dev:443",
+    "namespace": "dynamo-components-v2",
+    "endpoint": "http://dynamo-pd-envoy-callouts:8080/v1/chat/completions",
+    "model": "Qwen/Qwen2.5-0.5B-Instruct",
+    "tokenizer": "Qwen/Qwen2.5-0.5B-Instruct",
+    "endpoint_type": "chat",
+    "streaming": true,
+    "clients": 6,
+    "concurrency_per_client": 128,
+    "benchmark_duration_seconds": 45,
+    "repetitions_per_workload": 1,
+    "seed": 42,
+    "aiperf_version": "0.12.0",
+    "aiperf_image": "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
+    "aiperf_version_resolution": "Frozen reference-reproduction exception: AIPerf 0.13.0 changes measurement semantics and failed Mooncake preparation before measurement",
+    "aiperf_nodes": ["cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67", "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4"],
+    "measurement_limit_seconds": 1800,
+    "raw_summary_export": true,
+    "per_request_export": false
+  },
+  "workloads": {
+    "short": {
+      "source": "frozen_reference_raw_payload",
+      "path": "/shared/aiperf/static-qwen2.5-0.5b/short-claude-sonnet-raw.jsonl",
+      "sha256": "ab030551a31fb4ac8e7a864a940862a68bc0d386b152b4aba7bc249322833426",
+      "schedule": "concurrency_128_per_client"
+    },
+    "isl4000": {
+      "source": "frozen_reference_raw_payload",
+      "path": "/shared/aiperf/static-qwen2.5-0.5b/isl4000-claude-sonnet-raw.jsonl",
+      "sha256": "3ad382586f5417f4255d7eea774700d9817bc39acbc7b537e2efa7d89145c743",
+      "schedule": "concurrency_128_per_client"
+    },
+    "mooncake": {
+      "source": "frozen_reference_trace_with_prebuilt_mmap_cache",
+      "path": "/shared/aiperf/mooncake-qwen2.5-0.5b/mooncake-512-context.jsonl",
+      "sha256": "28a94e9bc1b63fdc88e5217bdd5c647a0487c08c83bdc64a814ec0840562f550",
+      "rows_per_client": 22699,
+      "schedule": "fixed_trace_timestamps_with_one_second_completion_grace",
+      "benchmark_duration_seconds": 46,
+      "isl_block_size": 512,
+      "tokenization_during_measurement": false
+    }
+  },
+  "metrics": ["successful_requests_per_second", "output_tokens_per_second", "request_latency", "errors", "cancelled"],
+  "quality_gates": "One active P/D gateway, six pinned clients, zero errors/cancellations, exact dataset hashes, full Mooncake trace with six mmap cache hits, and decode cluster IPs matching Ready Pods",
+  "comparison_limit": "Single unpaired summaries are descriptive; static Pod-cluster snapshot is benchmark-only, not CDS/xDS; Mooncake grace is a distinct 46-second series."
+}

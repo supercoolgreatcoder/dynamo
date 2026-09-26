@@ -6,7 +6,7 @@
 # identity even when the AIPerf export validation fails.
 set -euo pipefail
 [[ $# -ge 2 && $# -le 3 && $1 =~ ^(short|isl4000|mooncake)$ && $2 =~ ^r[1-9][0-9]*$ ]] || {
-  echo "usage: $0 {short|isl4000|mooncake} rN [grace|envoy|envoy-unified|callouts|static|static-unified|generic-refresh|generic-metadata|generic-unified|generic-unified-rest|agw-records|envoy-records]" >&2
+  echo "usage: $0 {short|isl4000|mooncake} rN [grace|envoy|envoy-unified|callouts|callouts-unified|static|static-unified|generic-refresh|generic-metadata|generic-unified|generic-unified-rest|agw-records|envoy-records]" >&2
   exit 2
 }
 workload=$1
@@ -42,6 +42,12 @@ elif [[ ${3:-} == envoy-unified ]]; then
 elif [[ ${3:-} == callouts ]]; then
   export RESULT_DIR=$script_dir/results/2026-09-26-mocker-pd-envoy-callouts
   plan_sha256=6ffb6d54ad1ab37b8aee979b90e8f2e80a1c684fbc34b67567ee226c7a8ad001
+  job_prefix=nixpdc
+  arm=pd-envoy-callouts
+  export PD_RECORD_EXPORT=0
+elif [[ ${3:-} == callouts-unified ]]; then
+  export RESULT_DIR=$script_dir/results/2026-09-26-mocker-pd-envoy-callouts-unified
+  plan_sha256=57d2d8ac2e1651588878df6241d6133f4c3e0570f60e6a52cd5ae8e3f4f544c7
   job_prefix=nixpdc
   arm=pd-envoy-callouts
   export PD_RECORD_EXPORT=0
