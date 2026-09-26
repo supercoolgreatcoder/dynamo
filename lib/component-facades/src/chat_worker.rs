@@ -192,7 +192,17 @@ impl ChatWorkerBridge for ChatWorkerFacade {
         &self,
         request: Request<ChatWorkerRequest>,
     ) -> Result<Response<Self::GenerateRawStream>, Status> {
+        let started_at = crate::rpc_sample_start();
         let mut request = request.into_inner();
+        let shape = started_at.map(|start| {
+            (
+                start,
+                request.backend_request_json.len(),
+                request.token_ids_le.len(),
+                request.token_ids.len(),
+                request.prompt_tokens,
+            )
+        });
         let backend_request = self.backend_request(&mut request)?;
         let request_id = request.request_id;
         let backend_stream = self
@@ -204,6 +214,27 @@ impl ChatWorkerBridge for ChatWorkerFacade {
             ))
             .await
             .map_err(|error| Status::unavailable(error.to_string()))?;
+        if let Some((
+            start,
+            backend_bytes,
+            packed_token_bytes,
+            repeated_token_count,
+            prompt_tokens,
+        )) = shape
+        {
+            tracing::debug!(
+                target: "dynamo_component_rpc_sample",
+                component = "worker",
+                operation = "generate_raw",
+                phase = "handler",
+                elapsed_us = crate::rpc_sample_elapsed_us(start),
+                backend_bytes,
+                packed_token_bytes,
+                repeated_token_count,
+                prompt_tokens,
+                "component RPC sample",
+            );
+        }
         let max_chunk_bytes = self.max_chunk_bytes;
         let chunk_id = request_id.clone();
         let chunks = backend_stream.map(move |chunk| {
@@ -222,6 +253,27 @@ impl ChatWorkerBridge for ChatWorkerFacade {
             })
         });
         let finished = futures::stream::once(async move {
+            if let Some((
+                start,
+                backend_bytes,
+                packed_token_bytes,
+                repeated_token_count,
+                prompt_tokens,
+            )) = shape
+            {
+                tracing::debug!(
+                    target: "dynamo_component_rpc_sample",
+                    component = "worker",
+                    operation = "generate_raw",
+                    phase = "terminal",
+                    elapsed_us = crate::rpc_sample_elapsed_us(start),
+                    backend_bytes,
+                    packed_token_bytes,
+                    repeated_token_count,
+                    prompt_tokens,
+                    "component RPC sample",
+                );
+            }
             Ok(WorkerOutput {
                 request_id,
                 annotated_backend_chunk_json: Vec::new(),

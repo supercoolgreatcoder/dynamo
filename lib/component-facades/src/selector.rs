@@ -191,11 +191,19 @@ impl Selector for SelectorFacade {
         &self,
         request: Request<crate::proto::JsonItem>,
     ) -> Result<Response<JsonResult>, Status> {
+        let started_at = crate::rpc_sample_start();
+        let item = request.into_inner();
+        let shape = started_at.map(|start| {
+            (
+                start,
+                item.payload_json.len(),
+                item.token_ids_le.len(),
+                item.token_ids.len(),
+            )
+        });
         let mut response = self
             .process_json_batch(
-                JsonBatchRequest {
-                    items: vec![request.into_inner()],
-                },
+                JsonBatchRequest { items: vec![item] },
                 |service, payload, token_ids| async move {
                     let mut request: SelectRequest = decode(&payload)?;
                     request.prompt.token_ids = Some(token_ids);
@@ -203,6 +211,18 @@ impl Selector for SelectorFacade {
                 },
             )
             .await?;
+        if let Some((start, payload_bytes, packed_token_bytes, repeated_token_count)) = shape {
+            tracing::debug!(
+                target: "dynamo_component_rpc_sample",
+                component = "selector",
+                operation = "select",
+                elapsed_us = crate::rpc_sample_elapsed_us(start),
+                payload_bytes,
+                packed_token_bytes,
+                repeated_token_count,
+                "component RPC sample",
+            );
+        }
         Ok(Response::new(response.items.remove(0)))
     }
 

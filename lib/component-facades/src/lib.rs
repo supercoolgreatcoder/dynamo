@@ -17,6 +17,29 @@ pub mod proto {
 }
 
 use proto::ItemError;
+use std::{
+    sync::{
+        OnceLock,
+        atomic::{AtomicU64, Ordering},
+    },
+    time::Instant,
+};
+
+fn rpc_sample_start() -> Option<Instant> {
+    static INTERVAL: OnceLock<Option<u64>> = OnceLock::new();
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let every = INTERVAL.get_or_init(|| {
+        std::env::var("DYN_COMPONENT_RPC_SAMPLE_EVERY")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .filter(|every| (1..=1_000_000).contains(every))
+    });
+    every.and_then(|every| (NEXT.fetch_add(1, Ordering::Relaxed) % every == 0).then(Instant::now))
+}
+
+fn rpc_sample_elapsed_us(start: Instant) -> u64 {
+    start.elapsed().as_micros().min(u64::MAX as u128) as u64
+}
 
 fn item_error(kind: &str, message: impl Into<String>, retryable: bool) -> ItemError {
     ItemError {
