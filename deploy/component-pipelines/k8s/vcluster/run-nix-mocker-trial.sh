@@ -54,24 +54,28 @@ test -f "$VCLUSTER_KUBECONFIG"
 test "$AIPERF_NODE_A" != "$AIPERF_NODE_B"
 test -d "$RESULT_DIR"
 client_count=${PD_AIPERF_CLIENTS:-6}
-[[ $client_count == 6 || $client_count == 12 ]] || {
-  echo "PD_AIPERF_CLIENTS must be 6 or 12" >&2
+[[ $client_count == 6 || $client_count == 9 || $client_count == 12 ]] || {
+  echo "PD_AIPERF_CLIENTS must be 6, 9, or 12" >&2
   exit 2
 }
 [[ $client_count == 6 || $workload != mooncake ]] || {
-  echo "twelve-client mode currently supports only frozen raw short/ISL4000" >&2
+  echo "scaled-client mode currently supports only frozen raw short/ISL4000" >&2
   exit 2
 }
 extra_node_values=
-if [[ $client_count == 12 ]]; then
-  : "${AIPERF_NODE_C:?set load-generator node C for twelve clients}"
-  : "${AIPERF_NODE_D:?set load-generator node D for twelve clients}"
+if [[ $client_count != 6 ]]; then
+  : "${AIPERF_NODE_C:?set load-generator node C for scaled clients}"
   [[ $AIPERF_NODE_C =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ &&
-     $AIPERF_NODE_D =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ ]] || exit 2
-  [[ $AIPERF_NODE_C != "$AIPERF_NODE_A" && $AIPERF_NODE_C != "$AIPERF_NODE_B" &&
+     $AIPERF_NODE_C != "$AIPERF_NODE_A" &&
+     $AIPERF_NODE_C != "$AIPERF_NODE_B" ]] || exit 2
+  extra_node_values="                      - $AIPERF_NODE_C"
+fi
+if [[ $client_count == 12 ]]; then
+  : "${AIPERF_NODE_D:?set load-generator node D for twelve clients}"
+  [[ $AIPERF_NODE_D =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ &&
      $AIPERF_NODE_D != "$AIPERF_NODE_A" && $AIPERF_NODE_D != "$AIPERF_NODE_B" &&
      $AIPERF_NODE_C != "$AIPERF_NODE_D" ]] || exit 2
-  extra_node_values=$(printf '                      - %s\n                      - %s' "$AIPERF_NODE_C" "$AIPERF_NODE_D")
+  extra_node_values+=$(printf '\n                      - %s' "$AIPERF_NODE_D")
 fi
 actual_server=$(kubectl --kubeconfig "$VCLUSTER_KUBECONFIG" config view --minify -o jsonpath='{.clusters[0].cluster.server}')
 if [ "$actual_server" != "$VCLUSTER_EXPECTED_SERVER" ]; then
@@ -80,10 +84,14 @@ if [ "$actual_server" != "$VCLUSTER_EXPECTED_SERVER" ]; then
 fi
 
 kubectl_vc=(kubectl --kubeconfig "$VCLUSTER_KUBECONFIG" -n "$VCLUSTER_NAMESPACE")
-if [[ $client_count == 12 ]]; then
-  for load_node in "$AIPERF_NODE_A" "$AIPERF_NODE_B" "$AIPERF_NODE_C" "$AIPERF_NODE_D"; do
+if [[ $client_count != 6 ]]; then
+  load_nodes=("$AIPERF_NODE_A" "$AIPERF_NODE_B" "$AIPERF_NODE_C")
+  [[ $client_count != 12 ]] || load_nodes+=("$AIPERF_NODE_D")
+  for load_node in "${load_nodes[@]}"; do
     "${kubectl_vc[@]}" get node "$load_node" -o json |
       jq -e '.metadata.labels["topology.unikorn-cloud.org/node-pool"] == "cpu-pool" and
+        (.spec.unschedulable // false) == false and
+        all(.spec.taints[]?; .effect != "NoSchedule" and .effect != "NoExecute") and
         any(.status.conditions[]; .type == "Ready" and .status == "True")' >/dev/null
   done
 fi
@@ -112,6 +120,10 @@ fi
 if "${kubectl_vc[@]}" get job "$job" >/dev/null 2>&1; then
   echo "refusing to reuse existing Job $job" >&2
   exit 2
+fi
+if [[ $client_count != 6 ]]; then
+  "${kubectl_vc[@]}" exec "$stager_pod" -- \
+    test ! -e "/shared/nix/aiperf/barriers/$job"
 fi
 "${kubectl_vc[@]}" get deployment "$service" -o json |
   jq -e '(.spec.replicas == 1) and (.status.readyReplicas == 1)' >/dev/null || {
@@ -157,7 +169,12 @@ if [ "$workload" = mooncake ]; then
 else
   export RUN_NAME=$job ARM_SERVICE=$service DATASET=$dataset
   export TOKENIZER_STORE_BASENAME
-  rendered=$("$envsubst_bin" '${RUN_NAME} ${VCLUSTER_NAMESPACE} ${ARM_SERVICE} ${DATASET} ${AIPERF_NODE_A} ${AIPERF_NODE_B} ${AIPERF_CLIENTS} ${AIPERF_EXTRA_NODE_VALUES} ${BENCHMARK_START_UNIX} ${TOKENIZER_STORE_BASENAME} ${NIX_STORE_NFS_SERVER} ${NIX_STORE_NFS_PATH}' \
+  aiperf_barrier_command=
+  if [[ $client_count != 6 ]]; then
+    aiperf_barrier_command=$(printf '              barrier=/shared/aiperf/barriers/%s\n              while [ ! -s "$barrier" ]; do sleep 0.2; done\n              start_unix=$(cat "$barrier")\n              while [ "$(date +%%s)" -lt "$start_unix" ]; do sleep 0.2; done' "$job")
+  fi
+  export AIPERF_BARRIER_COMMAND=$aiperf_barrier_command
+  rendered=$("$envsubst_bin" '${RUN_NAME} ${VCLUSTER_NAMESPACE} ${ARM_SERVICE} ${DATASET} ${AIPERF_NODE_A} ${AIPERF_NODE_B} ${AIPERF_CLIENTS} ${AIPERF_EXTRA_NODE_VALUES} ${AIPERF_BARRIER_COMMAND} ${BENCHMARK_START_UNIX} ${TOKENIZER_STORE_BASENAME} ${NIX_STORE_NFS_SERVER} ${NIX_STORE_NFS_PATH}' \
     < "$(dirname "$0")/frozen-raw-capacity-job.yaml.tmpl")
   if [[ $record_export == 1 ]]; then
     rendered=$(sed 's/--export-level summary/--export-level records --slice-duration 1/' <<<"$rendered")
@@ -168,6 +185,31 @@ else
 fi
 
 echo "waiting for $job (start barrier $BENCHMARK_START_UNIX)" >&2
+if [[ $client_count != 6 ]]; then
+  ready=0
+  for _ in {1..180}; do
+    if "${kubectl_vc[@]}" get pods -l "job-name=$job" -o json |
+      jq -e --argjson expected "$client_count" '.items | length == $expected and
+        all(.[]; .status.phase == "Running" and
+          any(.status.conditions[]?; .type == "Ready" and .status == "True"))' >/dev/null; then
+      ready=1
+      break
+    fi
+    sleep 1
+  done
+  [[ $ready == 1 ]] || {
+    "${kubectl_vc[@]}" get job "$job" -o json > "$RESULT_DIR/job-$job-unschedulable.json"
+    "${kubectl_vc[@]}" get pods -l "job-name=$job" -o json > "$RESULT_DIR/pods-$job-unschedulable.json"
+    "${kubectl_vc[@]}" delete job "$job" --wait=false
+    echo "all $client_count AIPerf Pods did not become Ready before barrier release" >&2
+    exit 1
+  }
+  barrier_start=$(( $(date -u +%s) + 10 ))
+  "${kubectl_vc[@]}" exec "$stager_pod" -- mkdir -p /shared/nix/aiperf/barriers
+  "${kubectl_vc[@]}" exec "$stager_pod" -- sh -c \
+    "printf '%s\\n' '$barrier_start' > '/shared/nix/aiperf/barriers/$job'"
+  echo "released $client_count ready clients at $barrier_start" >&2
+fi
 "${kubectl_vc[@]}" wait --for=condition=complete "job/$job" --timeout=900s
 out="$RESULT_DIR/raw_aiperf/$job"
 mkdir -p "$out"
@@ -180,6 +222,14 @@ else
     sh -c "cd /shared/nix/aiperf/results/$job && tar -cf - */profile_export_aiperf.json */profile_export_aiperf.csv */profile_export_console.txt" |
     tar -C "$out" -xf -
 fi
+mapfile -t benchmark_starts < <(jq -r '.start_time' "$out"/*/profile_export_aiperf.json | sort)
+[[ ${#benchmark_starts[@]} == "$client_count" ]] || exit 1
+start_skew_s=$(( $(date -u -d "${benchmark_starts[-1]}" +%s) - $(date -u -d "${benchmark_starts[0]}" +%s) ))
+echo "AIPerf measurement start skew: ${start_skew_s}s" >&2
+(( start_skew_s <= 5 )) || {
+  echo "benchmark $job is invalid: client measurement windows are not synchronized" >&2
+  exit 1
+}
 jq -es --arg job "$job" '{job:$job,clients:length,rps:(map(.request_throughput.avg)|add),requests:(map(.request_count.avg)|add),errors:(map(.error_summary|map(.count)|add // 0)|add),cancelled:(map(.was_cancelled)|any)}' \
   "$out"/*/profile_export_aiperf.json
 jq -es --argjson expected "$client_count" 'length == $expected and all(.[]; (.error_summary | length) == 0 and .was_cancelled == false)' \
