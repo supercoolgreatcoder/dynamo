@@ -187,6 +187,8 @@ pub struct StaticAggregatePipeline {
     next_prefill: Arc<AtomicUsize>,
     worker_channels: Arc<Mutex<HashMap<String, Arc<ChannelPool>>>>,
     worker_channels_per_endpoint: usize,
+    stage_timing_every: usize,
+    next_stage_timing: Arc<AtomicUsize>,
 }
 
 struct ChannelPool {
@@ -213,6 +215,8 @@ impl StaticAggregatePipeline {
             next_prefill: Arc::new(AtomicUsize::new(0)),
             worker_channels: Arc::new(Mutex::new(HashMap::new())),
             worker_channels_per_endpoint: 1,
+            stage_timing_every: 0,
+            next_stage_timing: Arc::new(AtomicUsize::new(0)),
         }
     }
 
@@ -244,6 +248,10 @@ impl StaticAggregatePipeline {
             .and_then(|value| value.parse().ok())
             .unwrap_or(1usize)
             .clamp(1, MAX_GRPC_CHANNELS_PER_ENDPOINT);
+        let stage_timing_every = std::env::var("DYN_STATIC_STAGE_TIMING_EVERY")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(0usize);
         let mut preprocessors = Vec::with_capacity(pool_size);
         for _ in 0..pool_size {
             let channel = configured_endpoint(preprocessor_endpoint.clone())?
@@ -306,6 +314,8 @@ impl StaticAggregatePipeline {
             next_prefill: Arc::new(AtomicUsize::new(0)),
             worker_channels: Arc::new(Mutex::new(HashMap::new())),
             worker_channels_per_endpoint: pool_size,
+            stage_timing_every,
+            next_stage_timing: Arc::new(AtomicUsize::new(0)),
         })
     }
 
@@ -335,6 +345,11 @@ impl StaticAggregatePipeline {
         openai_request_json: Vec<u8>,
         deadline_unix_ms: i64,
     ) -> Result<Streaming<PostprocessOutput>, PipelineError> {
+        // Opt-in diagnostics only: no clock reads or logging on the normal path.
+        let timing_start = (self.stage_timing_every > 0
+            && self.next_stage_timing.fetch_add(1, Ordering::Relaxed) % self.stage_timing_every
+                == 0)
+            .then(Instant::now);
         let request = PreprocessItem {
             item_id: request_id.clone(),
             openai_request_json,
@@ -364,6 +379,7 @@ impl StaticAggregatePipeline {
                 message: error.message.clone(),
             });
         }
+        let prepare_end = timing_start.map(|start| start.elapsed().as_micros());
 
         let prefill_result_json = if let Some(channels) = &self.prefill_channels {
             let index = self.next_prefill.fetch_add(1, Ordering::Relaxed) % channels.len();
@@ -421,6 +437,7 @@ impl StaticAggregatePipeline {
         } else {
             Vec::new()
         };
+        let prefill_end = timing_start.map(|start| start.elapsed().as_micros());
 
         let selector_index =
             self.next_selector.fetch_add(1, Ordering::Relaxed) % self.selectors.len();
@@ -444,8 +461,9 @@ impl StaticAggregatePipeline {
         }
         let selected: SelectedEndpoint = serde_json::from_slice(&selected.payload_json)
             .map_err(PipelineError::SelectorResponse)?;
+        let select_end = timing_start.map(|start| start.elapsed().as_micros());
         let channel = self.worker_channel(&selected.endpoint).await?;
-        ChatWorkerBridgeClient::new(channel)
+        let stream = ChatWorkerBridgeClient::new(channel)
             .generate(ChatWorkerRequest {
                 request_id,
                 backend_request_json: prepared.backend_request_json,
@@ -464,7 +482,22 @@ impl StaticAggregatePipeline {
             })
             .await
             .map(tonic::Response::into_inner)
-            .map_err(PipelineError::WorkerTransport)
+            .map_err(PipelineError::WorkerTransport)?;
+        if let Some(start) = timing_start {
+            let decode_end = start.elapsed().as_micros();
+            let prepare_end = prepare_end.unwrap_or_default();
+            let prefill_end = prefill_end.unwrap_or_default();
+            let select_end = select_end.unwrap_or_default();
+            eprintln!(
+                "static_stage_us prepare={} prefill={} select={} decode={} total={}",
+                prepare_end,
+                prefill_end - prepare_end,
+                select_end - prefill_end,
+                decode_end - select_end,
+                decode_end,
+            );
+        }
+        Ok(stream)
     }
 }
 
