@@ -17,13 +17,15 @@ actual_server=$(kubectl --kubeconfig "$VCLUSTER_KUBECONFIG" \
   exit 2
 }
 vc=(kubectl --kubeconfig "$VCLUSTER_KUBECONFIG" -n "$VCLUSTER_NAMESPACE")
-"${vc[@]}" get deployment dynamo-pd-agw-generic -o json |
+service=${PD_GATEWAY_SERVICE:-dynamo-pd-agw-generic}
+[[ $service == dynamo-pd-agw-generic || $service == dynamo-pd-envoy-generic ]] || exit 2
+"${vc[@]}" get deployment "$service" -o json |
   jq -e '.status.readyReplicas == 1' >/dev/null
 
 port=${PD_LOCAL_PORT:-18081}
 [[ $port =~ ^[1-9][0-9]{3,4}$ ]] || exit 2
 tmp_dir=$(mktemp -d -t dynamo-mocker-pd-smoke.XXXXXXXX)
-"${vc[@]}" port-forward service/dynamo-pd-agw-generic "$port:8080" \
+"${vc[@]}" port-forward "service/$service" "$port:8080" \
   > "$tmp_dir/port-forward.log" 2>&1 &
 forward_pid=$!
 cleanup() {
