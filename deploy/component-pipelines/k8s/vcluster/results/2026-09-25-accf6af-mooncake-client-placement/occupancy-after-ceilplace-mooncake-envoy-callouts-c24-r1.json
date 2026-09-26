@@ -1,0 +1,101 @@
+{
+  "captured_at": "2026-09-26T02:15:20Z",
+  "pods": [
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "dynamo-component-store-stager",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "aiperf-6b74bff94-dmfgc",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "aiperf-6b74bff94-g4x7f",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "aiperf-6b74bff94-sdfx8",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "aiperf-6b74bff94-sm7c2",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "etcd-5d97896b84-vt9s9",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "kvworker1-54c6fc5454-sgwd8",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "kvworker10-675db89f7d-stn8l",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-rd9cc",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "kvworker13-76fbb786d5-lg5t6",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "kvworker15-7cf6b86679-qg88x",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-rd9cc",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "kvworker2-756f457f89-z2qdb",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-rd9cc",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "kvworker3-696fbcf8bd-v7tf5",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "kvworker7-78876957cb-j8bj5",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "kvworker9-6974974dfc-g4tsp",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-rd9cc",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "selector-decode-66678fd8dd-qrrkk",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "selector-prefill-d6bd77f86-fqcsb",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+      "phase": "Running"
+    }
+  ]
+}

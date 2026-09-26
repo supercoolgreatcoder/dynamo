@@ -1,0 +1,16 @@
+{
+  "job": "ceilplace-mooncake-envoy-callouts-c24-r1",
+  "clients": 24,
+  "version": [
+    "0.12.0"
+  ],
+  "phase_types": [
+    "fixed_schedule"
+  ],
+  "requests_scheduled": 544776,
+  "requests_successful": 407033,
+  "rps": 8951.77921174643,
+  "output_tps": 1538034.48435303,
+  "errors": 0,
+  "cancelled": false
+}

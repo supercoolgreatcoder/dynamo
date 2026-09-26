@@ -1,0 +1,71 @@
+{
+  "plan_id": "accf6af-mooncake-client-placement-control-v1",
+  "benchmark_series_id": "accf6af-mooncake-client-placement-2026-09-25",
+  "performance_question": "Does spreading the same 24 fixed-reader AIPerf Mooncake clients over three instead of two vCluster CPU nodes break the observed 8.25k RPS plateau of one Envoy generic-with-callouts gateway?",
+  "intent": "absolute_placement_control",
+  "comparison_limit": "The two-node 24-client point is from a prior series; it is contextual only. A higher clean absolute rate would disprove 8.25k RPS as a hard gateway ceiling, but no direct gain percentage should be attributed without a same-series placement bridge.",
+  "workload_source": "user_trace_reproduction",
+  "user_workload_path": null,
+  "user_workload_note": "Gateway-only mocker campaign outside the DGD recipe-optimization workload contract; this plan and the frozen trace define the run.",
+  "trace": {
+    "container_path": "/shared/aiperf/mooncake-qwen2.5-0.5b/mooncake-512-context.jsonl",
+    "sha256": "28a94e9bc1b63fdc88e5217bdd5c647a0487c08c83bdc64a814ec0840562f550",
+    "rows_per_client": 22699,
+    "clients": 24,
+    "mmap_cache": "require HIT on every client; no measured-phase tokenizer or composer work"
+  },
+  "load": {
+    "mode": "fixed_schedule",
+    "clients": 24,
+    "client_nodes": 3,
+    "clients_per_node": 8,
+    "offered_rps_nominal": 12106.133333333333,
+    "concurrency_per_client": 128,
+    "record_processors_per_client": 1,
+    "duration_seconds": 45,
+    "grace_period_seconds": 30,
+    "start_barrier_seconds": 120,
+    "warmup": "none",
+    "seed": 42,
+    "repetitions": 1,
+    "maximum_job_seconds": 900
+  },
+  "target": {
+    "vcluster_api_server": "https://gateway-poc.mkhadkevich-dev:443",
+    "namespace": "dynamo-components-v2",
+    "endpoint": "http://envoy-callouts:8080/v1/chat/completions",
+    "endpoint_type": "chat",
+    "streaming": true,
+    "model": "Qwen/Qwen2.5-0.5B-Instruct",
+    "tokenizer": "wjq1b3wfjpzak4yd4rmj9arwqk1gkiir-qwen-tokenizer",
+    "gateway_replicas": 1,
+    "gateway_envoy_workers": 20,
+    "gateway_pipeline_threads": 20,
+    "selector_replicas": 8,
+    "preprocessor_replicas": 8,
+    "synthetic_worker_replicas": 32,
+    "gpu_count": 0,
+    "bundle_store_path": "/nix/store/d9n60x9aylvjvj9j56654640xshsai1x-dynamo-component-pipelines-accf6af699"
+  },
+  "instrument": {
+    "image": "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
+    "version": "0.12.0",
+    "version_selection": "Reference-reproduction exception retaining pinned AIPerf 0.12.0 with explicit cursor-free mmap overlay",
+    "version_resolution_date": "2026-09-25",
+    "overlay_path": "deploy/component-pipelines/k8s/vcluster/bench_patches/sitecustomize.py",
+    "overlay_sha256": "f03b650796bb1de5f4ed3dea2bd65545a102e9d0fd089e3e436b574cec38e418",
+    "export_level": "summary"
+  },
+  "placement": {
+    "nodes": [
+      "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+      "cluster-0967a26d-pool-1f83edbe-mj5s4-rd9cc"
+    ],
+    "rationale": "The three schedulable nodes do not host this campaign's gateway, selector, preprocessor, or synthetic-worker pods. They host separate-namespace AIPerf or worker pods, so this is not a fully isolated client allocation. A fourth apparently empty node was excluded because it is cordoned; the guard refused it before creating any Job.",
+    "occupancy_policy": "Record live competing pods before and after. Do not mutate unrelated namespaces. Treat neighbor changes as a limitation unless synchronized time-series proves effect."
+  },
+  "metrics": ["successful_request_throughput_rps", "request_latency_ms", "ttft_ms", "output_tokens_per_second", "request_errors", "cancelled_clients", "completed_fraction", "gateway_cgroup_cpu_cores"],
+  "slos": null,
+  "evidence_limit": "Summary-level exports lack request-ID audit. Other-namespace occupancy is not controlled. This is a mocker capacity diagnostic, not a production-GPU or promotion claim."
+}

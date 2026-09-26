@@ -6,13 +6,16 @@
 # requires rerunning or overwriting a completed AIPerf measurement.
 set -euo pipefail
 
-if [ "$#" -ne 1 ] || ! [[ "$1" =~ ^(ceilv2-mooncake-envoy-callouts-c12|ceilfix-mooncake-envoy-callouts-c(12|18|24))-r[1-9][0-9]*$ ]]; then
-  echo "usage: $0 ceilv2-mooncake-envoy-callouts-c12-rN | ceilfix-mooncake-envoy-callouts-c{12|18|24}-rN" >&2
+if [ "$#" -ne 1 ] || ! [[ "$1" =~ ^(ceilv2-mooncake-envoy-callouts-c12|ceilfix-mooncake-envoy-callouts-c(12|18|24)|ceilplace-mooncake-envoy-callouts-c24)-r[1-9][0-9]*$ ]]; then
+  echo "usage: $0 ceilv2-mooncake-envoy-callouts-c12-rN | ceilfix-mooncake-envoy-callouts-c{12|18|24}-rN | ceilplace-mooncake-envoy-callouts-c24-rN" >&2
   exit 2
 fi
 job=$1
 if [[ "$job" =~ ^ceilfix-mooncake-envoy-callouts-c(12|18|24)- ]]; then
   expected_clients=${BASH_REMATCH[1]}
+  fixed_reader=true
+elif [[ "$job" =~ ^ceilplace-mooncake-envoy-callouts-c24- ]]; then
+  expected_clients=24
   fixed_reader=true
 else
   expected_clients=12
