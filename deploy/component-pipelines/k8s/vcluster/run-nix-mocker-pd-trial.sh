@@ -6,7 +6,7 @@
 # identity even when the AIPerf export validation fails.
 set -euo pipefail
 [[ $# -ge 2 && $# -le 3 && $1 =~ ^(short|isl4000|mooncake)$ && $2 =~ ^r[1-9][0-9]*$ ]] || {
-  echo "usage: $0 {short|isl4000|mooncake} rN [grace|envoy|envoy-unified|callouts|callouts-unified|static|static-unified|static-channels4|static-channels4-threads16|static-linger100|static-linger0|static-tuned-timing|static-batch-diagnostic|static-batch-diagnostic-off|static-batch-clock-only|static-batch64|static-async-handler|generic-refresh|generic-metadata|generic-unified|generic-unified-rest|agw-records|envoy-records]" >&2
+  echo "usage: $0 {short|isl4000|mooncake} rN [grace|envoy|envoy-unified|callouts|callouts-unified|static|static-unified|static-channels4|static-channels4-threads16|static-linger100|static-linger0|static-tuned-timing|static-batch-diagnostic|static-batch-diagnostic-off|static-batch-clock-only|static-batch64|static-async-handler|generic-refresh|generic-metadata|generic-unified|generic-unified-rest|generic-step-stats-off|generic-step-stats-on|agw-records|envoy-records]" >&2
   exit 2
 }
 workload=$1
@@ -160,6 +160,20 @@ elif [[ ${3:-} == generic-unified-rest ]]; then
   if [[ $workload == mooncake ]]; then job_prefix=nixpdg; else job_prefix=nixpd; fi
   arm=pd-agw-generic
   export PD_RECORD_EXPORT=0
+elif [[ ${3:-} == generic-step-stats-off ]]; then
+  [[ $workload == isl4000 ]] || exit 2
+  export RESULT_DIR=$script_dir/results/2026-09-26-mocker-pd-agw-generic-step-stats-off
+  plan_sha256=58fc82ab16e6fb49dbbeb730c96e742fc07b91a6dc43f1a88f0095a166ffea28
+  job_prefix=nixpd
+  arm=pd-agw-generic
+  export PD_RECORD_EXPORT=0
+elif [[ ${3:-} == generic-step-stats-on ]]; then
+  [[ $workload == isl4000 ]] || exit 2
+  export RESULT_DIR=$script_dir/results/2026-09-26-mocker-pd-agw-generic-step-stats-on
+  plan_sha256=a27bbb058554a71457c90c3b9d87795af80361f37ab49c066ea65f916af7d07c
+  job_prefix=nixpd
+  arm=pd-agw-generic
+  export PD_RECORD_EXPORT=0
 elif [[ $# == 2 ]]; then
   export RESULT_DIR=$script_dir/results/2026-09-26-mocker-pd-generic
   export BENCHMARK_DURATION=45
@@ -246,6 +260,26 @@ if [[ $arm == pd-agw-static ]]; then
       .data["config.yaml"] | contains("workerThreads: " + $threads)
     ' >/dev/null
 fi
+if [[ ${3:-} == generic-step-stats-off || ${3:-} == generic-step-stats-on ]]; then
+  expected_binary=$(jq -r '.candidate.gateway_nix_output + "/bin/agentgateway"' "$plan")
+  expected_interval=$(jq -r '.candidate.generic_stats_interval_secs | tostring' "$plan")
+  expected_rust_log=$(jq -r '.candidate.rust_log' "$plan")
+  "${vc[@]}" get deployment dynamo-pd-agw-generic -o json |
+    jq -e --arg binary "$expected_binary" --arg interval "$expected_interval" \
+      --arg rust_log "$expected_rust_log" '
+      .spec.template.spec.containers[0].command[0] == $binary
+      and any(.spec.template.spec.containers[0].env[];
+        .name == "RUST_LOG" and .value == $rust_log)
+      and (if $interval == "0" then
+        all(.spec.template.spec.containers[0].env[];
+          .name != "DYN_GENERIC_STATS_INTERVAL_SECS")
+      else any(.spec.template.spec.containers[0].env[];
+          .name == "DYN_GENERIC_STATS_INTERVAL_SECS" and .value == $interval)
+      end)
+    ' >/dev/null
+  "${vc[@]}" get configmap dynamo-pd-agw-generic -o json |
+    jq -e '.data["config.yaml"] | contains("workerThreads: 16")' >/dev/null
+fi
 if [[ $arm == pd-envoy-callouts ]]; then
   pod_ips=$("${vc[@]}" get pods -l app=dynamo-pd-decode -o json |
     jq -r '.items[] | select(.metadata.deletionTimestamp == null) |
@@ -316,6 +350,17 @@ fi
 job_json=$("${vc[@]}" get job "$job" -o json)
 pods_json=$("${vc[@]}" get pods -l "job-name=$job" -o json)
 cleanup_log_follow
+if [[ ${3:-} == generic-step-stats-on ]]; then
+  gateway_pod=$("${vc[@]}" get pods -l app=dynamo-pd-agw-generic -o json |
+    jq -er '[.items[] | select(.metadata.deletionTimestamp == null) |
+      select(.status.phase == "Running") |
+      select(any(.status.conditions[]?; .type == "Ready" and .status == "True")) |
+      .metadata.name] | if length == 1 then .[0] else error("expected one Ready generic gateway") end')
+  "${vc[@]}" logs "$gateway_pod" > "$RESULT_DIR/raw-gateway-$job.log" \
+    2> "$RESULT_DIR/raw-gateway-$job.stderr"
+  rg 'generic pipeline step statistics' "$RESULT_DIR/raw-gateway-$job.log" \
+    > "$RESULT_DIR/step-stats-$job.log" || true
+fi
 if [[ $arm == pd-agw-static && $expected_timing != 0 ]]; then
   rg '^static_stage_us prepare=[0-9]+ prefill=[0-9]+ select=[0-9]+ decode=[0-9]+ total=[0-9]+$' \
     "$RESULT_DIR/raw-gateway-$job.log" > "$RESULT_DIR/stage-timing-$job.log" || true

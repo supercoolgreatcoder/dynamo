@@ -1,0 +1,178 @@
+{
+  "status": "completed",
+  "vcluster_api_server": "https://gateway-poc.mkhadkevich-dev:443",
+  "plan_path": "/work/dynamo-epp/deploy/component-pipelines/k8s/vcluster/results/2026-09-26-mocker-pd-agw-generic-step-stats-off/benchmark_plan.json",
+  "plan_sha256": "58fc82ab16e6fb49dbbeb730c96e742fc07b91a6dc43f1a88f0095a166ffea28",
+  "benchmark_series_id": "mocker-pd-agw-generic-isl4000-step-stats-off-v1-2026-09-26",
+  "performance_question": "Does the new diagnostic AGW binary reproduce generic ISL4000 throughput with its background step-stat reporter disabled?",
+  "workload": "isl4000",
+  "job": {
+    "name": "nixpd-isl4000-pd-agw-generic-r39",
+    "uid": "ae81ef66-6851-4347-b372-b613738f1bf0",
+    "created_at": "2026-09-26T14:15:29Z",
+    "completed_at": "2026-09-26T14:18:00Z",
+    "succeeded": 6,
+    "failed": 0,
+    "spec": {
+      "backoffLimit": 0,
+      "completionMode": "Indexed",
+      "completions": 6,
+      "manualSelector": false,
+      "parallelism": 6,
+      "podReplacementPolicy": "TerminatingOrFailed",
+      "selector": {
+        "matchLabels": {
+          "batch.kubernetes.io/controller-uid": "ae81ef66-6851-4347-b372-b613738f1bf0"
+        }
+      },
+      "suspend": false,
+      "template": {
+        "metadata": {
+          "labels": {
+            "batch.kubernetes.io/controller-uid": "ae81ef66-6851-4347-b372-b613738f1bf0",
+            "batch.kubernetes.io/job-name": "nixpd-isl4000-pd-agw-generic-r39",
+            "benchmark": "frozen-raw-capacity",
+            "benchmark-run": "nixpd-isl4000-pd-agw-generic-r39",
+            "controller-uid": "ae81ef66-6851-4347-b372-b613738f1bf0",
+            "job-name": "nixpd-isl4000-pd-agw-generic-r39"
+          }
+        },
+        "spec": {
+          "affinity": {
+            "nodeAffinity": {
+              "requiredDuringSchedulingIgnoredDuringExecution": {
+                "nodeSelectorTerms": [
+                  {
+                    "matchExpressions": [
+                      {
+                        "key": "kubernetes.io/hostname",
+                        "operator": "In",
+                        "values": [
+                          "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+                          "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4"
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          "automountServiceAccountToken": false,
+          "containers": [
+            {
+              "args": [
+                "set -euo pipefail\nwhile [ \"$(date +%s)\" -lt \"1790432219\" ]; do sleep 0.2; done\nexport HF_HOME=/tmp/hf HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1\ncache=/tmp/hf/hub/models--Qwen--Qwen2.5-0.5B-Instruct\nmkdir -p \"$cache/snapshots\" \"$cache/refs\"\nln -s /model/tokenizer \"$cache/snapshots/nix\"\nprintf nix > \"$cache/refs/main\"\ndataset=/shared/aiperf/static-qwen2.5-0.5b/isl4000-claude-sonnet-raw.jsonl\ntest -s \"$dataset\"\nexec aiperf profile --url \"http://dynamo-pd-agw-generic:8080/v1/chat/completions\" \\\n  --model Qwen/Qwen2.5-0.5B-Instruct \\\n  --tokenizer Qwen/Qwen2.5-0.5B-Instruct \\\n  --endpoint-type chat --streaming --use-server-token-count \\\n  --use-legacy-max-tokens --custom-dataset-type raw_payload \\\n  --input-file \"$dataset\" --random-seed 42 \\\n  --concurrency 128 --benchmark-duration 45 \\\n  --export-level summary --record-processors 16 \\\n  --output-artifact-dir /shared/aiperf/results/nixpd-isl4000-pd-agw-generic-r39/$(JOB_COMPLETION_INDEX)"
+              ],
+              "command": [
+                "/bin/bash",
+                "-lc"
+              ],
+              "image": "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
+              "imagePullPolicy": "IfNotPresent",
+              "name": "benchmark",
+              "resources": {},
+              "securityContext": {
+                "runAsUser": 0
+              },
+              "terminationMessagePath": "/dev/termination-log",
+              "terminationMessagePolicy": "File",
+              "volumeMounts": [
+                {
+                  "mountPath": "/nix/store",
+                  "name": "nix-store",
+                  "readOnly": true,
+                  "subPath": "store"
+                },
+                {
+                  "mountPath": "/model/tokenizer",
+                  "name": "nix-store",
+                  "readOnly": true,
+                  "subPath": "store/wjq1b3wfjpzak4yd4rmj9arwqk1gkiir-qwen-tokenizer"
+                },
+                {
+                  "mountPath": "/shared",
+                  "name": "nix-store"
+                }
+              ]
+            }
+          ],
+          "dnsPolicy": "ClusterFirst",
+          "nodeSelector": {
+            "topology.unikorn-cloud.org/node-pool": "cpu-pool"
+          },
+          "restartPolicy": "Never",
+          "schedulerName": "default-scheduler",
+          "securityContext": {},
+          "terminationGracePeriodSeconds": 30,
+          "topologySpreadConstraints": [
+            {
+              "labelSelector": {
+                "matchLabels": {
+                  "benchmark-run": "nixpd-isl4000-pd-agw-generic-r39"
+                }
+              },
+              "maxSkew": 1,
+              "topologyKey": "kubernetes.io/hostname",
+              "whenUnsatisfiable": "DoNotSchedule"
+            }
+          ],
+          "volumes": [
+            {
+              "name": "nix-store",
+              "nfs": {
+                "path": "/unikorn-identity-03cfadd31877-551/pvc-19aeb650-5f77-45c4-8b8b-0a3b88542f39",
+                "server": "192.168.0.220"
+              }
+            }
+          ]
+        }
+      },
+      "ttlSecondsAfterFinished": 86400
+    }
+  },
+  "pods": [
+    {
+      "name": "nixpd-isl4000-pd-agw-generic-r39-0-l6wpg",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4",
+      "phase": "Succeeded",
+      "started_at": "2026-09-26T14:15:30Z",
+      "finished_at": "2026-09-26T14:17:59Z"
+    },
+    {
+      "name": "nixpd-isl4000-pd-agw-generic-r39-1-cmfh9",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded",
+      "started_at": "2026-09-26T14:15:30Z",
+      "finished_at": "2026-09-26T14:17:56Z"
+    },
+    {
+      "name": "nixpd-isl4000-pd-agw-generic-r39-2-ktxmn",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded",
+      "started_at": "2026-09-26T14:15:30Z",
+      "finished_at": "2026-09-26T14:17:57Z"
+    },
+    {
+      "name": "nixpd-isl4000-pd-agw-generic-r39-3-lbnd5",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4",
+      "phase": "Succeeded",
+      "started_at": "2026-09-26T14:15:30Z",
+      "finished_at": "2026-09-26T14:17:58Z"
+    },
+    {
+      "name": "nixpd-isl4000-pd-agw-generic-r39-4-s8z8g",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4",
+      "phase": "Succeeded",
+      "started_at": "2026-09-26T14:15:30Z",
+      "finished_at": "2026-09-26T14:17:58Z"
+    },
+    {
+      "name": "nixpd-isl4000-pd-agw-generic-r39-5-wgfl8",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Succeeded",
+      "started_at": "2026-09-26T14:15:30Z",
+      "finished_at": "2026-09-26T14:17:56Z"
+    }
+  ]
+}
