@@ -321,7 +321,13 @@ without this constraint Kubernetes may place all six on one 32-core node and mak
 client the bottleneck. Keep those nodes distinct from the gateway, processor, selector,
 and mock-worker nodes. Set `BENCHMARK_START_UNIX` far enough in the future for all six
 Pods to become Running. They wait on that shared wall-clock barrier so an image pull or
-scheduler delay cannot stagger the trace and silently lower the offered load.
+scheduler delay does not start a client before the others are ready. For both
+raw-payload and Mooncake Jobs, the barrier precedes `aiperf profile` initialization;
+it does **not** guarantee synchronized measured start times. Audit each client's
+exported `start_time` and keep runs with large start spread out of paired
+gateway comparisons. The 2026-09-26 synthetic P/D ISL4000 repeats show why:
+AGW's valid clients started 1.7–2.9 seconds apart, while Envoy's valid clients
+started nearly together, making summed-client and global-window rates disagree.
 Each indexed client writes its summary and `profile_export.jsonl` under
 `/shared/aiperf/results/$JOB_NAME/$JOB_COMPLETION_INDEX`; retain that directory
 with the benchmark record so the analysis is audit-grade. Restrict `envsubst` to
