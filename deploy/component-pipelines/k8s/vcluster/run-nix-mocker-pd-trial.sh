@@ -83,6 +83,13 @@ dataset_sha256=$(jq -er --arg workload "$workload" \
 : "${VCLUSTER_KUBECONFIG:?}"
 : "${VCLUSTER_EXPECTED_SERVER:?}"
 : "${VCLUSTER_NAMESPACE:?}"
+: "${NIX_STORE_NFS_SERVER:?}"
+: "${NIX_STORE_NFS_PATH:?}"
+envsubst_bin=${ENVSUBST_BIN:-envsubst}
+command -v "$envsubst_bin" >/dev/null || {
+  echo "envsubst is unavailable: $envsubst_bin" >&2
+  exit 2
+}
 [[ $VCLUSTER_EXPECTED_SERVER == https://gateway-poc.mkhadkevich-dev:443 ]] || exit 2
 [[ $VCLUSTER_NAMESPACE == dynamo-components-v2 ]] || exit 2
 actual_server=$(kubectl --kubeconfig "$VCLUSTER_KUBECONFIG" \
