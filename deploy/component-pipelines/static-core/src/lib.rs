@@ -15,7 +15,7 @@ use std::{
 };
 
 use dynamo_component_facades::proto::{
-    ChatWorkerRequest, JsonItem, PostprocessOutput, PreparedItem, PreprocessItem,
+    ChatWorkerRequest, JsonItem, PostprocessOutput, PreparedItem, PreprocessItem, WorkerOutput,
     chat_worker_bridge_client::ChatWorkerBridgeClient, preprocessor_client::PreprocessorClient,
     selector_client::SelectorClient,
 };
@@ -161,6 +161,14 @@ pub enum PipelineError {
     Endpoint(String),
     #[error("worker transport: {0}")]
     WorkerTransport(tonic::Status),
+    #[error("prefill transport: {0}")]
+    PrefillTransport(tonic::Status),
+    #[error("prefill rejected request ({kind}): {message}")]
+    PrefillItem { kind: String, message: String },
+    #[error("invalid prefill chunk: {0}")]
+    PrefillChunk(serde_json::Error),
+    #[error("invalid prefill response: {0}")]
+    PrefillResponse(&'static str),
 }
 
 #[derive(Deserialize)]
@@ -174,6 +182,7 @@ pub struct StaticAggregatePipeline {
     next_preprocessor: Arc<AtomicUsize>,
     preprocess_batcher: Option<PreprocessBatcher>,
     selector: SelectorClient<Channel>,
+    prefill_endpoint: Option<String>,
     worker_channels: Arc<Mutex<HashMap<String, Channel>>>,
 }
 
@@ -184,6 +193,7 @@ impl StaticAggregatePipeline {
             next_preprocessor: Arc::new(AtomicUsize::new(0)),
             preprocess_batcher: None,
             selector: SelectorClient::new(selector),
+            prefill_endpoint: None,
             worker_channels: Arc::new(Mutex::new(HashMap::new())),
         }
     }
@@ -191,6 +201,20 @@ impl StaticAggregatePipeline {
     pub async fn connect(
         preprocessor_endpoint: String,
         selector_endpoint: String,
+    ) -> Result<Self, PipelineError> {
+        // The existing AGW static host uses this two-argument constructor. An
+        // optional endpoint activates the compiled P/D path without moving any
+        // Dynamo engine or response policy into the host.
+        let prefill_endpoint = std::env::var("DYN_PREFILL_ENDPOINT")
+            .ok()
+            .filter(|endpoint| !endpoint.is_empty());
+        Self::connect_with_prefill(preprocessor_endpoint, selector_endpoint, prefill_endpoint).await
+    }
+
+    pub async fn connect_with_prefill(
+        preprocessor_endpoint: String,
+        selector_endpoint: String,
+        prefill_endpoint: Option<String>,
     ) -> Result<Self, PipelineError> {
         // HTTP/2 multiplexing deliberately keeps calls on one TCP connection. That is ideal
         // for one server, but a Kubernetes Service load-balances connections rather than
@@ -240,6 +264,7 @@ impl StaticAggregatePipeline {
             next_preprocessor,
             preprocess_batcher,
             selector: SelectorClient::new(selector),
+            prefill_endpoint,
             worker_channels: Arc::new(Mutex::new(HashMap::new())),
         })
     }
@@ -263,7 +288,7 @@ impl StaticAggregatePipeline {
         Ok(channel)
     }
 
-    /// Execute the compiled prepare -> select -> worker/postprocess state machine.
+    /// Execute the compiled prepare -> [prefill] -> select -> decode/postprocess state machine.
     pub async fn execute(
         &self,
         request_id: String,
@@ -299,6 +324,62 @@ impl StaticAggregatePipeline {
                 message: error.message.clone(),
             });
         }
+
+        let prefill_result_json = if let Some(endpoint) = &self.prefill_endpoint {
+            let channel = self.worker_channel(endpoint).await?;
+            let mut stream = ChatWorkerBridgeClient::new(channel)
+                .generate_raw(ChatWorkerRequest {
+                    request_id: request_id.clone(),
+                    backend_request_json: prepared.backend_request_json.clone(),
+                    normalized_openai_request_json: Vec::new(),
+                    prompt_injected_reasoning: false,
+                    uses_tool_call_structural_tag: false,
+                    prompt_tokens: prepared.prompt_tokens,
+                    image_tokens: prepared.image_tokens,
+                    image_count: prepared.image_count,
+                    video_count: prepared.video_count,
+                    audio_count: prepared.audio_count,
+                    deadline_unix_ms,
+                    token_ids: Vec::new(),
+                    token_ids_le: prepared.token_ids_le.clone(),
+                    prefill_result_json: Vec::new(),
+                })
+                .await
+                .map_err(PipelineError::PrefillTransport)?
+                .into_inner();
+            let mut handoff = None;
+            let mut finished = false;
+            while let Some(output) = stream
+                .message()
+                .await
+                .map_err(PipelineError::PrefillTransport)?
+            {
+                if output.request_id != request_id {
+                    return Err(PipelineError::PrefillResponse("request ID mismatch"));
+                }
+                if let Some(error) = output.error.as_ref() {
+                    return Err(PipelineError::PrefillItem {
+                        kind: error.kind.clone(),
+                        message: error.message.clone(),
+                    });
+                }
+                if let Some(value) = prefill_handoff(&output)? {
+                    handoff = Some(value);
+                }
+                if output.finished {
+                    finished = true;
+                    break;
+                }
+            }
+            if !finished {
+                return Err(PipelineError::PrefillResponse("missing terminal frame"));
+            }
+            handoff.ok_or(PipelineError::PrefillResponse(
+                "missing disaggregated handoff",
+            ))?
+        } else {
+            Vec::new()
+        };
 
         let selected = self
             .selector
@@ -337,11 +418,54 @@ impl StaticAggregatePipeline {
                 deadline_unix_ms,
                 token_ids: Vec::new(),
                 token_ids_le: prepared.token_ids_le,
-                prefill_result_json: Vec::new(),
+                prefill_result_json,
             })
             .await
             .map(tonic::Response::into_inner)
             .map_err(PipelineError::WorkerTransport)
+    }
+}
+
+fn prefill_handoff(output: &WorkerOutput) -> Result<Option<Vec<u8>>, PipelineError> {
+    if output.annotated_backend_chunk_json.is_empty() {
+        return Ok(None);
+    }
+    let annotated: serde_json::Value = serde_json::from_slice(&output.annotated_backend_chunk_json)
+        .map_err(PipelineError::PrefillChunk)?;
+    annotated
+        .pointer("/data/disaggregated_params")
+        .filter(|value| value.is_object())
+        .map(|value| serde_json::to_vec(value).map_err(PipelineError::PrefillChunk))
+        .transpose()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extracts_only_opaque_disaggregated_handoff() {
+        let output = WorkerOutput {
+            request_id: "test".into(),
+            annotated_backend_chunk_json:
+                br#"{"data":{"disaggregated_params":{"benchmark_handoff":true},"token_ids":[1]}}"#
+                    .to_vec(),
+            finished: false,
+            error: None,
+        };
+        let handoff = prefill_handoff(&output).unwrap().unwrap();
+        assert_eq!(handoff, br#"{"benchmark_handoff":true}"#);
+    }
+
+    #[test]
+    fn unrelated_prefill_output_is_not_a_handoff() {
+        let output = WorkerOutput {
+            request_id: "test".into(),
+            annotated_backend_chunk_json: br#"{"data":{"token_ids":[1]}}"#.to_vec(),
+            finished: false,
+            error: None,
+        };
+        assert!(prefill_handoff(&output).unwrap().is_none());
     }
 }
 
