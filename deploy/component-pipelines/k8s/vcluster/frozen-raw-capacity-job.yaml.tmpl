@@ -3,10 +3,10 @@
 
 # Render with envsubst restricted to RUN_NAME, VCLUSTER_NAMESPACE,
 # BENCHMARK_START_UNIX, ARM_SERVICE, DATASET, AIPERF_NODE_A,
-# AIPERF_NODE_B, TOKENIZER_STORE_BASENAME, NIX_STORE_NFS_SERVER, and
-# NIX_STORE_NFS_PATH.
-# Keep the image, dataset, duration, load, and two-node spread identical
-# across gateway arms.
+# AIPERF_NODE_B, AIPERF_CLIENTS, AIPERF_EXTRA_NODE_VALUES,
+# TOKENIZER_STORE_BASENAME, NIX_STORE_NFS_SERVER, and NIX_STORE_NFS_PATH.
+# The default remains six clients on two nodes. The opt-in twelve-client
+# ceiling sweep uses four nodes, retaining three clients per node.
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -17,8 +17,8 @@ metadata:
 spec:
   backoffLimit: 0
   completionMode: Indexed
-  completions: 6
-  parallelism: 6
+  completions: ${AIPERF_CLIENTS}
+  parallelism: ${AIPERF_CLIENTS}
   ttlSecondsAfterFinished: 86400
   template:
     metadata:
@@ -40,6 +40,7 @@ spec:
                     values:
                       - ${AIPERF_NODE_A}
                       - ${AIPERF_NODE_B}
+${AIPERF_EXTRA_NODE_VALUES}
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname
