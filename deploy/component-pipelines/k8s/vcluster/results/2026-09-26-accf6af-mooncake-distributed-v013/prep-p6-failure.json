@@ -1,0 +1,9 @@
+{
+  "attempt": "mooncake-dist-c24-prep6",
+  "plan_id": "accf6af-mooncake-distributed-v013-v6",
+  "plan_sha256": "aabb9c1e41ecb92d0a03801e645bf4ce4481205f5ce97089d2d3739a48edbd64",
+  "outcome": "invalid_no_measurement",
+  "placement": "All 25 Pods scheduled and started; the derived trace permission issue was resolved.",
+  "reason": "AIPerf v0.13.0 checks bool(os.environ.get('HF_HUB_OFFLINE')) or bool(os.environ.get('TRANSFORMERS_OFFLINE')); the string '0' is truthy, so its offline snapshot downloader still rejected the absolute local tokenizer path before benchmark traffic.",
+  "next_action": "Stop the failed JobSet; omit both offline environment variables entirely, preserving the local tokenizer path and all workload settings."
+}

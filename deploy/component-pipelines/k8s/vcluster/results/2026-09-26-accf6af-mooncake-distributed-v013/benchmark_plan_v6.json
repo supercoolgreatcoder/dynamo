@@ -1,0 +1,25 @@
+{
+  "plan_id": "accf6af-mooncake-distributed-v013-v6",
+  "benchmark_series_id": "accf6af-mooncake-distributed-v013-v6-2026-09-26",
+  "inherits_plan_id": "accf6af-mooncake-distributed-v013-v5",
+  "inherits_plan_path": "benchmark_plan_v5.json",
+  "inherits_plan_sha256": "83172076b7bdf75c58e39b918e1efad5c1a41586803849796f1687f56bf31a17",
+  "reason_for_revision": "AIPerf v0.13.0's HF_HUB_OFFLINE local-snapshot path rejects an absolute tokenizer path, and the root-owned derived trace was unreadable by uid 1000; setup failed before sending requests.",
+  "overrides": {
+    "instrument.tokenizer_path": "/shared/aiperf/tokenizer-qwen2.5-0.5b",
+    "instrument.tokenizer_parity": "Read-only copy of the existing Qwen tokenizer; both source and copy tokenizer.json have SHA-256 c0382117ea329cdf097041132f6d735924b697924d6f6fc3945713e96ce87539; no tokenizer bytes changed",
+    "instrument.offline_flags": "HF_HUB_OFFLINE=0, TRANSFORMERS_OFFLINE=0; AIPerf's absolute-local-path alias guard avoids remote lookup, and the local tokenizer directory is pre-populated",
+    "instrument.trace_permissions": "Exact derived trace changed from 0600 to 0644 with byte SHA-256 unchanged; source trace unchanged",
+    "instrument.cache_directory_permissions": "Existing designated /shared/aiperf/dataset-mmap-cache-013 directory owned by uid 1000, mode 0755; no prior cached prompts were present",
+    "instrument.pod_topology_spread_label": "mooncake-dist-c24-v6"
+  },
+  "explicitly_unchanged": [
+    "performance question and absolute capacity intent",
+    "gateway, selector, preprocessor, and worker deployment",
+    "source and derived trace bytes, SHA-256, and request schedule",
+    "AIPerf version and public container image",
+    "24 worker Pods, one controller Pod, vCluster CPU-pool placement, resourceMode=none, and hard taint-aware spreading",
+    "endpoint, model, cache policy, seed, exports, and replay fidelity quality gates"
+  ],
+  "comparison_limit": "Earlier plans produced no measurement. AIPerf 0.12 multi-Job numbers remain contextual only."
+}

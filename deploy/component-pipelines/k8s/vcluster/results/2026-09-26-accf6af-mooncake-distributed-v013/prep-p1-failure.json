@@ -1,0 +1,17 @@
+{
+  "attempt": "mooncake-dist-c24-prep",
+  "status": "failed_before_benchmark",
+  "observed_at": "2026-09-26T02:42:20Z",
+  "vcluster_api_server": "https://gateway-poc.mkhadkevich-dev:443",
+  "namespace": "dynamo-components-v2",
+  "plan_path": "benchmark_plan.json",
+  "plan_sha256": "dc2c8316228e3457b3ce4a3cdb87451541b9c39f44889b8eb8ebfa2845063d01",
+  "jobset": "aiperf-mooncake-dist-c24-prep",
+  "image": "nvcr.io/nvidia/aiperf:0.13.0",
+  "observed_controller_pod": "aiperf-mooncake-dist-c24-prep-controller-0-0-xlk2f",
+  "failure_event": "Failed to pull image: pull access denied; repository does not exist or may require authorization; insufficient_scope",
+  "aiperf_started": false,
+  "raw_artifacts": false,
+  "registry_check": "Authenticated anonymous NGC manifest query for nvcr.io/nvidia/ai-dynamo/aiperf:0.13.0 returned HTTP 200; no token was retained.",
+  "next_action": "Preserve this failed attempt, remove only its own stalled JobSet/RBAC/ConfigMap, and use a newly versioned plan and unique JobSet name for the corrected image."
+}

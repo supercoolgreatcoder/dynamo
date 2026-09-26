@@ -1,0 +1,10 @@
+{
+  "plan_id": "accf6af-mooncake-nine-nodes-c512-14-grace-v1",
+  "benchmark_series_id": "accf6af-mooncake-nine-nodes-c512-grace-load-sweep-2026-09-26",
+  "inherits_plan_path": "../2026-09-26-accf6af-mooncake-client-nine-nodes-c512-14/benchmark_plan.json",
+  "performance_question": "Can the unchanged 14-client Mooncake schedule complete all requests when AIPerf's phase is extended one second past its 45,000-ms final timestamp?",
+  "load": {"clients": 14, "scheduled_requests": 317786, "offered_rps_nominal": 7061.9111111111115, "concurrency_per_client": 512, "trace_arrival_duration_seconds": 45, "aiperf_phase_duration_seconds": 46, "start_barrier_seconds": 180},
+  "placement": {"nodes": ["cluster-0967a26d-pool-1f83edbe-mj5s4-4sr9z", "cluster-0967a26d-pool-1f83edbe-mj5s4-79r2b", "cluster-0967a26d-pool-1f83edbe-mj5s4-bf5w2", "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67", "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4", "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj", "cluster-0967a26d-pool-1f83edbe-mj5s4-nwjkn", "cluster-0967a26d-pool-1f83edbe-mj5s4-rd9cc", "cluster-0967a26d-pool-1f83edbe-mj5s4-trdbv"]},
+  "quality_gates": "All scheduled requests complete; zero errors/cancellations; every cache HIT; zero degraded replay; max p99 schedule lag 500 ms; profiling-start spread <=3 s; request records retained and globally normalized",
+  "comparison_limit": "The arrival schedule is byte-identical to the 45-second run; the extra second is drain time, not additional offered traffic. Compare only quality-gated runs in this grace series."
+}

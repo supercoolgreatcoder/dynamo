@@ -461,8 +461,74 @@ The retained evidence is organized as follows:
   Mooncake capacity probes and their corrected replay-fidelity audits. Their
   high-load AIPerf schedules degraded, so the reported sums of client rates
   are diagnostics, not a proven single-gateway ceiling.
+- `results/2026-09-26-accf6af-mooncake-distributed-v013/` retains the frozen
+  AIPerf 0.13.0/JobSet experiment, its source manifest and ten
+  failed preparation audits. It never produced a benchmark measurement: the
+  single dataset manager reached about 39 GB and exited 137 while composing
+  544,776 prompts. The JobSet controller was installed only in the vCluster;
+  its upstream v0.12.0 manifest has SHA-256
+  `a41aaf12dd0b7b0a3d626b8d6107f32c3dc889d7e7830adc46b8cdb77a8963bb`.
+  Mechanical generated JobSet manifests are kept locally but ignored by Git;
+  regenerate them from `mooncake-distributed-aiperfjob.yaml` using pinned
+  `aiperf==0.13.0` and `aiperf kube generate --no-operator`.
+- `results/2026-09-26-accf6af-mooncake-client-nine-nodes*/` retains the
+  follow-up nine-node client-placement plans, complete per-client cache-hit
+  proofs, execution manifests, and streamed request-record audits. Every
+  plan is frozen before its Job starts. A capacity number is valid only when
+  all scheduled requests complete, every client's replay lag and start-spread
+  pass, and errors are zero. The sum of per-client RPS is never used as a
+  synchronized gateway-capacity number.
 
-The repository intentionally retains normalized and raw benchmark evidence, but not
-machine-local `result` symlinks or Nix store closures. Rebuild the refactored bundle
+The 46-second grace-series sweep uses the same 22,699-row trace per client,
+one Envoy-callout gateway, eight preprocessors, eight selectors, and 32 mock
+workers; only the number of AIPerf clients changes. Each client reads its
+prebuilt mmap prompt cache, so measured load generation skips tokenization and
+prompt composition. The extra second lets the final 45,000-ms arrival drain.
+The globally normalized successful RPS divides the committed successful
+request count by the global first-start to last-finish window, rather than
+summing independent client rates:
+
+| Clients | Scheduled / successful | Global successful RPS | Max p99 replay lag | Strict gate |
+| ---: | ---: | ---: | ---: | :--- |
+| 12 | 272,388 / 272,388 | 5,921.33 | 118.99 ms | pass |
+| 14 | 317,786 / 317,786 | 6,907.32 | 130.99 ms | pass |
+| 14 repeat | 317,786 / 317,786 | 6,906.35 | 123.03 ms | pass |
+| 15 | 340,485 / 304,942 | invalid as capacity | 5,746.09 ms | fail |
+| 16 | 363,184 / 306,744 | invalid as capacity | 7,858.78 ms | fail |
+
+These trials bracket the strict single-gateway-topology Mooncake capacity between the
+14- and 15-client offered loads (7,061.91 and 7,566.33 nominal RPS), with
+6,906–6,907 globally normalized RPS reproduced at the passing point. The
+failed 15-/16-client sums are not throughput ceilings because replay fell
+behind. This sweep isolates one gateway replica while scaling the other
+stages, but its pass/fail boundary alone does not prove which shared serving
+stage saturates first.
+
+For the nine-node sweep, set `VCLUSTER_KUBECONFIG`,
+`VCLUSTER_EXPECTED_SERVER=https://gateway-poc.mkhadkevich-dev:443`,
+`VCLUSTER_NAMESPACE=dynamo-components-v2`, `NIX_STORE_NFS_SERVER`,
+`NIX_STORE_NFS_PATH`, and `ENVSUBST_BIN` (a Nix `gettext` executable). Then run:
+
+```bash
+bash deploy/component-pipelines/k8s/vcluster/run-nix-mooncake-nine-nodes.sh c512-grace 12 r1
+```
+
+Replace `12` with `14`, `15`, or `16` for the other 46-second grace-series load points;
+`c512` selects the earlier 45-second control plans, including 24 clients. The
+trace still sends at its original 0–45-second timestamps; the grace variant
+only lets AIPerf record the final requests after timestamp 45,000 ms. The
+wrapper reads the exact node list from each plan and the
+runner rejects any non-vCluster API server or active benchmark Job. Follow a
+completed Job with `python3 audit-mooncake-request-records.py RESULT_DIR JOB
+--clients 12 > RESULT_DIR/request-audit-JOB.json`, using the actual client
+count. The raw `profile_export.jsonl` files are
+large (about 0.9 GB for one 24-client run) and remain under
+`/shared/nix/aiperf/results/JOB` in the vCluster NFS volume; their per-file
+SHA-256 hashes and globally normalized metrics are committed in the audit.
+Local `raw_aiperf/` copies are intentionally ignored by Git, not deleted.
+
+The repository retains normalized evidence and either raw exports or their
+vCluster NFS locations and hashes, but not machine-local `result` symlinks or
+Nix store closures. Rebuild the refactored bundle
 with the envs flake above; a `/nix/store/...` symlink from the machine that performed the run is
 not portable evidence.

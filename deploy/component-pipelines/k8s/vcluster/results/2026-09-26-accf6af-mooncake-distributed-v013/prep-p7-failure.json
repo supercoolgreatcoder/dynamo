@@ -1,0 +1,9 @@
+{
+  "attempt": "mooncake-dist-c24-prep7",
+  "plan_id": "accf6af-mooncake-distributed-v013-v7",
+  "plan_sha256": "60f607d0977a6be8b785f91116f47d08d4cdc52026bec144d8c3170d23005974",
+  "outcome": "invalid_no_measurement",
+  "placement": "All 25 Pods scheduled; main dataset manager loaded the local tokenizer and accepted the Mooncake trace format.",
+  "reason": "AIPerf v0.13.0 parallel_decode.py forcibly sets HF_HUB_OFFLINE=1 and TRANSFORMERS_OFFLINE=1 in child processes. Its _from_pretrained_local then calls snapshot_download on the absolute local path and raises HFValidationError; dataset configuration ended with BrokenProcessPool before benchmark traffic.",
+  "next_action": "Stop the failed JobSet; populate a standard uid-1000-readable Hugging Face cache entry for Qwen/Qwen2.5-0.5B-Instruct from the exact same tokenizer bytes and configure AIPerf tokenizer name as the repo ID in offline mode."
+}

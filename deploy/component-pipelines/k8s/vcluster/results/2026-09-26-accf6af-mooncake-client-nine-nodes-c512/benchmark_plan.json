@@ -1,0 +1,28 @@
+{
+  "plan_id": "accf6af-mooncake-client-nine-nodes-c512-v1",
+  "benchmark_series_id": "accf6af-mooncake-client-nine-nodes-c512-2026-09-26",
+  "inherits_plan_path": "../2026-09-26-accf6af-mooncake-client-nine-nodes/benchmark_plan.json",
+  "inherits_plan_sha256": "8440f926b24a4db61e8cf0a33724a1b7abbb5428381bda325d6518d4296fd170",
+  "performance_question": "Does raising each of 24 cache-backed AIPerf clients' outstanding-request cap from 128 to 512 permit faithful delivery of the unchanged 12,106 RPS Mooncake schedule to one Envoy callout gateway?",
+  "reason_for_revision": "At concurrency 128, all 24 clients were replay-degraded: one representative client completed 12,639 of 22,699 scheduled requests at 277 RPS, with mean latency 449 ms. Little's law gives about 124 in-flight requests, almost the 128 cap, so client concurrency was binding.",
+  "overrides": {
+    "load.concurrency_per_client": 512,
+    "load.total_possible_in_flight": 12288,
+    "instrument.request_records": "AIPerf 0.12.0 --export-level records, existing pinned mmap reader fix",
+    "quality_gates": "24 complete clients; zero errors/cancellations; all cache HIT; no replay-degraded clients; max p99 schedule lag 500 ms; profiling-start spread at most 3 seconds; retain request-level JSONL"
+  },
+  "placement": {
+    "nodes": [
+      "cluster-0967a26d-pool-1f83edbe-mj5s4-4sr9z",
+      "cluster-0967a26d-pool-1f83edbe-mj5s4-79r2b",
+      "cluster-0967a26d-pool-1f83edbe-mj5s4-bf5w2",
+      "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4",
+      "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+      "cluster-0967a26d-pool-1f83edbe-mj5s4-nwjkn",
+      "cluster-0967a26d-pool-1f83edbe-mj5s4-rd9cc",
+      "cluster-0967a26d-pool-1f83edbe-mj5s4-trdbv"
+    ]
+  },
+  "comparison_limit": "This is a new concurrency-control series. c128 was an invalid offered-load replay; use it only to diagnose client saturation. A valid c512 result, if any, characterizes one gateway under this load but does not by itself establish a hard ceiling."
+}

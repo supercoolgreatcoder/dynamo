@@ -1,0 +1,515 @@
+{
+  "captured_at": "2026-09-26T03:45:10Z",
+  "pods": [
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "dynamo-benchmark-worker-5c59578749-259q7",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-79r2b",
+      "phase": "Running"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "dynamo-benchmark-worker-5c59578749-2c29c",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-79r2b",
+      "phase": "Running"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "dynamo-benchmark-worker-5c59578749-58llw",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-79r2b",
+      "phase": "Running"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "dynamo-benchmark-worker-5c59578749-68dr8",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-bf5w2",
+      "phase": "Running"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "dynamo-benchmark-worker-5c59578749-79fbk",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-nwjkn",
+      "phase": "Running"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "dynamo-benchmark-worker-5c59578749-85nth",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-nwjkn",
+      "phase": "Running"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "dynamo-benchmark-worker-5c59578749-95stn",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-nwjkn",
+      "phase": "Running"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "dynamo-benchmark-worker-5c59578749-b6zxt",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-nwjkn",
+      "phase": "Running"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "dynamo-benchmark-worker-5c59578749-c76d7",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-79r2b",
+      "phase": "Running"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "dynamo-benchmark-worker-5c59578749-cdntr",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-nwjkn",
+      "phase": "Running"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "dynamo-benchmark-worker-5c59578749-ctb24",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-79r2b",
+      "phase": "Running"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "dynamo-benchmark-worker-5c59578749-d66cs",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-nwjkn",
+      "phase": "Running"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "dynamo-benchmark-worker-5c59578749-dwst9",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-bf5w2",
+      "phase": "Running"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "dynamo-benchmark-worker-5c59578749-fr2w6",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-nwjkn",
+      "phase": "Running"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "dynamo-benchmark-worker-5c59578749-h5chp",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-bf5w2",
+      "phase": "Running"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "dynamo-benchmark-worker-5c59578749-h9vmc",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-79r2b",
+      "phase": "Running"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "dynamo-benchmark-worker-5c59578749-ldwtz",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-nwjkn",
+      "phase": "Running"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "dynamo-benchmark-worker-5c59578749-llwhx",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-nwjkn",
+      "phase": "Running"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "dynamo-benchmark-worker-5c59578749-lqnj9",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-79r2b",
+      "phase": "Running"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "dynamo-benchmark-worker-5c59578749-mnffx",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-nwjkn",
+      "phase": "Running"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "dynamo-benchmark-worker-5c59578749-nqgdb",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-bf5w2",
+      "phase": "Running"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "dynamo-benchmark-worker-5c59578749-q25cr",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-79r2b",
+      "phase": "Running"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "dynamo-benchmark-worker-5c59578749-rvkpk",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-bf5w2",
+      "phase": "Running"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "dynamo-benchmark-worker-5c59578749-svdsw",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-79r2b",
+      "phase": "Running"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "dynamo-benchmark-worker-5c59578749-tf2mm",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-bf5w2",
+      "phase": "Running"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "dynamo-benchmark-worker-5c59578749-tfgtf",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-bf5w2",
+      "phase": "Running"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "dynamo-benchmark-worker-5c59578749-v92kp",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-bf5w2",
+      "phase": "Running"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "dynamo-benchmark-worker-5c59578749-vbc5n",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-nwjkn",
+      "phase": "Running"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "dynamo-benchmark-worker-5c59578749-vzbwx",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-bf5w2",
+      "phase": "Running"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "dynamo-benchmark-worker-5c59578749-xbbfk",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-79r2b",
+      "phase": "Running"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "dynamo-benchmark-worker-5c59578749-z88fn",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-bf5w2",
+      "phase": "Running"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "dynamo-benchmark-worker-5c59578749-z8nhc",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-bf5w2",
+      "phase": "Running"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "dynamo-component-store-stager",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+      "phase": "Running"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "dynamo-preprocessor-646f5b99c9-62rn9",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4",
+      "phase": "Running"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "dynamo-preprocessor-646f5b99c9-8n5mw",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-trdbv",
+      "phase": "Running"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "dynamo-preprocessor-646f5b99c9-9gt2s",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4",
+      "phase": "Running"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "dynamo-preprocessor-646f5b99c9-g2xfd",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4",
+      "phase": "Running"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "dynamo-preprocessor-646f5b99c9-msmsl",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-trdbv",
+      "phase": "Running"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "dynamo-preprocessor-646f5b99c9-pgk9w",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-trdbv",
+      "phase": "Running"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "dynamo-preprocessor-646f5b99c9-rrxt4",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4",
+      "phase": "Running"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "dynamo-preprocessor-646f5b99c9-trc64",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-trdbv",
+      "phase": "Running"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "dynamo-selector-577d95cb5-2kzht",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-bf5w2",
+      "phase": "Running"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "dynamo-selector-577d95cb5-5c2kc",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-bf5w2",
+      "phase": "Running"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "dynamo-selector-577d95cb5-84tzg",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-bf5w2",
+      "phase": "Running"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "dynamo-selector-577d95cb5-bsjgz",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-bf5w2",
+      "phase": "Running"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "dynamo-selector-577d95cb5-gkr98",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-bf5w2",
+      "phase": "Running"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "dynamo-selector-577d95cb5-lgl2c",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-bf5w2",
+      "phase": "Running"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "dynamo-selector-577d95cb5-mtwsm",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-bf5w2",
+      "phase": "Running"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "dynamo-selector-577d95cb5-n7tzs",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-bf5w2",
+      "phase": "Running"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "envoy-callouts-5cd7bbf4f6-kfmjl",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-4sr9z",
+      "phase": "Running"
+    },
+    {
+      "namespace": "dynamo-components-v2",
+      "name": "etcd-67ccc88b96-9kvgx",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-bf5w2",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "aiperf-6b74bff94-dmfgc",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "aiperf-6b74bff94-g4x7f",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "aiperf-6b74bff94-r5dnz",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "aiperf-6b74bff94-sdfx8",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "aiperf-6b74bff94-sm7c2",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "aiperf-6b74bff94-tkjv7",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "envoy-75d4cf876c-g867p",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-4sr9z",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "etcd-5d97896b84-vt9s9",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "gateway-anchor",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-4sr9z",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "kvworker0-6579d46fbc-ltcvz",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-79r2b",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "kvworker1-54c6fc5454-sgwd8",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "kvworker10-675db89f7d-stn8l",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-rd9cc",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "kvworker11-7956769d7-jp42g",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-nwjkn",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "kvworker12-7f4f58ffd4-gx9qh",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-nwjkn",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "kvworker13-76fbb786d5-lg5t6",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "kvworker14-689bfdc59d-njzzc",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-79r2b",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "kvworker15-7cf6b86679-qg88x",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-rd9cc",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "kvworker2-756f457f89-z2qdb",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-rd9cc",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "kvworker3-696fbcf8bd-v7tf5",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "kvworker4-55d44d54ff-p4wf5",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-79r2b",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "kvworker5-84bfc474cd-pmjfc",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-nwjkn",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "kvworker6-7dc45c659c-pxpk2",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-nwjkn",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "kvworker7-78876957cb-j8bj5",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "kvworker8-85f998fb5b-46p9z",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-79r2b",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "kvworker9-6974974dfc-g4tsp",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-rd9cc",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "nats-64867bf968-2bwkt",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-trdbv",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "selector-decode-66678fd8dd-qrrkk",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "selector-prefill-d6bd77f86-fqcsb",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "tok-svc-a-79496d5fbd-9jsm8",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-trdbv",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "tok-svc-a-79496d5fbd-cn55h",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-trdbv",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "tok-svc-a-79496d5fbd-j5n2j",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-bf5w2",
+      "phase": "Running"
+    },
+    {
+      "namespace": "gwo",
+      "name": "tok-svc-a-79496d5fbd-xzr7m",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-bf5w2",
+      "phase": "Running"
+    },
+    {
+      "namespace": "jobset-system",
+      "name": "jobset-controller-manager-6f6f75f9cd-z5tvd",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+      "phase": "Running"
+    },
+    {
+      "namespace": "kube-system",
+      "name": "coredns-df8c87f55-ttklr",
+      "node": "cluster-0967a26d-pool-1f83edbe-mj5s4-4sr9z",
+      "phase": "Running"
+    }
+  ]
+}

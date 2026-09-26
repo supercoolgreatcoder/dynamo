@@ -1,0 +1,34 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: aiperf-hf-cache-probe
+  namespace: dynamo-components-v2
+  labels:
+    app: aiperf-hf-cache-probe
+spec:
+  restartPolicy: Never
+  nodeSelector:
+    topology.unikorn-cloud.org/node-pool: cpu-pool
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+  containers:
+    - name: probe
+      image: nvcr.io/nvidia/ai-dynamo/aiperf:0.13.0
+      imagePullPolicy: IfNotPresent
+      command: ["sleep", "3600"]
+      env:
+        - name: HF_HUB_OFFLINE
+          value: "1"
+        - name: TRANSFORMERS_OFFLINE
+          value: "1"
+        - name: HF_HUB_CACHE
+          value: /shared/aiperf/hf_hub_cache
+      volumeMounts:
+        - name: nix-store
+          mountPath: /shared
+  volumes:
+    - name: nix-store
+      nfs:
+        server: 192.168.0.220
+        path: /unikorn-identity-03cfadd31877-551/pvc-19aeb650-5f77-45c4-8b8b-0a3b88542f39

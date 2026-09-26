@@ -1,0 +1,9 @@
+{
+  "attempt": "mooncake-dist-c24-prep4",
+  "plan_id": "accf6af-mooncake-distributed-v013-v4",
+  "plan_sha256": "1c0d3204b7bae022090d0184828f74431dcb227c5c430fd888561d94306c15e9",
+  "outcome": "invalid_no_measurement",
+  "reason": "Nine worker Pods scheduled, one on each eligible CPU node, then all remaining Pods including the controller remained Pending. The hard maxSkew=1 topology-spread constraint counted an unschedulable tenth CPU node as an empty domain, so the distributed benchmark never initialized.",
+  "scheduler_event": "0/29 nodes are available: 1 node(s) were unschedulable, 19 node(s) had untolerated taint(s), 9 node(s) didn't match pod topology spread constraints.",
+  "next_action": "Stop the failed JobSet; keep the same 24 workers and resourceMode=none but use ScheduleAnyway topology spreading, recording actual placement and resource contention for fidelity analysis."
+}

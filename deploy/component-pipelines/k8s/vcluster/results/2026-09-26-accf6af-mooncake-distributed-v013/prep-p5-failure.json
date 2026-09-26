@@ -1,0 +1,9 @@
+{
+  "attempt": "mooncake-dist-c24-prep5",
+  "plan_id": "accf6af-mooncake-distributed-v013-v5",
+  "plan_sha256": "83172076b7bdf75c58e39b918e1efad5c1a41586803849796f1687f56bf31a17",
+  "outcome": "invalid_no_measurement",
+  "placement": "All 25 Pods scheduled and started across nine eligible vCluster CPU nodes.",
+  "reason": "AIPerf dataset-manager failed Configure Profiling before sending requests. HF_HUB_OFFLINE=1 made its v0.13.0 tokenizer loader send the absolute local path /model/tokenizer to snapshot_download, which rejected it as a Hub ID. The derived trace was also mode 0600 root-owned, causing mmap cache key computation to fail with PermissionError.",
+  "next_action": "Stop this failed JobSet; prepare a dedicated readable copy of the same tokenizer bytes and chmod the exact derived trace to 0644; create a writable uid-1000 cache directory; set AIPerf offline flags to 0 so its documented local-path resolution is used. Keep benchmark workload and 24-client topology unchanged."
+}

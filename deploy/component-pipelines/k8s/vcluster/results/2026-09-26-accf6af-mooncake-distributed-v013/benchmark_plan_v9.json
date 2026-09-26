@@ -1,0 +1,22 @@
+{
+  "plan_id": "accf6af-mooncake-distributed-v013-v9",
+  "benchmark_series_id": "accf6af-mooncake-distributed-v013-v9-2026-09-26",
+  "inherits_plan_id": "accf6af-mooncake-distributed-v013-v8",
+  "inherits_plan_path": "benchmark_plan_v8.json",
+  "inherits_plan_sha256": "7681b850ad7ec60b4b81d0209788ccedda97da2d291470bc95c984fc0d4ac9df",
+  "reason_for_revision": "Hugging Face snapshot_download reads refs/main verbatim, without stripping newline; the 41-byte ref from the authored text file did not equal the 40-character snapshot directory name.",
+  "overrides": {
+    "instrument.hub_cache_ref": "Exactly 40 bytes c0382117ea329cdf097041132f6d735924b69792, no trailing newline; copied from hf-cache-main-ref.txt then truncated to 40 bytes in the dedicated vCluster NFS cache",
+    "instrument.cache_probe": "A single non-root AIPerf 0.13.0 image Pod resolved snapshot_download(..., local_files_only=True) and AIPerf Tokenizer.from_pretrained('Qwen/Qwen2.5-0.5B-Instruct') to Qwen2Tokenizer using the NFS cache; diagnostic Pod removed",
+    "instrument.pod_topology_spread_label": "mooncake-dist-c24-v9"
+  },
+  "explicitly_unchanged": [
+    "performance question and absolute capacity intent",
+    "gateway, selector, preprocessor, and worker deployment",
+    "source and derived trace bytes, SHA-256, and request schedule",
+    "AIPerf version, image, and actual tokenizer bytes",
+    "24 worker Pods, one controller Pod, vCluster CPU-pool placement, resourceMode=none, and hard taint-aware spreading",
+    "endpoint, model, cache policy, seed, exports, and replay fidelity quality gates"
+  ],
+  "comparison_limit": "Earlier plans produced no measurement. AIPerf 0.12 multi-Job numbers remain contextual only."
+}

@@ -1,0 +1,90 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# AIPerf 0.13.0 direct-mode input. Generate Role/RoleBinding/ConfigMap/JobSet with
+# `aiperf kube profile --config ... --no-operator --dry-run`. Keep the generated
+# manifest beside the frozen benchmark plan before applying it to the vCluster.
+apiVersion: aiperf.nvidia.com/v1alpha1
+kind: AIPerfJob
+metadata:
+  name: mooncake-dist-c24-r1
+  namespace: dynamo-components-v2
+spec:
+  image: nvcr.io/nvidia/ai-dynamo/aiperf:0.13.0
+  imagePullPolicy: IfNotPresent
+  resourceMode: none
+  ttlSecondsAfterFinished: 86400
+  podTemplate:
+    nodeSelector:
+      topology.unikorn-cloud.org/node-pool: cpu-pool
+    labels:
+      benchmark-run: mooncake-dist-c24-v10
+    topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: DoNotSchedule
+        nodeTaintsPolicy: Honor
+        labelSelector:
+          matchLabels:
+            benchmark-run: mooncake-dist-c24-v10
+    env:
+      - name: HF_HUB_OFFLINE
+        value: "1"
+      - name: TRANSFORMERS_OFFLINE
+        value: "1"
+      - name: HF_HUB_CACHE
+        value: /shared/aiperf/hf_hub_cache
+      - name: AIPERF_SERVICE_HEARTBEAT_INTERVAL
+        value: "10"
+      - name: AIPERF_SERVICE_HEARTBEAT_MISSED_THRESHOLD
+        value: "100"
+      - name: AIPERF_SERVICE_COMMAND_RESPONSE_TIMEOUT
+        value: "1000"
+      - name: AIPERF_SERVICE_COMMS_REQUEST_TIMEOUT
+        value: "1000"
+      - name: AIPERF_DATASET_MMAP_CACHE_DIR
+        value: /shared/aiperf/dataset-mmap-cache-013
+    volumes:
+      - name: nix-store
+        nfs:
+          server: 192.168.0.220
+          path: /unikorn-identity-03cfadd31877-551/pvc-19aeb650-5f77-45c4-8b8b-0a3b88542f39
+    volumeMounts:
+      - name: nix-store
+        mountPath: /shared
+  benchmark:
+    models:
+      - Qwen/Qwen2.5-0.5B-Instruct
+    endpoint:
+      urls:
+        - http://envoy-callouts:8080/v1/chat/completions
+      type: chat
+      streaming: true
+      useServerTokenCount: true
+      useLegacyMaxTokens: true
+    tokenizer:
+      name: Qwen/Qwen2.5-0.5B-Instruct
+    datasets:
+      - name: main
+        type: file
+        path: /shared/aiperf/mooncake-qwen2.5-0.5b/mooncake-512-context-x24.jsonl
+        format: mooncake_trace
+        randomSeed: 42
+        blockSize: 512
+    phases:
+      - name: profiling
+        kind: profiling
+        type: fixed_schedule
+        autoOffset: true
+        requests: 544776
+        concurrency: 3072
+    runtime:
+      workers: 24
+      workersPerPod: 1
+      recordProcessors: 24
+      recordProcessorsPerPod: 1
+      ui: none
+    artifacts:
+      summary: [json]
+      records: [jsonl]
+      autoPlot: false
