@@ -37,6 +37,16 @@ co-location prevents attributing the small throughput difference to the
 gateway. The one 32-worker result is within the observed nine-client range
 and does not establish a throughput gain in this shared-node topology.
 
+A further window-valid nine-client run, `r88`, moved only node C to
+`...-rd9cc`, which had no Pods from this mock pipeline. It completed
+447,747 requests at **9,930.30 RPS**, with zero errors/cancellations and
+1-second start skew: essentially the same as the 9,916.35 RPS six-client
+return control. Node C still hosted unrelated KV workers, so this is not
+perfect CPU isolation. It does show that removing direct AIPerf/decode
+co-location did not expose a large hidden increase in this gateway setup.
+Its raw exports and Job/Pod snapshots are retained alongside the earlier
+runs.
+
 Read-only cgroup `cpu.stat` samples from the gateway Pod, both entirely
 inside the exported measurement windows, are retained in
 [`gateway-cpu-r86-r87.tsv`](gateway-cpu-r86-r87.tsv). The 16-worker gateway
