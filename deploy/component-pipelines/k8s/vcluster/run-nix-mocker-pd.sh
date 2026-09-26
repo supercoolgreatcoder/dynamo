@@ -32,13 +32,14 @@ actual_server=$(kubectl --kubeconfig "$VCLUSTER_KUBECONFIG" \
   exit 2
 }
 vc=(kubectl --kubeconfig "$VCLUSTER_KUBECONFIG" -n "$VCLUSTER_NAMESPACE")
+stager_pod=${NIX_STAGER_POD:-dynamo-component-store-stager}
 "${vc[@]}" get jobs -o json |
   jq -e '[.items[] | select((.status.active // 0) > 0)] | length == 0' >/dev/null
 for basename in \
   "${FACADE_STORE_PATH#/nix/store/}/bin/dynamo-component-facade" \
   "${GATEWAY_BUNDLE_PATH#/nix/store/}/bin/agentgateway"; do
   if [[ $dry_run == 0 ]]; then
-    "${vc[@]}" exec dynamo-component-store-stager -- \
+    "${vc[@]}" exec "$stager_pod" -- \
       test -x "/shared/nix/store/$basename"
   fi
 done
