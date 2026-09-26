@@ -22,9 +22,7 @@ def events(paths: list[Path], target: str, **filters: str) -> dict[str, dict]:
                 line = ANSI.sub("", line)
                 if target not in line:
                     continue
-                fields = {
-                    key: value.strip('"') for key, value in FIELD.findall(line)
-                }
+                fields = {key: value.strip('"') for key, value in FIELD.findall(line)}
                 if any(fields.get(key) != value for key, value in filters.items()):
                     continue
                 request_id = fields.get("request_id")
@@ -55,7 +53,9 @@ def stats(values: list[int]) -> dict:
     }
 
 
-def prefill(gateway: dict, handlers: dict, terminals: dict, has_handoff_stream: bool) -> dict:
+def prefill(
+    gateway: dict, handlers: dict, terminals: dict, has_handoff_stream: bool
+) -> dict:
     joined = gateway.keys() & handlers.keys() & terminals.keys()
     measures = {
         "gateway_header_wait": [],
@@ -135,6 +135,37 @@ def selector(gateway: dict, handlers: dict) -> dict:
     }
 
 
+def buffer_split(gateway: dict, readiness: dict) -> dict:
+    joined = gateway.keys() & readiness.keys()
+    return {
+        "readiness_samples": len(readiness),
+        "joined_samples": len(joined),
+        "unmatched_gateway_samples": len(gateway.keys() - joined),
+        "readiness_errors": sum(
+            sample["is_ok"] != "true" for sample in readiness.values()
+        ),
+        "metrics": {
+            "channel_buffer_ready": stats(
+                [int(readiness[request_id]["ready_us"]) for request_id in joined]
+            ),
+            "before_buffer_ready": stats(
+                [
+                    int(readiness[request_id]["ready_offset_us"])
+                    - int(readiness[request_id]["ready_us"])
+                    for request_id in joined
+                ]
+            ),
+            "after_buffer_ready_to_headers": stats(
+                [
+                    int(gateway[request_id]["headers_us"])
+                    - int(readiness[request_id]["ready_offset_us"])
+                    for request_id in joined
+                ]
+            ),
+        },
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("result_dir", type=Path)
@@ -198,6 +229,12 @@ def main() -> None:
     }
     if not result["all_stage_joined_samples"]:
         parser.error("no matching gateway/facade request IDs for both RPC stages")
+    if is_static:
+        readiness = events([gateway_log], "dynamo_static_buffer_ready")
+        if readiness:
+            result["prefill"]["channel_buffer"] = buffer_split(
+                gateway_prefill, readiness
+            )
     print(json.dumps(result, indent=2))
 
 
