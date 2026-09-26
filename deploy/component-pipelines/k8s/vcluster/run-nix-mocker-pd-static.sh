@@ -24,6 +24,8 @@ preprocess_linger_us=${PD_PREPROCESS_BATCH_LINGER_US:-200}
 worker_threads=${PD_WORKER_THREADS:-12}
 [[ $worker_threads =~ ^[1-9][0-9]*$ ]] &&
   (( worker_threads <= 128 )) || exit 2
+grpc_channels=${PD_GRPC_CHANNELS_PER_ENDPOINT:-}
+[[ -z $grpc_channels || ( $grpc_channels =~ ^[1-9][0-9]*$ && $grpc_channels -le 256 ) ]] || exit 2
 stage_timing_every=${PD_STAGE_TIMING_EVERY:-0}
 [[ $stage_timing_every =~ ^[0-9]+$ ]] &&
   (( stage_timing_every <= 1000000 )) || exit 2
@@ -64,7 +66,7 @@ config=$(jq -c --arg threads "$worker_threads" '
 apply_json "$config"
 
 source_deployment=$("${vc[@]}" get deployment agw-static -o json)
-deployment=$(jq -c --arg binary "$binary" --arg linger "$preprocess_linger_us" --arg timing "$stage_timing_every" --arg rust_log "$rust_log" '
+deployment=$(jq -c --arg binary "$binary" --arg linger "$preprocess_linger_us" --arg channels "$grpc_channels" --arg timing "$stage_timing_every" --arg rust_log "$rust_log" '
   {apiVersion,kind,metadata:{name:"dynamo-pd-agw-static"},spec:.spec}
   | .spec.replicas=1
   | .spec.selector.matchLabels.app="dynamo-pd-agw-static"
@@ -81,6 +83,11 @@ deployment=$(jq -c --arg binary "$binary" --arg linger "$preprocess_linger_us" -
   | .spec.template.spec.containers[0].env |= map(
       if .name == "DYN_PREPROCESS_BATCH_LINGER_US"
       then .value=$linger else . end)
+  | .spec.template.spec.containers[0].env |= (
+      if $channels == "" then .
+      else map(select(.name != "DYN_GRPC_CHANNELS_PER_ENDPOINT")) +
+        [{name:"DYN_GRPC_CHANNELS_PER_ENDPOINT",value:$channels}]
+      end)
   | .spec.template.spec.volumes |= map(
       if .name == "config" then .configMap.name="dynamo-pd-agw-static" else . end)
 ' <<<"$source_deployment")
