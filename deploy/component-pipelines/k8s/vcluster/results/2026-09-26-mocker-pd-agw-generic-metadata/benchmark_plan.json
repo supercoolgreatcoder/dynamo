@@ -1,0 +1,64 @@
+{
+  "plan_id": "mocker-pd-agw-generic-metadata-isl-v1",
+  "benchmark_series_id_by_workload": {
+    "isl4000": "mocker-pd-agw-generic-metadata-isl4000-v1-2026-09-26"
+  },
+  "question": "What throughput does the metadata-correct generic AGW P/D graph achieve on the same frozen ISL4000 fixture as the prior generic refresh?",
+  "intent": "diagnostic single run, not a promotion-grade paired delta",
+  "candidate": {
+    "source_commit": "cb970285af",
+    "facade_source_commit": "995c04e74f785a498470f305d37875703fb72b86",
+    "facade_nix_output": "/nix/store/w77ac5nlyc9543kgkwdxpf9a7yk5l7y6-dynamo-component-facade-1.6.0-995c04e74f",
+    "gateway_nix_output": "/nix/store/n6ff0gzzqay7f36sgjgvs8hjqbkk0g67-dynamo-component-pipelines-cb970285af",
+    "graph": "deploy/component-pipelines/graphs/disaggregated.yaml",
+    "graph_change": "forward prompt token count, reasoning and structural-tag flags, optional image tokens, and image/video/audio counts to worker-side Dynamo postprocessing",
+    "gateway_replicas": 1,
+    "preprocessor_replicas": 4,
+    "selector_replicas": 4,
+    "prefill_replicas": 4,
+    "decode_replicas": 16,
+    "worker_kind": "synthetic benchmark-only Dynamo AsyncEngine behind the real facade",
+    "worker_handoff_contract": "prefill emits benchmark_handoff; decode rejects requests without it"
+  },
+  "execution": {
+    "vcluster_server": "https://gateway-poc.mkhadkevich-dev:443",
+    "namespace": "dynamo-components-v2",
+    "endpoint": "http://dynamo-pd-agw-generic:8080/v1/chat/completions",
+    "model": "Qwen/Qwen2.5-0.5B-Instruct",
+    "tokenizer": "Qwen/Qwen2.5-0.5B-Instruct",
+    "endpoint_type": "chat",
+    "streaming": true,
+    "clients": 6,
+    "concurrency_per_client": 128,
+    "benchmark_duration_seconds": 45,
+    "repetitions_per_workload": 1,
+    "seed": 42,
+    "aiperf_version": "0.12.0",
+    "aiperf_image": "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
+    "aiperf_version_resolution": "Frozen reference-reproduction exception: AIPerf 0.13.0 changes measurement semantics and failed Mooncake preparation before measurement",
+    "aiperf_nodes": [
+      "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+      "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4"
+    ],
+    "measurement_limit_seconds": 1800,
+    "raw_summary_export": true,
+    "per_request_export": false
+  },
+  "workloads": {
+    "isl4000": {
+      "source": "frozen_reference_raw_payload",
+      "path": "/shared/aiperf/static-qwen2.5-0.5b/isl4000-claude-sonnet-raw.jsonl",
+      "sha256": "3ad382586f5417f4255d7eea774700d9817bc39acbc7b537e2efa7d89145c743",
+      "schedule": "concurrency_128_per_client"
+    }
+  },
+  "metrics": [
+    "successful_requests_per_second",
+    "output_tokens_per_second",
+    "request_latency",
+    "errors",
+    "cancelled"
+  ],
+  "quality_gates": "Six Jobs complete on pinned client nodes; all six AIPerf 0.12.0 exports are error-free and uncancelled; report globally normalized throughput as descriptive because per-request records are absent",
+  "comparison_limit": "Same frozen P/D fixture as prior generic refresh but a single unpaired run; compare descriptively, not as a statistically established delta. Different topology from aggregate Claude reference."
+}
