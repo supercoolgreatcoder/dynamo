@@ -33,14 +33,20 @@ const DEFAULT_PREPROCESS_BATCH_MAX: usize = 32;
 const DEFAULT_PREPROCESS_BATCH_LINGER_US: u64 = 200;
 const DEFAULT_PREPROCESS_QUEUE_CAPACITY: usize = 8192;
 
+fn duration_us(duration: Duration) -> u64 {
+    duration.as_micros().min(u64::MAX as u128) as u64
+}
+
 struct PreprocessBatchItem {
     request: PreprocessItem,
     reply: oneshot::Sender<Result<PreparedItem, tonic::Status>>,
+    enqueued_at: Option<Instant>,
 }
 
 #[derive(Clone)]
 struct PreprocessBatcher {
     sender: mpsc::Sender<PreprocessBatchItem>,
+    is_stats_enabled: bool,
 }
 
 impl PreprocessBatcher {
@@ -55,9 +61,18 @@ impl PreprocessBatcher {
             .and_then(|value| value.parse().ok())
             .unwrap_or(DEFAULT_PREPROCESS_QUEUE_CAPACITY)
             .clamp(max_batch, 1_048_576);
+        let stats_every = std::env::var("DYN_STATIC_BATCH_STATS_EVERY")
+            .ok()
+            .and_then(|value| value.parse::<usize>().ok())
+            .unwrap_or(0)
+            .min(1_000_000);
         let (sender, mut receiver) = mpsc::channel::<PreprocessBatchItem>(queue_capacity);
         tokio::spawn(async move {
+            let mut batch_index = 0usize;
             while let Some(first) = receiver.recv().await {
+                batch_index = batch_index.wrapping_add(1);
+                let should_emit_stats = stats_every > 0 && batch_index % stats_every == 0;
+                let received_at = should_emit_stats.then(Instant::now);
                 let mut batch = Vec::with_capacity(max_batch);
                 batch.push(first);
                 if linger_us == 0 {
@@ -82,6 +97,19 @@ impl PreprocessBatcher {
                     }
                 }
 
+                let diagnostics = received_at.map(|received_at| {
+                    let collected_at = Instant::now();
+                    let enqueue_to_recv_us = batch[0]
+                        .enqueued_at
+                        .map(|enqueued_at| duration_us(received_at.duration_since(enqueued_at)))
+                        .unwrap_or_default();
+                    (
+                        batch.len(),
+                        enqueue_to_recv_us,
+                        duration_us(collected_at.duration_since(received_at)),
+                        receiver.len(),
+                    )
+                });
                 let index = next_preprocessor.fetch_add(1, Ordering::Relaxed) % preprocessors.len();
                 let mut client = preprocessors[index].clone();
                 tokio::spawn(async move {
@@ -93,12 +121,26 @@ impl PreprocessBatcher {
                         .iter()
                         .map(|item| item.item_id.clone())
                         .collect::<Vec<_>>();
-                    match client
+                    let rpc_started_at = diagnostics.as_ref().map(|_| Instant::now());
+                    let result = client
                         .prepare_batch(dynamo_component_facades::proto::PreprocessBatchRequest {
                             items: requests,
                         })
-                        .await
-                    {
+                        .await;
+                    if let Some((size, enqueue_to_recv_us, collect_us, queue_depth)) = diagnostics {
+                        tracing::trace!(
+                            size = size as u64,
+                            enqueue_to_recv_us,
+                            collect_us,
+                            queue_depth = queue_depth as u64,
+                            rpc_us = rpc_started_at
+                                .map(|start| duration_us(start.elapsed()))
+                                .unwrap_or_default(),
+                            is_ok = result.is_ok(),
+                            "static batch sample",
+                        );
+                    }
+                    match result {
                         Ok(response) => {
                             let items = response.into_inner().items;
                             let valid = items.len() == replies.len()
@@ -130,13 +172,20 @@ impl PreprocessBatcher {
                 });
             }
         });
-        Self { sender }
+        Self {
+            sender,
+            is_stats_enabled: stats_every > 0,
+        }
     }
 
     async fn prepare(&self, request: PreprocessItem) -> Result<PreparedItem, tonic::Status> {
         let (reply, receiver) = oneshot::channel();
         self.sender
-            .send(PreprocessBatchItem { request, reply })
+            .send(PreprocessBatchItem {
+                request,
+                reply,
+                enqueued_at: self.is_stats_enabled.then(Instant::now),
+            })
             .await
             .map_err(|_| tonic::Status::unavailable("preprocessor batcher stopped"))?;
         receiver

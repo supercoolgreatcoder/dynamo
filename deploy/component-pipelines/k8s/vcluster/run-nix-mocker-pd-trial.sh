@@ -185,9 +185,10 @@ if [[ $arm == pd-agw-static ]]; then
   expected_threads=$(jq -r '.candidate.gateway_worker_threads | tostring' "$plan")
   expected_channels=$(jq -r '.candidate.grpc_channels_per_endpoint // empty | tostring' "$plan")
   expected_timing=$(jq -r '.candidate.stage_timing_every // 0 | tostring' "$plan")
+  expected_batch_stats=$(jq -r '.candidate.batch_stats_every // 0 | tostring' "$plan")
   expected_rust_log=$(jq -r '.candidate.rust_log // ""' "$plan")
   "${vc[@]}" get deployment dynamo-pd-agw-static -o json |
-    jq -e --arg binary "$expected_binary" --arg linger "$expected_linger" --arg timing "$expected_timing" --arg rust_log "$expected_rust_log" --arg channels "$expected_channels" '
+    jq -e --arg binary "$expected_binary" --arg linger "$expected_linger" --arg timing "$expected_timing" --arg batch_stats "$expected_batch_stats" --arg rust_log "$expected_rust_log" --arg channels "$expected_channels" '
       .spec.template.spec.containers[0].command[0] == $binary
       and any(.spec.template.spec.containers[0].env[];
         .name == "DYN_PREFILL_ENDPOINT" and .value == "http://dynamo-pd-prefill:50051")
@@ -197,6 +198,8 @@ if [[ $arm == pd-agw-static ]]; then
         .name == "DYN_GRPC_CHANNELS_PER_ENDPOINT" and .value == $channels))
       and ($timing == "0" or any(.spec.template.spec.containers[0].env[];
         .name == "DYN_STATIC_STAGE_TIMING_EVERY" and .value == $timing))
+      and ($batch_stats == "0" or any(.spec.template.spec.containers[0].env[];
+        .name == "DYN_STATIC_BATCH_STATS_EVERY" and .value == $batch_stats))
       and ($rust_log == "" or any(.spec.template.spec.containers[0].env[];
         .name == "RUST_LOG" and .value == $rust_log))
     ' >/dev/null
