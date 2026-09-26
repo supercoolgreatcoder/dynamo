@@ -64,6 +64,10 @@ impl Scope {
             Expr::Literal(v) => Ok(v.clone()),
             Expr::Path(p) if p.starts_with("$.") => self.eval_path(p),
             Expr::Path(s) => Ok(Value::String(s.clone())),
+            Expr::Optional { optional } => match self.eval(optional) {
+                Err(ExprError::Unresolved(_)) => Ok(Value::Null),
+                other => other,
+            },
             Expr::Length { length } => {
                 fn count(v: &Value) -> Result<usize, ExprError> {
                     match v {
@@ -304,6 +308,22 @@ mod tests {
             s.eval_path("$.request.body.nope"),
             Err(ExprError::Unresolved(_))
         ));
+    }
+
+    #[test]
+    fn optional_field_is_null_only_when_absent() {
+        let s = scope();
+        let absent: Expr =
+            serde_yaml::from_str(r#"{optional: "$.response.image_tokens"}"#).unwrap();
+        assert_eq!(s.eval(&absent).unwrap(), Value::Null);
+
+        let mut with_value = scope();
+        with_value.response["image_tokens"] = json!(512);
+        assert_eq!(with_value.eval(&absent).unwrap(), json!(512));
+
+        let malformed: Expr =
+            serde_yaml::from_str(r#"{optional: "$.response.nested.a[bad]"}"#).unwrap();
+        assert!(matches!(s.eval(&malformed), Err(ExprError::BadIndex(_))));
     }
 }
 

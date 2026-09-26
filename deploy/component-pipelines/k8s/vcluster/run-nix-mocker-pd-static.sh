@@ -24,6 +24,11 @@ preprocess_linger_us=${PD_PREPROCESS_BATCH_LINGER_US:-200}
 worker_threads=${PD_WORKER_THREADS:-12}
 [[ $worker_threads =~ ^[1-9][0-9]*$ ]] &&
   (( worker_threads <= 128 )) || exit 2
+stage_timing_every=${PD_STAGE_TIMING_EVERY:-0}
+[[ $stage_timing_every =~ ^[0-9]+$ ]] &&
+  (( stage_timing_every <= 1000000 )) || exit 2
+rust_log=${PD_RUST_LOG:-}
+[[ -z $rust_log || $rust_log == warn ]] || exit 2
 "${vc[@]}" get jobs -o json |
   jq -e '[.items[] | select((.status.active // 0) > 0)] | length == 0' >/dev/null
 for component in dynamo-pd-preprocessor:4 dynamo-pd-selector:4 dynamo-pd-prefill:4 dynamo-pd-decode:16; do
@@ -34,7 +39,7 @@ for component in dynamo-pd-preprocessor:4 dynamo-pd-selector:4 dynamo-pd-prefill
       '.spec.replicas == $replicas and .status.readyReplicas == $replicas' >/dev/null
 done
 
-binary=/nix/store/nddp59k8czydjigx61bcil2z8ixfmsv6-agentgateway-component-pipeline-0.0.0-b14ca87d0a/bin/agentgateway
+binary=/nix/store/j19wni2yhzxbim3h29bcxpq4rwgv6qj4-agentgateway-component-pipeline-0.0.0-b14ca87d0a/bin/agentgateway
 "${vc[@]}" exec "$stager_pod" -- test -x \
   "/shared/nix${binary#/nix}"
 
@@ -58,7 +63,7 @@ config=$(jq -c --arg threads "$worker_threads" '
 apply_json "$config"
 
 source_deployment=$("${vc[@]}" get deployment agw-static -o json)
-deployment=$(jq -c --arg binary "$binary" --arg linger "$preprocess_linger_us" '
+deployment=$(jq -c --arg binary "$binary" --arg linger "$preprocess_linger_us" --arg timing "$stage_timing_every" --arg rust_log "$rust_log" '
   {apiVersion,kind,metadata:{name:"dynamo-pd-agw-static"},spec:.spec}
   | .spec.replicas=1
   | .spec.selector.matchLabels.app="dynamo-pd-agw-static"
@@ -66,6 +71,12 @@ deployment=$(jq -c --arg binary "$binary" --arg linger "$preprocess_linger_us" '
   | .spec.template.spec.containers[0].command[0]=$binary
   | .spec.template.spec.containers[0].env +=
       [{name:"DYN_PREFILL_ENDPOINT",value:"http://dynamo-pd-prefill:50051"}]
+  | .spec.template.spec.containers[0].env +=
+      (if $timing == "0" then []
+       else [{name:"DYN_STATIC_STAGE_TIMING_EVERY",value:$timing}] end)
+  | .spec.template.spec.containers[0].env +=
+      (if $rust_log == "" then []
+       else [{name:"RUST_LOG",value:$rust_log}] end)
   | .spec.template.spec.containers[0].env |= map(
       if .name == "DYN_PREPROCESS_BATCH_LINGER_US"
       then .value=$linger else . end)

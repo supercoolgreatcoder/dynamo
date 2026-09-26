@@ -695,7 +695,13 @@ paths:
                         "normalized_openai_request_json": {"model": "test"},
                         "backend_request_json": {"model": "test"},
                         "selector_request_json": {"model": "test"},
-                        "token_ids_le": "AQAAAA=="
+                        "token_ids_le": "AQAAAA==",
+                        "prompt_tokens": 1,
+                        "prompt_injected_reasoning": true,
+                        "uses_tool_call_structural_tag": true,
+                        "image_count": 2,
+                        "video_count": 3,
+                        "audio_count": 4
                     }]})));
                 }
                 if url.contains("dynamo-prefill") {
@@ -754,6 +760,16 @@ paths:
             .unwrap();
         let calls = transport.calls.lock().unwrap();
         assert_eq!(calls.len(), 4);
+        for call in [&calls[1], &calls[2], &calls[3]] {
+            assert_eq!(call.body["token_ids_le"], json!("AQAAAA=="));
+        }
+        assert_eq!(calls[3].body["prompt_tokens"], json!(1));
+        assert_eq!(calls[3].body["prompt_injected_reasoning"], json!(true));
+        assert_eq!(calls[3].body["uses_tool_call_structural_tag"], json!(true));
+        assert_eq!(calls[3].body["image_count"], json!(2));
+        assert_eq!(calls[3].body["video_count"], json!(3));
+        assert_eq!(calls[3].body["audio_count"], json!(4));
+        assert_eq!(calls[3].body["image_tokens"], Value::Null);
         assert_eq!(
             calls[3].body["prefill_result_json"],
             json!({"engine": "opaque"})

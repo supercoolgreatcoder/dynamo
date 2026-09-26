@@ -10,6 +10,8 @@ import argparse
 import hashlib
 import json
 import math
+import re
+import statistics
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
@@ -96,6 +98,38 @@ def main() -> int:
         check("dataset_sha256", fields == [args.workload, dataset["path"], dataset["sha256"]])
     else:
         check("dataset_sha256", False)
+
+    stage_timing = None
+    if args.static and plan.get("candidate", {}).get("stage_timing_every", 0) > 0:
+        timing_path = result_dir / f"stage-timing-{job}.log"
+        records = []
+        if timing_path.is_file():
+            pattern = re.compile(
+                r"static_stage_us prepare=(\d+) prefill=(\d+) select=(\d+) "
+                r"decode=(\d+) total=(\d+)"
+            )
+            for line in timing_path.read_text(encoding="utf-8").splitlines():
+                match = pattern.fullmatch(line)
+                if match is None:
+                    break
+                records.append(tuple(map(int, match.groups())))
+            check("stage_timing_format", len(records) == len(timing_path.read_text(encoding="utf-8").splitlines()))
+        else:
+            check("stage_timing_format", False)
+        check("stage_timing_samples", len(records) >= 20)
+        check("stage_timing_totals", all(sum(record[:4]) == record[4] for record in records))
+        if records:
+            stages = ("prepare", "prefill", "select", "decode", "total")
+            stage_timing = {
+                "raw_path": str(timing_path.relative_to(result_dir)),
+                "raw_sha256": sha256(timing_path),
+                "sample_count": len(records),
+                "sample_every": plan["candidate"]["stage_timing_every"],
+                "medians_us": {
+                    name: statistics.median(record[index] for record in records)
+                    for index, name in enumerate(stages)
+                },
+            }
 
     client_records = []
     raw_paths = [
@@ -207,6 +241,7 @@ def main() -> int:
         "start_spread_seconds": spread,
         "clients": client_records,
         "metric_scope": "six summary exports; no per-request records or merged percentiles",
+        "sampled_static_stage_timing": stage_timing,
     }
     audit = {
         "status": "valid" if not blockers else "invalid",

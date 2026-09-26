@@ -515,6 +515,7 @@ pub fn last_reads(p: &Pipeline) -> BTreeMap<String, String> {
                 }
             }
             Expr::Length { length } => count_expr(length, reads),
+            Expr::Optional { optional } => count_expr(optional, reads),
             Expr::Literal(_) => {}
         }
     }
