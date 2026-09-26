@@ -238,21 +238,34 @@ jq -e --argjson clients "$clients" --arg a "$AIPERF_NODE_A" --arg b "$AIPERF_NOD
 summaries=("$out"/*/profile_export_aiperf.json)
 test "${#summaries[@]}" -eq "$clients"
 jq -es --arg job "$job" --argjson clients "$clients" '
+  def start_seconds:
+    . as $timestamp |
+    (($timestamp | split(".")[0] + "Z" | fromdateiso8601) +
+     ("0." + ($timestamp | split(".")[1]) | tonumber));
   {
     job:$job,clients:length,version:(map(.aiperf_version)|unique),
     phase_types:(map(.input_config.phases[0].type)|unique),
     requests_scheduled:(map(.input_config.phases[0].requests)|add),
     requests_successful:(map(.request_count.avg)|add),
     rps:(map(.request_throughput.avg)|add),
+    rps_semantics:"sum of per-client rates measured over potentially different windows",
     output_tps:(map(.output_token_throughput.avg)|add),
     errors:(map(.error_summary|map(.count)|add // 0)|add),
-    cancelled:(map(.was_cancelled)|any)
+    cancelled:(map(.was_cancelled)|any),
+    replay_degraded_clients:(map(select(.replay_sched_degraded.avg == 1))|length),
+    replay_lag_p99_ms_max:(map(.replay_sched_lag_p99.avg)|max),
+    measured_start_min:(map(.start_time)|min),
+    measured_start_max:(map(.start_time)|max),
+    measured_start_spread_seconds:((map(.start_time|start_seconds)|max)-(map(.start_time|start_seconds)|min))
   }
 ' "${summaries[@]}" > "$RESULT_DIR/summary-$job.json"
 bash "$(dirname "$0")/verify-nix-mooncake-cache.sh" "$job"
+jq . "$RESULT_DIR/summary-$job.json"
 jq -e --argjson clients "$clients" '
   .clients == $clients and .version == ["0.12.0"] and
-  .phase_types == ["fixed_schedule"] and .errors == 0 and .cancelled == false
-' "$RESULT_DIR/summary-$job.json" >/dev/null
-
-jq . "$RESULT_DIR/summary-$job.json"
+  .phase_types == ["fixed_schedule"] and .errors == 0 and .cancelled == false and
+  .replay_degraded_clients == 0 and .measured_start_spread_seconds <= 3
+' "$RESULT_DIR/summary-$job.json" >/dev/null || {
+  echo "benchmark artifacts retained, but replay or phase synchronization failed the capacity gate" >&2
+  exit 1
+}

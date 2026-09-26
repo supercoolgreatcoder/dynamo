@@ -456,6 +456,11 @@ The retained evidence is organized as follows:
 - `results/2026-09-25-envoy-direct-threads/` records Envoy-direct parity after
   matching the module runtime thread budget; adjacent profile and channel
   probe directories retain the diagnostic evidence and failed hypotheses.
+- `results/2026-09-25-accf6af-mooncake-ceiling-fixed-reader/` and
+  `results/2026-09-25-accf6af-mooncake-client-placement/` retain the later
+  Mooncake capacity probes and their corrected replay-fidelity audits. Their
+  high-load AIPerf schedules degraded, so the reported sums of client rates
+  are diagnostics, not a proven single-gateway ceiling.
 
 The repository intentionally retains normalized and raw benchmark evidence, but not
 machine-local `result` symlinks or Nix store closures. Rebuild the refactored bundle
