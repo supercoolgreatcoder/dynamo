@@ -17,12 +17,13 @@ not tokenize or synthesize prompts during measurement. Each Job ran alone
 inside the explicit vCluster and passed the audit with zero errors and
 cancellations; each gateway passed a streamed P/D handoff smoke test first.
 
-| Job | Static channels/endpoint | AGW threads | Successful requests | Globally normalized RPS |
+| Job | Channels/endpoint | AGW threads | Successful requests | Globally normalized RPS |
 | --- | ---: | ---: | ---: | ---: |
 | `nixpds-isl4000-pd-agw-static-r15` | 32 | 12 | 269,371 | 5,822.19 |
 | `nixpds-isl4000-pd-agw-static-r18` | 4 | 12 | 291,246 | 6,233.44 |
 | `nixpds-isl4000-pd-agw-static-r19` | 32 | 12 | 273,227 | 5,873.59 |
 | `nixpds-isl4000-pd-agw-static-r20` | 4 | 16 | 300,610 | 6,523.09 |
+| `nixpd-isl4000-pd-agw-generic-r21` | 4 | 16 | 439,609 | 9,418.11 |
 
 The 4-channel point is 6.6% above the mean of the two bracketing 32-channel
 points, consistent with reducing the much larger static connection pool
@@ -30,11 +31,17 @@ helping. Raising AGW worker threads from 12 to 16 at four channels adds a
 further 4.6% versus the single 4-channel/12-thread run. Neither effect has
 paired-repeat confidence intervals; time-varying node contention remains a
 possible contributor. The best static point is still 30.4% below the
-single-run unified generic result of 9,370.98 RPS, so static P/D ISL4000
-parity is **not** established.
+single-run unified generic result of 9,370.98 RPS. A subsequent
+contemporaneous generic cross-check, with the same four channels and 16
+threads, passed at 9,418.11 RPS; tuned static remained 30.7% lower. Static
+P/D ISL4000 parity is **not** established.
 
 The original 32-channel plan, A run, and return leg are in
 [AGW static unified](2026-09-26-mocker-pd-agw-static-unified/README.md).
+The generic cross-check reused the immutable
+[generic unified](2026-09-26-mocker-pd-agw-generic-unified/benchmark_plan.json)
+plan; its `r21` execution record, six raw JSON/CSV exports, summary, and
+valid audit are committed there.
 Separate frozen plans, execution records, six raw JSON/CSV exports,
 dataset checksums, occupancy snapshots, summaries, and valid audits for the
 4-channel and 4-channel/16-thread trials are in
