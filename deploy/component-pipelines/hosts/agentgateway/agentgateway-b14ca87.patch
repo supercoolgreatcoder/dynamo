@@ -64,7 +64,7 @@ new file mode 100644
 index 0000000..3ad4283
 --- /dev/null
 +++ b/crates/agentgateway/src/dynamo_components.rs
-@@ -0,0 +1,252 @@
+@@ -0,0 +1,273 @@
 +// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 +// SPDX-License-Identifier: Apache-2.0
 +
@@ -151,11 +151,32 @@ index 0000000..3ad4283
 +				}
 +				let prepared = Prepared::new(pipeline, &specs)
 +					.map_err(|error| anyhow::anyhow!("pipeline validation: {error}"))?;
++				let prepared = Arc::new(prepared);
 +				let descriptor = std::fs::read(grpc_descriptor_file)?;
 +				let transport = GrpcTransport::new(&descriptor)
 +					.map_err(|error| anyhow::anyhow!("descriptor: {error}"))?;
++				if let Ok(interval_secs) = std::env::var("DYN_GENERIC_STATS_INTERVAL_SECS") {
++					let interval_secs: u64 = interval_secs
++						.parse()
++						.map_err(|error| anyhow::anyhow!("DYN_GENERIC_STATS_INTERVAL_SECS: {error}"))?;
++					anyhow::ensure!(interval_secs > 0, "DYN_GENERIC_STATS_INTERVAL_SECS must be positive");
++					anyhow::ensure!(interval_secs <= 3600, "DYN_GENERIC_STATS_INTERVAL_SECS must be at most 3600");
++					let weak = Arc::downgrade(&prepared);
++					tokio::spawn(async move {
++						let mut timer = tokio::time::interval(std::time::Duration::from_secs(interval_secs));
++						timer.tick().await;
++						loop {
++							timer.tick().await;
++							let Some(prepared) = weak.upgrade() else { break };
++							tracing::debug!(target: "dynamo_generic_pipeline_stats",
++								requests = prepared.stats.requests(),
++								steps = ?prepared.stats.snapshot(),
++								"generic pipeline step statistics");
++						}
++					});
++				}
 +				Ok(Self::Generic {
-+					prepared: Arc::new(prepared),
++					prepared,
 +					transport: Arc::new(transport),
 +				})
 +			},
