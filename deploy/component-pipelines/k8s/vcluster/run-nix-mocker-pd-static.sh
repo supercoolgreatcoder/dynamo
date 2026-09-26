@@ -28,7 +28,7 @@ for component in dynamo-pd-preprocessor:4 dynamo-pd-selector:4 dynamo-pd-prefill
       '.spec.replicas == $replicas and .status.readyReplicas == $replicas' >/dev/null
 done
 
-binary=/nix/store/g8mr1z39cy1pnb75rvxvxs2gbf58cr2h-agentgateway-component-pipeline-0.0.0-b14ca87d0a/bin/agentgateway
+binary=/nix/store/mqziwjkv1jmnnp84q5ajq67vmqa96jm6-agentgateway-component-pipeline-0.0.0-b14ca87d0a/bin/agentgateway
 "${vc[@]}" exec "$stager_pod" -- test -x \
   "/shared/nix${binary#/nix}"
 
