@@ -1,0 +1,572 @@
+2026-09-26T20:12:21.862631Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=11 request.id=2 headers_us=871 stream_us=39
+static_stage_us prepare=6207 prefill=967 select=769 decode=1506 total=9449
+2026-09-26T20:14:12.891415Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=178 request.id=1014 headers_us=2554 stream_us=8
+static_stage_us prepare=4672 prefill=2626 select=3191 decode=748 total=11237
+2026-09-26T20:14:13.125217Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=160 request.id=2014 headers_us=24840 stream_us=9
+static_stage_us prepare=10436 prefill=24877 select=20238 decode=1017 total=56568
+2026-09-26T20:14:13.286019Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=407 request.id=3014 headers_us=12006 stream_us=3
+static_stage_us prepare=23158 prefill=12053 select=15745 decode=2685 total=53641
+2026-09-26T20:14:13.441858Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=222 request.id=4014 headers_us=10666 stream_us=5
+static_stage_us prepare=12405 prefill=10700 select=16125 decode=2553 total=41783
+2026-09-26T20:14:13.616965Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=471 request.id=5014 headers_us=23807 stream_us=36
+static_stage_us prepare=40486 prefill=23864 select=27483 decode=2058 total=93891
+2026-09-26T20:14:13.766714Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=810 request.id=6014 headers_us=18815 stream_us=4
+static_stage_us prepare=32801 prefill=18839 select=16686 decode=3630 total=71956
+2026-09-26T20:14:13.910778Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=264 request.id=7014 headers_us=15629 stream_us=6
+static_stage_us prepare=29359 prefill=15653 select=29445 decode=824 total=75281
+2026-09-26T20:14:14.070843Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=175 request.id=8014 headers_us=20575 stream_us=9
+static_stage_us prepare=48075 prefill=20612 select=33305 decode=832 total=102824
+2026-09-26T20:14:14.252464Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=132 request.id=9014 headers_us=34199 stream_us=5
+static_stage_us prepare=69589 prefill=34238 select=39521 decode=5377 total=148725
+2026-09-26T20:14:14.400740Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=254 request.id=10014 headers_us=24437 stream_us=4
+static_stage_us prepare=54921 prefill=24462 select=33535 decode=21424 total=134342
+2026-09-26T20:14:14.552041Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=806 request.id=11014 headers_us=27050 stream_us=5
+static_stage_us prepare=45002 prefill=27079 select=26598 decode=2113 total=100792
+2026-09-26T20:14:14.709243Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=790 request.id=12014 headers_us=29785 stream_us=12
+static_stage_us prepare=56658 prefill=29830 select=32996 decode=1557 total=121041
+2026-09-26T20:14:14.874085Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=236 request.id=13012 headers_us=33518 stream_us=11
+static_stage_us prepare=55192 prefill=33567 select=23753 decode=1484 total=113996
+2026-09-26T20:14:15.029875Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=486 request.id=14015 headers_us=31686 stream_us=42
+static_stage_us prepare=54303 prefill=31837 select=25978 decode=1124 total=113242
+2026-09-26T20:14:15.178515Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=786 request.id=15014 headers_us=32906 stream_us=7
+static_stage_us prepare=45835 prefill=32941 select=31544 decode=846 total=111166
+2026-09-26T20:14:15.335793Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=772 request.id=16014 headers_us=29068 stream_us=3
+static_stage_us prepare=50089 prefill=29156 select=26271 decode=1019 total=106535
+2026-09-26T20:14:15.500762Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=510 request.id=17015 headers_us=24483 stream_us=20
+static_stage_us prepare=43925 prefill=24528 select=31220 decode=2880 total=102553
+2026-09-26T20:14:15.646105Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=816 request.id=18015 headers_us=28825 stream_us=12
+static_stage_us prepare=43556 prefill=28864 select=26517 decode=3421 total=102358
+2026-09-26T20:14:15.823553Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=857 request.id=19014 headers_us=34049 stream_us=6
+static_stage_us prepare=61359 prefill=34083 select=30345 decode=762 total=126549
+2026-09-26T20:14:16.002391Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=564 request.id=20014 headers_us=30729 stream_us=5
+static_stage_us prepare=59103 prefill=30763 select=26247 decode=901 total=117014
+2026-09-26T20:14:16.150511Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=280 request.id=21014 headers_us=31309 stream_us=3
+static_stage_us prepare=49475 prefill=31337 select=25342 decode=1487 total=107641
+2026-09-26T20:14:16.308859Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=256 request.id=22013 headers_us=31125 stream_us=4
+static_stage_us prepare=61042 prefill=31154 select=25115 decode=2461 total=119772
+2026-09-26T20:14:16.467594Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=430 request.id=23014 headers_us=27890 stream_us=8
+static_stage_us prepare=51590 prefill=27926 select=25621 decode=884 total=106021
+2026-09-26T20:14:16.616900Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=939 request.id=24011 headers_us=26181 stream_us=5
+static_stage_us prepare=50400 prefill=26210 select=27267 decode=1983 total=105860
+2026-09-26T20:14:16.770678Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=364 request.id=25014 headers_us=20296 stream_us=30
+static_stage_us prepare=56187 prefill=20376 select=19811 decode=709 total=97083
+2026-09-26T20:14:16.914953Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=161 request.id=26014 headers_us=23836 stream_us=27
+static_stage_us prepare=47562 prefill=23905 select=26342 decode=1448 total=99257
+2026-09-26T20:14:17.055748Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=726 request.id=27014 headers_us=23993 stream_us=5
+static_stage_us prepare=51588 prefill=24056 select=25772 decode=852 total=102268
+2026-09-26T20:14:17.233982Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=917 request.id=28015 headers_us=37039 stream_us=12
+static_stage_us prepare=68636 prefill=37073 select=42381 decode=779 total=148869
+2026-09-26T20:14:17.382155Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=708 request.id=29014 headers_us=25990 stream_us=6
+static_stage_us prepare=49719 prefill=26015 select=29622 decode=3815 total=109171
+2026-09-26T20:14:17.532996Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=868 request.id=30014 headers_us=23541 stream_us=9
+static_stage_us prepare=45848 prefill=23567 select=31890 decode=1113 total=102418
+2026-09-26T20:14:17.702908Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=859 request.id=31014 headers_us=28621 stream_us=23
+static_stage_us prepare=48848 prefill=28682 select=26113 decode=762 total=104405
+2026-09-26T20:14:17.857924Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=697 request.id=32015 headers_us=26726 stream_us=24
+static_stage_us prepare=52662 prefill=26783 select=57530 decode=4978 total=141953
+2026-09-26T20:14:18.041139Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=129 request.id=33014 headers_us=29912 stream_us=15
+static_stage_us prepare=37231 prefill=29951 select=33080 decode=6760 total=107022
+2026-09-26T20:14:18.202362Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=633 request.id=34015 headers_us=32591 stream_us=11
+static_stage_us prepare=42555 prefill=32628 select=34342 decode=1226 total=110751
+2026-09-26T20:14:18.367472Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=929 request.id=35014 headers_us=27845 stream_us=15
+static_stage_us prepare=57925 prefill=27888 select=31879 decode=1793 total=119485
+2026-09-26T20:14:18.516556Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=224 request.id=36013 headers_us=32991 stream_us=7
+static_stage_us prepare=42389 prefill=33039 select=25135 decode=1715 total=102278
+2026-09-26T20:14:18.681511Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=917 request.id=37014 headers_us=24141 stream_us=9
+static_stage_us prepare=46316 prefill=24177 select=17086 decode=1222 total=88801
+2026-09-26T20:14:18.835396Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=211 request.id=38014 headers_us=26110 stream_us=18
+static_stage_us prepare=47851 prefill=26158 select=25354 decode=1296 total=100659
+2026-09-26T20:14:18.982005Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=711 request.id=39014 headers_us=26874 stream_us=12
+static_stage_us prepare=42898 prefill=26906 select=24844 decode=2910 total=97558
+2026-09-26T20:14:19.151658Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=945 request.id=40014 headers_us=35662 stream_us=2
+static_stage_us prepare=58314 prefill=35682 select=35505 decode=5162 total=134663
+2026-09-26T20:14:19.315747Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=870 request.id=41014 headers_us=44293 stream_us=3
+static_stage_us prepare=56524 prefill=44367 select=31598 decode=4847 total=137336
+2026-09-26T20:14:19.490213Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=753 request.id=42016 headers_us=27719 stream_us=9
+static_stage_us prepare=56357 prefill=27754 select=37970 decode=848 total=122929
+2026-09-26T20:14:19.665441Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=542 request.id=43013 headers_us=23085 stream_us=9
+static_stage_us prepare=43506 prefill=23119 select=30408 decode=1750 total=98783
+2026-09-26T20:14:19.820269Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=731 request.id=44015 headers_us=27767 stream_us=24
+static_stage_us prepare=48869 prefill=27821 select=32739 decode=980 total=110409
+2026-09-26T20:14:19.961717Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=708 request.id=45014 headers_us=31117 stream_us=16
+static_stage_us prepare=44508 prefill=31190 select=28621 decode=853 total=105172
+2026-09-26T20:14:20.130639Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=231 request.id=46014 headers_us=36728 stream_us=5
+static_stage_us prepare=63066 prefill=36766 select=33640 decode=1261 total=134733
+2026-09-26T20:14:20.285150Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=220 request.id=47014 headers_us=32990 stream_us=9
+static_stage_us prepare=52591 prefill=33024 select=29728 decode=1645 total=116988
+2026-09-26T20:14:20.444595Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=170 request.id=48014 headers_us=26908 stream_us=2
+static_stage_us prepare=56807 prefill=26927 select=32085 decode=3464 total=119283
+2026-09-26T20:14:20.626556Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=490 request.id=49014 headers_us=31160 stream_us=20
+static_stage_us prepare=53064 prefill=31204 select=27478 decode=1430 total=113176
+2026-09-26T20:14:20.775727Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=319 request.id=50015 headers_us=32398 stream_us=6
+static_stage_us prepare=43463 prefill=32471 select=25705 decode=930 total=102569
+2026-09-26T20:14:20.922804Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=371 request.id=51014 headers_us=32068 stream_us=3
+static_stage_us prepare=45861 prefill=32089 select=26639 decode=4526 total=109115
+2026-09-26T20:14:21.084818Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=944 request.id=52014 headers_us=32911 stream_us=11
+static_stage_us prepare=54353 prefill=32944 select=29276 decode=636 total=117209
+2026-09-26T20:14:21.231135Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=193 request.id=53014 headers_us=30415 stream_us=27
+static_stage_us prepare=51132 prefill=30461 select=31398 decode=779 total=113770
+2026-09-26T20:14:21.397339Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=159 request.id=54014 headers_us=33730 stream_us=15
+static_stage_us prepare=47406 prefill=33770 select=38804 decode=878 total=120858
+2026-09-26T20:14:21.556047Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=429 request.id=55014 headers_us=35316 stream_us=5
+static_stage_us prepare=49846 prefill=35339 select=27402 decode=1149 total=113736
+2026-09-26T20:14:21.720083Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=276 request.id=56015 headers_us=34594 stream_us=10
+static_stage_us prepare=56174 prefill=34635 select=28339 decode=1299 total=120447
+2026-09-26T20:14:21.881495Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=515 request.id=57014 headers_us=31455 stream_us=2
+static_stage_us prepare=62291 prefill=31512 select=25952 decode=1022 total=120777
+2026-09-26T20:14:22.037883Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=172 request.id=58014 headers_us=24921 stream_us=4
+static_stage_us prepare=58531 prefill=24951 select=25136 decode=646 total=109264
+2026-09-26T20:14:22.195376Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=581 request.id=59014 headers_us=32101 stream_us=8
+static_stage_us prepare=45024 prefill=32133 select=28841 decode=2189 total=108187
+2026-09-26T20:14:22.338272Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=499 request.id=60014 headers_us=26143 stream_us=4
+static_stage_us prepare=46037 prefill=26171 select=21274 decode=2464 total=95946
+2026-09-26T20:14:22.490469Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=744 request.id=61014 headers_us=32065 stream_us=4
+static_stage_us prepare=49770 prefill=32096 select=30315 decode=942 total=113123
+2026-09-26T20:14:22.634630Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=784 request.id=62014 headers_us=26020 stream_us=83
+static_stage_us prepare=52214 prefill=26131 select=31479 decode=2002 total=111826
+2026-09-26T20:14:22.800716Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=242 request.id=63014 headers_us=28791 stream_us=9
+static_stage_us prepare=50442 prefill=28818 select=33650 decode=996 total=113906
+2026-09-26T20:14:22.979847Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=277 request.id=64014 headers_us=32399 stream_us=4
+static_stage_us prepare=48891 prefill=32427 select=33612 decode=2871 total=117801
+2026-09-26T20:14:23.119006Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=616 request.id=65014 headers_us=30074 stream_us=10
+static_stage_us prepare=41086 prefill=30114 select=22301 decode=1323 total=94824
+2026-09-26T20:14:23.270315Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=535 request.id=66013 headers_us=24674 stream_us=42
+static_stage_us prepare=48349 prefill=24742 select=29343 decode=6030 total=108464
+2026-09-26T20:14:23.428507Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=200 request.id=67015 headers_us=18114 stream_us=9
+static_stage_us prepare=53367 prefill=18175 select=26191 decode=913 total=98646
+2026-09-26T20:14:23.613963Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=504 request.id=68014 headers_us=29940 stream_us=3
+static_stage_us prepare=57695 prefill=29963 select=31721 decode=1782 total=121161
+2026-09-26T20:14:23.783745Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=690 request.id=69014 headers_us=35422 stream_us=31
+static_stage_us prepare=59999 prefill=35474 select=29735 decode=1343 total=126551
+2026-09-26T20:14:23.939033Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=184 request.id=70014 headers_us=27444 stream_us=4
+static_stage_us prepare=55533 prefill=27474 select=34985 decode=3541 total=121533
+2026-09-26T20:14:24.110277Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=680 request.id=71014 headers_us=29815 stream_us=6
+static_stage_us prepare=53012 prefill=29839 select=30938 decode=859 total=114648
+2026-09-26T20:14:24.268753Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=373 request.id=72014 headers_us=27586 stream_us=18
+static_stage_us prepare=58264 prefill=27630 select=29410 decode=968 total=116272
+2026-09-26T20:14:24.411261Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=410 request.id=73013 headers_us=26722 stream_us=5
+static_stage_us prepare=58188 prefill=26759 select=31014 decode=1223 total=117184
+2026-09-26T20:14:24.558716Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=342 request.id=74014 headers_us=24289 stream_us=17
+static_stage_us prepare=50371 prefill=24375 select=33112 decode=863 total=108721
+2026-09-26T20:14:24.729762Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=584 request.id=75014 headers_us=30193 stream_us=14
+static_stage_us prepare=53685 prefill=30225 select=30606 decode=809 total=115325
+2026-09-26T20:14:24.895818Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=249 request.id=76015 headers_us=31217 stream_us=12
+static_stage_us prepare=53759 prefill=31254 select=24459 decode=1197 total=110669
+2026-09-26T20:14:25.057034Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=147 request.id=77014 headers_us=33406 stream_us=4
+static_stage_us prepare=56734 prefill=33440 select=32812 decode=810 total=123796
+2026-09-26T20:14:25.215521Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=804 request.id=78016 headers_us=29922 stream_us=15
+static_stage_us prepare=61378 prefill=29964 select=33214 decode=1897 total=126453
+2026-09-26T20:14:25.349563Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=564 request.id=79014 headers_us=29454 stream_us=17
+static_stage_us prepare=43008 prefill=29507 select=29837 decode=953 total=103305
+2026-09-26T20:14:25.524406Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=613 request.id=80014 headers_us=31061 stream_us=7
+static_stage_us prepare=64085 prefill=31110 select=31305 decode=852 total=127352
+2026-09-26T20:14:25.677256Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=669 request.id=81014 headers_us=30719 stream_us=4
+static_stage_us prepare=49731 prefill=30754 select=23738 decode=1297 total=105520
+2026-09-26T20:14:25.825652Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=590 request.id=82015 headers_us=24177 stream_us=46
+static_stage_us prepare=54409 prefill=24267 select=28739 decode=719 total=108134
+2026-09-26T20:14:25.983859Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=130 request.id=83014 headers_us=28237 stream_us=11
+static_stage_us prepare=47366 prefill=28284 select=26082 decode=1076 total=102808
+2026-09-26T20:14:26.136407Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=215 request.id=84014 headers_us=25274 stream_us=3
+static_stage_us prepare=48072 prefill=25345 select=25843 decode=887 total=100147
+2026-09-26T20:14:26.293287Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=635 request.id=85014 headers_us=25565 stream_us=10
+static_stage_us prepare=55053 prefill=25602 select=31879 decode=2212 total=114746
+2026-09-26T20:14:26.444034Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=660 request.id=86014 headers_us=26804 stream_us=12
+static_stage_us prepare=51640 prefill=26848 select=25285 decode=1762 total=105535
+2026-09-26T20:14:26.593953Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=658 request.id=87014 headers_us=31355 stream_us=26
+static_stage_us prepare=51920 prefill=31412 select=27419 decode=929 total=111680
+2026-09-26T20:14:26.746582Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=304 request.id=88014 headers_us=26762 stream_us=11
+static_stage_us prepare=52439 prefill=26799 select=30599 decode=618 total=110455
+2026-09-26T20:14:26.891100Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=620 request.id=89014 headers_us=27864 stream_us=16
+static_stage_us prepare=46418 prefill=28010 select=30540 decode=1395 total=106363
+2026-09-26T20:14:27.045509Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=650 request.id=90014 headers_us=22457 stream_us=12
+static_stage_us prepare=50945 prefill=22570 select=23435 decode=1698 total=98648
+2026-09-26T20:14:27.203644Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=619 request.id=91014 headers_us=26435 stream_us=4
+static_stage_us prepare=55273 prefill=26460 select=23634 decode=1527 total=106894
+2026-09-26T20:14:27.382799Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=829 request.id=92013 headers_us=34759 stream_us=3
+static_stage_us prepare=68443 prefill=34787 select=26294 decode=2485 total=132009
+2026-09-26T20:14:27.509486Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=241 request.id=93014 headers_us=26788 stream_us=5
+static_stage_us prepare=44557 prefill=26953 select=34133 decode=845 total=106488
+2026-09-26T20:14:27.676767Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=945 request.id=94014 headers_us=32025 stream_us=4
+static_stage_us prepare=54273 prefill=32169 select=29824 decode=839 total=117105
+2026-09-26T20:14:27.839715Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=672 request.id=95015 headers_us=22246 stream_us=12
+static_stage_us prepare=63900 prefill=22285 select=30188 decode=1262 total=117635
+2026-09-26T20:14:27.998302Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=598 request.id=96015 headers_us=19794 stream_us=4
+static_stage_us prepare=54637 prefill=19850 select=28845 decode=1409 total=104741
+2026-09-26T20:14:28.118152Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=477 request.id=97014 headers_us=24398 stream_us=10
+static_stage_us prepare=28010 prefill=24427 select=32338 decode=3023 total=87798
+2026-09-26T20:14:28.331864Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=821 request.id=98014 headers_us=27965 stream_us=116
+static_stage_us prepare=52435 prefill=28100 select=24724 decode=1123 total=106382
+2026-09-26T20:14:28.498813Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=432 request.id=99014 headers_us=35051 stream_us=17
+static_stage_us prepare=51365 prefill=35091 select=26189 decode=1143 total=113788
+2026-09-26T20:14:28.650281Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=919 request.id=100010 headers_us=23267 stream_us=11
+static_stage_us prepare=58753 prefill=23299 select=22085 decode=3034 total=107171
+2026-09-26T20:14:28.810386Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=324 request.id=101014 headers_us=21381 stream_us=4
+static_stage_us prepare=48856 prefill=21406 select=35613 decode=2053 total=107928
+2026-09-26T20:14:28.983349Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=451 request.id=102015 headers_us=32774 stream_us=8
+static_stage_us prepare=52957 prefill=32813 select=27648 decode=1997 total=115415
+2026-09-26T20:14:29.139261Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=647 request.id=103015 headers_us=25435 stream_us=9
+static_stage_us prepare=58484 prefill=25464 select=29390 decode=1638 total=114976
+2026-09-26T20:14:29.412371Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=942 request.id=105013 headers_us=22451 stream_us=17
+static_stage_us prepare=31362 prefill=22642 select=22615 decode=1530 total=78149
+2026-09-26T20:14:29.466971Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=909 request.id=104012 headers_us=38984 stream_us=4
+static_stage_us prepare=222419 prefill=39027 select=30703 decode=2998 total=295147
+2026-09-26T20:14:29.626360Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=801 request.id=106013 headers_us=32836 stream_us=8
+static_stage_us prepare=53687 prefill=32865 select=30543 decode=1042 total=118137
+2026-09-26T20:14:29.771332Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=940 request.id=107015 headers_us=33533 stream_us=14
+static_stage_us prepare=48201 prefill=33573 select=25984 decode=1315 total=109073
+2026-09-26T20:14:29.916147Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=808 request.id=108014 headers_us=31246 stream_us=6
+static_stage_us prepare=47536 prefill=31278 select=22961 decode=923 total=102698
+2026-09-26T20:14:30.072114Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=309 request.id=109014 headers_us=26256 stream_us=7
+static_stage_us prepare=44378 prefill=26282 select=30427 decode=2939 total=104026
+2026-09-26T20:14:30.224191Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=766 request.id=110014 headers_us=29353 stream_us=4
+static_stage_us prepare=48383 prefill=29387 select=30915 decode=870 total=109555
+2026-09-26T20:14:30.368620Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=425 request.id=111014 headers_us=28539 stream_us=4
+static_stage_us prepare=44711 prefill=28707 select=32352 decode=2900 total=108670
+2026-09-26T20:14:30.520451Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=439 request.id=112014 headers_us=25570 stream_us=11
+static_stage_us prepare=47604 prefill=25606 select=23418 decode=770 total=97398
+2026-09-26T20:14:30.684907Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=266 request.id=113014 headers_us=29198 stream_us=29
+static_stage_us prepare=51000 prefill=29250 select=27423 decode=1077 total=108750
+2026-09-26T20:14:30.849522Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=901 request.id=114014 headers_us=30591 stream_us=5
+static_stage_us prepare=55995 prefill=30620 select=32115 decode=2339 total=121069
+2026-09-26T20:14:30.993712Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=732 request.id=115014 headers_us=28204 stream_us=3
+static_stage_us prepare=53995 prefill=28255 select=27162 decode=2161 total=111573
+2026-09-26T20:14:31.149625Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=512 request.id=116014 headers_us=30095 stream_us=37
+static_stage_us prepare=61531 prefill=30199 select=26415 decode=2478 total=120623
+2026-09-26T20:14:31.298680Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=555 request.id=117015 headers_us=27097 stream_us=11
+static_stage_us prepare=46228 prefill=27127 select=25626 decode=805 total=99786
+2026-09-26T20:14:31.467023Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=503 request.id=118012 headers_us=30427 stream_us=4
+static_stage_us prepare=59315 prefill=30453 select=36000 decode=733 total=126501
+2026-09-26T20:14:31.647961Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=749 request.id=119015 headers_us=30900 stream_us=6
+static_stage_us prepare=62958 prefill=30927 select=40927 decode=3922 total=138734
+2026-09-26T20:14:31.829396Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=156 request.id=120014 headers_us=38805 stream_us=7
+static_stage_us prepare=53738 prefill=38847 select=28186 decode=3353 total=124124
+2026-09-26T20:14:31.987316Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=618 request.id=121014 headers_us=26955 stream_us=4
+static_stage_us prepare=54319 prefill=27065 select=37196 decode=2173 total=120753
+2026-09-26T20:14:32.168049Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=770 request.id=122014 headers_us=30348 stream_us=13
+static_stage_us prepare=62009 prefill=30429 select=23880 decode=1728 total=118046
+2026-09-26T20:14:32.320816Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=821 request.id=123015 headers_us=21144 stream_us=13
+static_stage_us prepare=54804 prefill=21182 select=23228 decode=2597 total=101811
+2026-09-26T20:14:32.487307Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=543 request.id=124014 headers_us=27966 stream_us=4
+static_stage_us prepare=44985 prefill=27987 select=34490 decode=1149 total=108611
+2026-09-26T20:14:32.640320Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=412 request.id=125014 headers_us=26722 stream_us=6
+static_stage_us prepare=51858 prefill=26754 select=28513 decode=1146 total=108271
+2026-09-26T20:14:32.808107Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=938 request.id=126014 headers_us=35453 stream_us=19
+static_stage_us prepare=53941 prefill=35492 select=27563 decode=872 total=117868
+2026-09-26T20:14:32.963063Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=509 request.id=127014 headers_us=29961 stream_us=49
+static_stage_us prepare=51932 prefill=30037 select=34897 decode=1132 total=117998
+2026-09-26T20:14:33.129377Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=495 request.id=128014 headers_us=34855 stream_us=6
+static_stage_us prepare=56000 prefill=34897 select=35888 decode=1466 total=128251
+2026-09-26T20:14:33.278700Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=500 request.id=129014 headers_us=29109 stream_us=6
+static_stage_us prepare=46042 prefill=29135 select=26685 decode=1092 total=102954
+2026-09-26T20:14:33.455420Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=440 request.id=130014 headers_us=36977 stream_us=3
+static_stage_us prepare=62007 prefill=37007 select=34574 decode=2865 total=136453
+2026-09-26T20:14:33.633263Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=757 request.id=131014 headers_us=32940 stream_us=5
+static_stage_us prepare=56496 prefill=32966 select=25908 decode=820 total=116190
+2026-09-26T20:14:33.790259Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=168 request.id=132014 headers_us=32823 stream_us=9
+static_stage_us prepare=56737 prefill=32866 select=24432 decode=2597 total=116632
+2026-09-26T20:14:33.948533Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=415 request.id=133014 headers_us=31240 stream_us=62
+static_stage_us prepare=53510 prefill=31341 select=23770 decode=1086 total=109707
+2026-09-26T20:14:34.106640Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=338 request.id=134014 headers_us=30941 stream_us=46
+static_stage_us prepare=56537 prefill=31010 select=30425 decode=2527 total=120499
+2026-09-26T20:14:34.281472Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=313 request.id=135014 headers_us=41148 stream_us=17
+static_stage_us prepare=62373 prefill=41195 select=31612 decode=2458 total=137638
+2026-09-26T20:14:34.478281Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=829 request.id=136014 headers_us=31247 stream_us=4
+static_stage_us prepare=70461 prefill=31274 select=42549 decode=1869 total=146153
+2026-09-26T20:14:34.679824Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=522 request.id=137015 headers_us=30714 stream_us=5
+static_stage_us prepare=82194 prefill=30738 select=28055 decode=2172 total=143159
+2026-09-26T20:14:34.848197Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=162 request.id=138014 headers_us=27067 stream_us=3
+static_stage_us prepare=58330 prefill=27090 select=26105 decode=1908 total=113433
+2026-09-26T20:14:35.040175Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=193 request.id=139015 headers_us=33341 stream_us=16
+static_stage_us prepare=50821 prefill=33390 select=45956 decode=1689 total=131856
+2026-09-26T20:14:35.196741Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=648 request.id=140014 headers_us=32828 stream_us=4
+static_stage_us prepare=46506 prefill=32893 select=29864 decode=1136 total=110399
+2026-09-26T20:14:35.359295Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=504 request.id=141014 headers_us=30684 stream_us=15
+static_stage_us prepare=55614 prefill=30884 select=26550 decode=1844 total=114892
+2026-09-26T20:14:35.506904Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=677 request.id=142014 headers_us=22838 stream_us=3
+static_stage_us prepare=53360 prefill=22864 select=25245 decode=1173 total=102642
+2026-09-26T20:14:35.647155Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=502 request.id=143014 headers_us=24732 stream_us=5
+static_stage_us prepare=43274 prefill=24783 select=28730 decode=2234 total=99021
+2026-09-26T20:14:35.823352Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=284 request.id=144014 headers_us=43025 stream_us=4
+static_stage_us prepare=48744 prefill=43099 select=47719 decode=1535 total=141097
+2026-09-26T20:14:36.001033Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=794 request.id=145014 headers_us=27052 stream_us=6
+static_stage_us prepare=64417 prefill=27079 select=27760 decode=1257 total=120513
+2026-09-26T20:14:36.204316Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=745 request.id=146014 headers_us=39918 stream_us=6
+static_stage_us prepare=74720 prefill=39957 select=43801 decode=1152 total=159630
+2026-09-26T20:14:36.360524Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=385 request.id=147015 headers_us=22838 stream_us=13
+static_stage_us prepare=54804 prefill=23087 select=33567 decode=1330 total=112788
+2026-09-26T20:14:36.545785Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=810 request.id=148015 headers_us=29304 stream_us=35
+static_stage_us prepare=60416 prefill=29369 select=31006 decode=1226 total=122017
+2026-09-26T20:14:36.691331Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=231 request.id=149014 headers_us=25997 stream_us=63
+static_stage_us prepare=48109 prefill=26077 select=31855 decode=893 total=106934
+2026-09-26T20:14:36.859426Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=798 request.id=150016 headers_us=38130 stream_us=6
+static_stage_us prepare=49796 prefill=38157 select=33353 decode=1110 total=122416
+2026-09-26T20:14:37.016065Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=489 request.id=151014 headers_us=31553 stream_us=2
+static_stage_us prepare=52507 prefill=31575 select=30822 decode=1260 total=116164
+2026-09-26T20:14:37.178538Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=267 request.id=152014 headers_us=34265 stream_us=10
+static_stage_us prepare=46789 prefill=34316 select=40817 decode=4907 total=126829
+2026-09-26T20:14:37.356616Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=516 request.id=153014 headers_us=33498 stream_us=4
+static_stage_us prepare=51470 prefill=33522 select=26443 decode=2465 total=113900
+2026-09-26T20:14:37.520736Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=769 request.id=154014 headers_us=31524 stream_us=4
+static_stage_us prepare=59965 prefill=31546 select=24802 decode=1679 total=117992
+2026-09-26T20:14:37.677058Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=916 request.id=155014 headers_us=26283 stream_us=4
+static_stage_us prepare=55796 prefill=26305 select=34712 decode=718 total=117531
+2026-09-26T20:14:37.871512Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=581 request.id=156014 headers_us=38077 stream_us=7
+static_stage_us prepare=80576 prefill=38109 select=28369 decode=1081 total=148135
+2026-09-26T20:14:38.029681Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=573 request.id=157014 headers_us=32028 stream_us=10
+static_stage_us prepare=44522 prefill=32083 select=31463 decode=841 total=108909
+2026-09-26T20:14:38.193009Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=640 request.id=158014 headers_us=26787 stream_us=3
+static_stage_us prepare=51402 prefill=26809 select=34020 decode=1396 total=113627
+2026-09-26T20:14:38.356690Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=500 request.id=159015 headers_us=26952 stream_us=5
+static_stage_us prepare=49962 prefill=26982 select=27822 decode=1170 total=105936
+2026-09-26T20:14:38.534562Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=211 request.id=160014 headers_us=29124 stream_us=4
+static_stage_us prepare=65737 prefill=29148 select=36896 decode=525 total=132306
+2026-09-26T20:14:38.702158Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=524 request.id=161014 headers_us=30619 stream_us=13
+static_stage_us prepare=49453 prefill=30663 select=28032 decode=1333 total=109481
+2026-09-26T20:14:38.870351Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=212 request.id=162014 headers_us=32864 stream_us=2
+static_stage_us prepare=47150 prefill=32886 select=31996 decode=1672 total=113704
+2026-09-26T20:14:39.015988Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=463 request.id=163013 headers_us=25508 stream_us=6
+static_stage_us prepare=47945 prefill=25538 select=33972 decode=1903 total=109358
+2026-09-26T20:14:39.192776Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=657 request.id=164015 headers_us=40687 stream_us=16
+static_stage_us prepare=51760 prefill=40728 select=36156 decode=976 total=129620
+2026-09-26T20:14:39.357021Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=642 request.id=165014 headers_us=24834 stream_us=13
+static_stage_us prepare=62027 prefill=24893 select=30153 decode=1494 total=118567
+2026-09-26T20:14:39.534572Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=551 request.id=166014 headers_us=35522 stream_us=9
+static_stage_us prepare=66298 prefill=35565 select=22261 decode=4025 total=128149
+2026-09-26T20:14:39.706665Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=844 request.id=167014 headers_us=33725 stream_us=8
+static_stage_us prepare=54614 prefill=33762 select=37953 decode=1207 total=127536
+2026-09-26T20:14:39.884741Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=755 request.id=168015 headers_us=41976 stream_us=6
+static_stage_us prepare=62865 prefill=42010 select=27936 decode=2319 total=135130
+2026-09-26T20:14:40.054019Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=842 request.id=169014 headers_us=32501 stream_us=4
+static_stage_us prepare=74849 prefill=32534 select=33323 decode=6932 total=147638
+2026-09-26T20:14:40.210390Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=555 request.id=170014 headers_us=34115 stream_us=7
+static_stage_us prepare=65565 prefill=34343 select=38476 decode=2493 total=140877
+2026-09-26T20:14:40.382307Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=757 request.id=171014 headers_us=32798 stream_us=4
+static_stage_us prepare=60806 prefill=32822 select=33949 decode=4507 total=132084
+2026-09-26T20:14:40.547919Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=359 request.id=172015 headers_us=32624 stream_us=12
+static_stage_us prepare=44323 prefill=32670 select=37120 decode=4879 total=118992
+2026-09-26T20:14:40.720201Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=360 request.id=173013 headers_us=24764 stream_us=13
+static_stage_us prepare=54933 prefill=24807 select=33072 decode=2349 total=115161
+2026-09-26T20:14:40.883079Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=600 request.id=174014 headers_us=34063 stream_us=42
+static_stage_us prepare=50806 prefill=34137 select=36789 decode=958 total=122690
+2026-09-26T20:14:41.061980Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=386 request.id=175014 headers_us=28584 stream_us=5
+static_stage_us prepare=65841 prefill=28614 select=29726 decode=1020 total=125201
+2026-09-26T20:14:41.228120Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=537 request.id=176014 headers_us=31209 stream_us=26
+static_stage_us prepare=54575 prefill=31284 select=35186 decode=721 total=121766
+2026-09-26T20:14:41.407017Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=680 request.id=177013 headers_us=21975 stream_us=3
+static_stage_us prepare=44074 prefill=22096 select=28362 decode=2229 total=96761
+2026-09-26T20:14:41.566413Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=855 request.id=178014 headers_us=26116 stream_us=7
+static_stage_us prepare=55936 prefill=26145 select=35936 decode=1542 total=119559
+2026-09-26T20:14:41.726853Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=524 request.id=179014 headers_us=35330 stream_us=5
+static_stage_us prepare=55160 prefill=35717 select=30616 decode=713 total=122206
+2026-09-26T20:14:41.879002Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=472 request.id=180014 headers_us=32442 stream_us=5
+static_stage_us prepare=52240 prefill=32477 select=31986 decode=2421 total=119124
+2026-09-26T20:14:42.034001Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=186 request.id=181014 headers_us=36050 stream_us=4
+static_stage_us prepare=49293 prefill=36075 select=32694 decode=1585 total=119647
+2026-09-26T20:14:42.196477Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=735 request.id=182014 headers_us=39290 stream_us=13
+static_stage_us prepare=53772 prefill=39330 select=29413 decode=1062 total=123577
+2026-09-26T20:14:42.344845Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=506 request.id=183014 headers_us=25169 stream_us=12
+static_stage_us prepare=59325 prefill=25202 select=31475 decode=1322 total=117324
+2026-09-26T20:14:42.515374Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=954 request.id=184014 headers_us=32354 stream_us=4
+static_stage_us prepare=49788 prefill=32376 select=32520 decode=1097 total=115781
+2026-09-26T20:14:42.670502Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=579 request.id=185014 headers_us=31821 stream_us=5
+static_stage_us prepare=54579 prefill=31852 select=28683 decode=767 total=115881
+2026-09-26T20:14:42.835229Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=558 request.id=186014 headers_us=36669 stream_us=14
+static_stage_us prepare=56662 prefill=36709 select=27727 decode=938 total=122036
+2026-09-26T20:14:42.988238Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=647 request.id=187014 headers_us=25387 stream_us=12
+static_stage_us prepare=54297 prefill=25420 select=30175 decode=1449 total=111341
+2026-09-26T20:14:43.141224Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=431 request.id=188014 headers_us=24998 stream_us=3
+static_stage_us prepare=49425 prefill=25034 select=23443 decode=2044 total=99946
+2026-09-26T20:14:43.301672Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=946 request.id=189014 headers_us=24836 stream_us=15
+static_stage_us prepare=50371 prefill=24873 select=32169 decode=1040 total=108453
+2026-09-26T20:14:43.484066Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=766 request.id=190014 headers_us=33647 stream_us=3
+static_stage_us prepare=66373 prefill=33670 select=33637 decode=1262 total=134942
+2026-09-26T20:14:43.607350Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=603 request.id=191014 headers_us=20748 stream_us=8
+static_stage_us prepare=46576 prefill=21042 select=23107 decode=1264 total=91989
+2026-09-26T20:14:43.764984Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=482 request.id=192014 headers_us=28065 stream_us=6
+static_stage_us prepare=43743 prefill=28135 select=34697 decode=1019 total=107594
+2026-09-26T20:14:43.925352Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=185 request.id=193014 headers_us=27221 stream_us=10
+static_stage_us prepare=48816 prefill=27253 select=25660 decode=873 total=102602
+2026-09-26T20:14:44.079211Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=554 request.id=194014 headers_us=28863 stream_us=18
+static_stage_us prepare=50299 prefill=28916 select=28199 decode=795 total=108209
+2026-09-26T20:14:44.231414Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=671 request.id=195014 headers_us=23832 stream_us=16
+static_stage_us prepare=52228 prefill=23871 select=31630 decode=1255 total=108984
+2026-09-26T20:14:44.402523Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=784 request.id=196014 headers_us=31650 stream_us=3
+static_stage_us prepare=52999 prefill=31675 select=27034 decode=2179 total=113887
+2026-09-26T20:14:44.554604Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=202 request.id=197014 headers_us=37285 stream_us=4
+static_stage_us prepare=49274 prefill=37307 select=29357 decode=1578 total=117516
+2026-09-26T20:14:44.712084Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=852 request.id=198014 headers_us=26773 stream_us=4
+static_stage_us prepare=54183 prefill=26813 select=33555 decode=1078 total=115629
+2026-09-26T20:14:44.892631Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=759 request.id=199014 headers_us=34182 stream_us=5
+static_stage_us prepare=56129 prefill=34300 select=32949 decode=2013 total=125391
+2026-09-26T20:14:45.061089Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=851 request.id=200014 headers_us=27307 stream_us=6
+static_stage_us prepare=67244 prefill=27343 select=29108 decode=1468 total=125163
+2026-09-26T20:14:45.222294Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=288 request.id=201014 headers_us=33355 stream_us=31
+static_stage_us prepare=50556 prefill=33410 select=31094 decode=1289 total=116349
+2026-09-26T20:14:45.394044Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=451 request.id=202014 headers_us=35134 stream_us=9
+static_stage_us prepare=49694 prefill=35237 select=27448 decode=3558 total=115937
+2026-09-26T20:14:45.538780Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=308 request.id=203014 headers_us=26258 stream_us=4
+static_stage_us prepare=47753 prefill=26291 select=27335 decode=834 total=102213
+2026-09-26T20:14:45.698689Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=475 request.id=204014 headers_us=24431 stream_us=5
+static_stage_us prepare=57610 prefill=24550 select=31081 decode=1367 total=114608
+2026-09-26T20:14:45.864514Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=795 request.id=205015 headers_us=24751 stream_us=12
+static_stage_us prepare=56844 prefill=24782 select=37873 decode=974 total=120473
+2026-09-26T20:14:46.028166Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=777 request.id=206014 headers_us=29067 stream_us=8
+static_stage_us prepare=48186 prefill=29109 select=31421 decode=1395 total=110111
+2026-09-26T20:14:46.202397Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=945 request.id=207014 headers_us=35536 stream_us=13
+static_stage_us prepare=52422 prefill=35574 select=30767 decode=1136 total=119899
+2026-09-26T20:14:46.345370Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=810 request.id=208014 headers_us=27839 stream_us=6
+static_stage_us prepare=45405 prefill=27864 select=26424 decode=2769 total=102462
+2026-09-26T20:14:46.511733Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=692 request.id=209014 headers_us=29094 stream_us=3
+static_stage_us prepare=52282 prefill=29122 select=27210 decode=770 total=109384
+2026-09-26T20:14:46.663443Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=920 request.id=210013 headers_us=19447 stream_us=6
+static_stage_us prepare=53563 prefill=19479 select=24783 decode=916 total=98741
+2026-09-26T20:14:46.840569Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=614 request.id=211014 headers_us=36331 stream_us=4
+static_stage_us prepare=52099 prefill=36358 select=25070 decode=2892 total=116419
+2026-09-26T20:14:47.008066Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=461 request.id=212014 headers_us=39975 stream_us=6
+static_stage_us prepare=58943 prefill=40013 select=26304 decode=881 total=126141
+2026-09-26T20:14:47.166170Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=172 request.id=213014 headers_us=27855 stream_us=11
+static_stage_us prepare=61725 prefill=27893 select=20518 decode=2281 total=112417
+2026-09-26T20:14:47.333215Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=843 request.id=214014 headers_us=36767 stream_us=10
+static_stage_us prepare=58114 prefill=36819 select=27925 decode=1125 total=123983
+2026-09-26T20:14:47.500316Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=923 request.id=215014 headers_us=35743 stream_us=2
+static_stage_us prepare=54856 prefill=35763 select=33472 decode=1574 total=125665
+2026-09-26T20:14:47.674117Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=152 request.id=216013 headers_us=38362 stream_us=24
+static_stage_us prepare=45913 prefill=38418 select=24767 decode=3250 total=112348
+2026-09-26T20:14:47.836424Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=205 request.id=217014 headers_us=35103 stream_us=11
+static_stage_us prepare=54787 prefill=35190 select=27782 decode=2997 total=120756
+2026-09-26T20:14:47.995144Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=293 request.id=218014 headers_us=32514 stream_us=13
+static_stage_us prepare=56521 prefill=32559 select=25051 decode=1112 total=115243
+2026-09-26T20:14:48.164237Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=562 request.id=219014 headers_us=36263 stream_us=13
+static_stage_us prepare=60898 prefill=36299 select=31548 decode=3255 total=132000
+2026-09-26T20:14:48.304548Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=582 request.id=220013 headers_us=27021 stream_us=37
+static_stage_us prepare=38031 prefill=27083 select=24487 decode=2283 total=91884
+2026-09-26T20:14:48.438861Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=918 request.id=221013 headers_us=21095 stream_us=9
+static_stage_us prepare=27027 prefill=21128 select=24030 decode=1391 total=73576
+2026-09-26T20:14:48.635045Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=268 request.id=222015 headers_us=19705 stream_us=3
+static_stage_us prepare=28280 prefill=19731 select=28370 decode=1085 total=77466
+2026-09-26T20:14:48.786733Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=851 request.id=223014 headers_us=23049 stream_us=4
+static_stage_us prepare=44410 prefill=23095 select=35064 decode=1752 total=104321
+2026-09-26T20:14:48.942762Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=929 request.id=224014 headers_us=30508 stream_us=3
+static_stage_us prepare=39551 prefill=30539 select=30083 decode=3104 total=103277
+2026-09-26T20:14:49.112813Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=226 request.id=225014 headers_us=32298 stream_us=9
+static_stage_us prepare=49898 prefill=32334 select=25041 decode=807 total=108080
+2026-09-26T20:14:49.262486Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=824 request.id=226014 headers_us=26727 stream_us=4
+static_stage_us prepare=49371 prefill=26768 select=39063 decode=6139 total=121341
+2026-09-26T20:14:49.405904Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=869 request.id=227014 headers_us=21032 stream_us=6
+static_stage_us prepare=39169 prefill=21066 select=28735 decode=2596 total=91566
+2026-09-26T20:14:49.592746Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=168 request.id=228014 headers_us=32264 stream_us=15
+static_stage_us prepare=65422 prefill=32298 select=32326 decode=907 total=130953
+2026-09-26T20:14:49.743609Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=140 request.id=229014 headers_us=31125 stream_us=4
+static_stage_us prepare=53353 prefill=31149 select=29263 decode=1032 total=114797
+2026-09-26T20:14:49.900987Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=455 request.id=230014 headers_us=26744 stream_us=13
+static_stage_us prepare=52417 prefill=26790 select=30212 decode=1790 total=111209
+2026-09-26T20:14:50.069989Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=523 request.id=231014 headers_us=33208 stream_us=9
+static_stage_us prepare=50129 prefill=33241 select=38616 decode=1622 total=123608
+2026-09-26T20:14:50.212505Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=267 request.id=232014 headers_us=27280 stream_us=25
+static_stage_us prepare=41120 prefill=27324 select=27277 decode=1916 total=97637
+2026-09-26T20:14:50.372390Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=380 request.id=233014 headers_us=33271 stream_us=11
+static_stage_us prepare=47332 prefill=33310 select=27678 decode=1383 total=109703
+2026-09-26T20:14:50.523764Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=323 request.id=234014 headers_us=21107 stream_us=5
+static_stage_us prepare=52305 prefill=21136 select=25444 decode=1375 total=100260
+2026-09-26T20:14:50.683301Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=353 request.id=235014 headers_us=33307 stream_us=4
+static_stage_us prepare=46572 prefill=33329 select=33779 decode=1060 total=114740
+2026-09-26T20:14:50.848594Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=913 request.id=236014 headers_us=31664 stream_us=6
+static_stage_us prepare=50434 prefill=31695 select=24537 decode=1258 total=107924
+2026-09-26T20:14:51.001040Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=392 request.id=237014 headers_us=25609 stream_us=6
+static_stage_us prepare=55390 prefill=25634 select=28136 decode=1137 total=110297
+2026-09-26T20:14:51.163532Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=810 request.id=238014 headers_us=32217 stream_us=10
+static_stage_us prepare=54079 prefill=32252 select=26733 decode=1379 total=114443
+2026-09-26T20:14:51.307074Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=852 request.id=239014 headers_us=23571 stream_us=107
+static_stage_us prepare=45974 prefill=23727 select=30970 decode=1381 total=102052
+2026-09-26T20:14:51.488867Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=525 request.id=240014 headers_us=34063 stream_us=4
+static_stage_us prepare=59687 prefill=34109 select=26518 decode=1341 total=121655
+2026-09-26T20:14:51.639076Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=279 request.id=241015 headers_us=27966 stream_us=29
+static_stage_us prepare=59596 prefill=28066 select=32169 decode=1236 total=121067
+2026-09-26T20:14:51.823923Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=373 request.id=242013 headers_us=43171 stream_us=14
+static_stage_us prepare=61311 prefill=43221 select=39188 decode=1509 total=145229
+2026-09-26T20:14:51.993825Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=804 request.id=243014 headers_us=32207 stream_us=16
+static_stage_us prepare=72284 prefill=32252 select=31798 decode=734 total=137068
+2026-09-26T20:14:52.188173Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=925 request.id=244010 headers_us=37064 stream_us=104
+static_stage_us prepare=66400 prefill=37199 select=25583 decode=2745 total=131927
+2026-09-26T20:14:52.347338Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=649 request.id=245014 headers_us=25311 stream_us=8
+static_stage_us prepare=59966 prefill=25338 select=36257 decode=827 total=122388
+2026-09-26T20:14:52.504383Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=877 request.id=246014 headers_us=28170 stream_us=5
+static_stage_us prepare=48366 prefill=28193 select=28034 decode=884 total=105477
+2026-09-26T20:14:52.690854Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=250 request.id=247013 headers_us=34133 stream_us=4
+static_stage_us prepare=52650 prefill=34156 select=35126 decode=673 total=122605
+2026-09-26T20:14:52.850322Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=174 request.id=248014 headers_us=28134 stream_us=12
+static_stage_us prepare=54908 prefill=28164 select=25627 decode=1437 total=110136
+2026-09-26T20:14:53.019299Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=175 request.id=249014 headers_us=28959 stream_us=12
+static_stage_us prepare=58704 prefill=28998 select=31760 decode=1361 total=120823
+2026-09-26T20:14:53.173539Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=291 request.id=250014 headers_us=28655 stream_us=6
+static_stage_us prepare=55017 prefill=28688 select=32694 decode=1743 total=118142
+2026-09-26T20:14:53.346665Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=366 request.id=251014 headers_us=32380 stream_us=36
+static_stage_us prepare=52181 prefill=32466 select=33617 decode=1400 total=119664
+2026-09-26T20:14:53.500018Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=272 request.id=252014 headers_us=23577 stream_us=5
+static_stage_us prepare=51353 prefill=23614 select=28258 decode=685 total=103910
+2026-09-26T20:14:53.655533Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=213 request.id=253014 headers_us=31147 stream_us=14
+static_stage_us prepare=55111 prefill=31183 select=26413 decode=2040 total=114747
+2026-09-26T20:14:53.834460Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=329 request.id=254015 headers_us=27469 stream_us=3
+static_stage_us prepare=54623 prefill=27498 select=27887 decode=1143 total=111151
+2026-09-26T20:14:53.991896Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=764 request.id=255013 headers_us=34330 stream_us=3
+static_stage_us prepare=49141 prefill=34359 select=27586 decode=1119 total=112205
+2026-09-26T20:14:54.148460Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=436 request.id=256014 headers_us=31480 stream_us=5
+static_stage_us prepare=54963 prefill=31510 select=33558 decode=15349 total=135380
+2026-09-26T20:14:54.312676Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=946 request.id=257014 headers_us=32755 stream_us=3
+static_stage_us prepare=43026 prefill=32856 select=25553 decode=1197 total=102632
+2026-09-26T20:14:54.453199Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=283 request.id=258015 headers_us=24068 stream_us=9
+static_stage_us prepare=48714 prefill=24097 select=30433 decode=1526 total=104770
+2026-09-26T20:14:54.617168Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=478 request.id=259014 headers_us=23080 stream_us=12
+static_stage_us prepare=50154 prefill=23119 select=29315 decode=877 total=103465
+2026-09-26T20:14:54.784008Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=535 request.id=260013 headers_us=28065 stream_us=28
+static_stage_us prepare=62503 prefill=28115 select=27993 decode=1333 total=119944
+2026-09-26T20:14:54.935002Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=800 request.id=261015 headers_us=26022 stream_us=6
+static_stage_us prepare=49445 prefill=26139 select=27372 decode=1992 total=104948
+2026-09-26T20:14:55.086798Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=165 request.id=262015 headers_us=27358 stream_us=10
+static_stage_us prepare=51257 prefill=27395 select=31766 decode=1271 total=111689
+2026-09-26T20:14:55.256183Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=577 request.id=263014 headers_us=32018 stream_us=4
+static_stage_us prepare=59661 prefill=32044 select=24187 decode=2187 total=118079
+2026-09-26T20:14:55.404781Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=805 request.id=264014 headers_us=30080 stream_us=12
+static_stage_us prepare=57217 prefill=30125 select=33212 decode=1860 total=122414
+2026-09-26T20:14:55.572971Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=197 request.id=265012 headers_us=35589 stream_us=3
+static_stage_us prepare=47080 prefill=35609 select=29232 decode=1979 total=113900
+2026-09-26T20:14:55.772440Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=382 request.id=266014 headers_us=36295 stream_us=22
+static_stage_us prepare=57483 prefill=36339 select=33557 decode=687 total=128066
+2026-09-26T20:14:55.934990Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=555 request.id=267016 headers_us=36297 stream_us=4
+static_stage_us prepare=43845 prefill=36329 select=30314 decode=1195 total=111683
+2026-09-26T20:14:56.096878Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=532 request.id=268014 headers_us=30664 stream_us=5
+static_stage_us prepare=54408 prefill=30688 select=32653 decode=850 total=118599
+2026-09-26T20:14:56.254633Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=494 request.id=269014 headers_us=24897 stream_us=19
+static_stage_us prepare=55570 prefill=24942 select=29750 decode=1102 total=111364
+2026-09-26T20:14:56.432740Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=350 request.id=270013 headers_us=31168 stream_us=7
+static_stage_us prepare=50742 prefill=31197 select=30436 decode=3544 total=115919
+2026-09-26T20:14:56.582472Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=507 request.id=271014 headers_us=28165 stream_us=19
+static_stage_us prepare=49394 prefill=28213 select=23098 decode=2812 total=103517
+2026-09-26T20:14:56.732983Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=233 request.id=272014 headers_us=28145 stream_us=4
+static_stage_us prepare=48703 prefill=28174 select=24729 decode=2096 total=103702
+2026-09-26T20:14:56.888261Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=838 request.id=273014 headers_us=28951 stream_us=122
+static_stage_us prepare=46225 prefill=29091 select=36076 decode=2113 total=113505
+2026-09-26T20:14:57.047280Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=957 request.id=274014 headers_us=25249 stream_us=9
+static_stage_us prepare=46163 prefill=25286 select=34177 decode=1089 total=106715
+2026-09-26T20:14:57.195095Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=329 request.id=275014 headers_us=25519 stream_us=4
+static_stage_us prepare=47835 prefill=25581 select=24901 decode=1120 total=99437
+2026-09-26T20:14:57.345152Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=136 request.id=276014 headers_us=29451 stream_us=32
+static_stage_us prepare=48313 prefill=29535 select=37098 decode=1161 total=116107
+2026-09-26T20:14:57.509958Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=299 request.id=277015 headers_us=29919 stream_us=3
+static_stage_us prepare=55030 prefill=29944 select=24687 decode=1464 total=111125
+2026-09-26T20:14:57.677553Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=311 request.id=278014 headers_us=28891 stream_us=16
+static_stage_us prepare=61620 prefill=28946 select=25982 decode=1165 total=117713
+2026-09-26T20:14:57.852300Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=925 request.id=279014 headers_us=22953 stream_us=12
+static_stage_us prepare=45434 prefill=23019 select=29138 decode=873 total=98464
+2026-09-26T20:14:58.026559Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=829 request.id=280014 headers_us=32420 stream_us=4
+static_stage_us prepare=42606 prefill=32445 select=28469 decode=2525 total=106045
+2026-09-26T20:14:58.194328Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=877 request.id=281014 headers_us=25930 stream_us=9
+static_stage_us prepare=15088 prefill=25957 select=13577 decode=692 total=55314
+2026-09-26T20:14:58.344156Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=684 request.id=282014 headers_us=20160 stream_us=8
+static_stage_us prepare=16381 prefill=20198 select=13178 decode=735 total=50492
+2026-09-26T20:14:58.514818Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=907 request.id=283014 headers_us=2124 stream_us=11
+static_stage_us prepare=6366 prefill=2154 select=3357 decode=1061 total=12938
+2026-09-26T20:14:58.698451Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=887 request.id=284014 headers_us=5392 stream_us=10
+static_stage_us prepare=8030 prefill=5425 select=4510 decode=820 total=18785
+2026-09-26T20:14:58.891691Z	debug	dynamo_static_rpc_split	static prefill RPC split	connection.id=898 request.id=285014 headers_us=5669 stream_us=3
+static_stage_us prepare=6039 prefill=5689 select=6252 decode=1500 total=19480
