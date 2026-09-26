@@ -581,6 +581,14 @@ the earlier generic and callout results, so static P/D parity is not yet
 established. Mooncake is near the six-client offered-load ceiling; this is not
 a gateway-capacity measurement.
 
+A separate [selector-pool candidate](results/2026-09-26-mocker-pd-agw-static-selector-pool/benchmark_plan.json)
+(`a48d8a30d0`, Nix output
+`/nix/store/mqziwjkv1jmnnp84q5ajq67vmqa96jm6-agentgateway-component-pipeline-0.0.0-b14ca87d0a`)
+also pooled 32 independent selector connections. Its first ISL4000 trial
+passed all audit gates at 6,043.03 summed and 5,957.69 globally normalized
+successful RPS. This small gain does not explain the main static-versus-generic
+gap; short and Mooncake were not run on that candidate.
+
 To reproduce, build the pinned envs flake, stage its output with
 `stage-nix-closure.sh` and a fresh stage ID, then set the explicit
 `VCLUSTER_KUBECONFIG`, `VCLUSTER_EXPECTED_SERVER`, `VCLUSTER_NAMESPACE`,

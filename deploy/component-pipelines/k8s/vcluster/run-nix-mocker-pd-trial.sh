@@ -40,8 +40,8 @@ elif [[ ${3:-} == callouts ]]; then
   arm=pd-envoy-callouts
   export PD_RECORD_EXPORT=0
 elif [[ ${3:-} == static ]]; then
-  export RESULT_DIR=$script_dir/results/2026-09-26-mocker-pd-agw-static-pool
-  plan_sha256=57863f8e4666996e82db06e2728da738c6845387b625139f8f6af7c58f079240
+  export RESULT_DIR=$script_dir/results/2026-09-26-mocker-pd-agw-static-selector-pool
+  plan_sha256=219073fe0a67eb23d58d29bc22dfd9336ae114379e176bd287b0abfc60d01bd0
   job_prefix=nixpds
   arm=pd-agw-static
   export PD_RECORD_EXPORT=0
