@@ -13,6 +13,8 @@ set -euo pipefail
 [[ $PD_AGW_BINARY == /nix/store/*/bin/agentgateway ]] || exit 2
 stats_interval=${PD_GENERIC_STATS_INTERVAL_SECS:-0}
 [[ $stats_interval =~ ^[0-9]+$ ]] && (( stats_interval <= 3600 )) || exit 2
+worker_threads=${PD_WORKER_THREADS:-}
+[[ -z $worker_threads || ( $worker_threads =~ ^[1-9][0-9]*$ && $worker_threads -le 32 ) ]] || exit 2
 correlated_timing=${PD_GENERIC_CORRELATED_TIMING:-0}
 [[ $correlated_timing == 0 || $correlated_timing == 1 ]] || exit 2
 rust_log=${PD_RUST_LOG:-warn,dynamo_generic_pipeline_stats=debug}
@@ -35,6 +37,16 @@ done
   jq -e '.data["disaggregated.yaml"] | contains("operationId: generateRaw")' >/dev/null
 stager_pod=${NIX_STAGER_POD:-dynamo-component-store-stager}
 "${vc[@]}" exec "$stager_pod" -- test -x "/shared/nix${PD_AGW_BINARY#/nix}"
+if [[ -n $worker_threads ]]; then
+  source_config=$("${vc[@]}" get configmap dynamo-pd-agw-generic -o json)
+  config=$(jq -c --arg threads "$worker_threads" '
+    {apiVersion,kind,metadata:{name:"dynamo-pd-agw-generic"},data:.data}
+    | .data["config.yaml"] |= gsub("workerThreads: [0-9]+"; "workerThreads: " + $threads)
+  ' <<<"$source_config")
+  [[ $(jq -r '.data["config.yaml"]' <<<"$config") == *"workerThreads: $worker_threads"* ]] || exit 2
+  printf '%s\n' "$config" | "${vc[@]}" apply --dry-run=server -f - >/dev/null
+  printf '%s\n' "$config" | "${vc[@]}" apply -f -
+fi
 source_deployment=$("${vc[@]}" get deployment dynamo-pd-agw-generic -o json)
 deployment=$(jq -c --arg binary "$PD_AGW_BINARY" \
   --arg interval "$stats_interval" --arg correlated "$correlated_timing" --arg rust_log "$rust_log" '
