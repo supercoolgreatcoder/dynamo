@@ -60,6 +60,13 @@ if [ "$actual_server" != "$VCLUSTER_EXPECTED_SERVER" ]; then
 fi
 
 kubectl_vc=(kubectl --kubeconfig "$VCLUSTER_KUBECONFIG" -n "$VCLUSTER_NAMESPACE")
+stager_pod=${NIX_STAGER_POD:-dynamo-component-store-stager}
+"${kubectl_vc[@]}" get pod "$stager_pod" -o json |
+  jq -e '.status.phase == "Running" and
+    (.status.containerStatuses | length > 0 and all(.[]; .ready))' >/dev/null || {
+    echo "store stager $stager_pod must be Running and Ready before creating a benchmark Job" >&2
+    exit 2
+  }
 if [[ $record_export == 1 ]]; then
   job="nixpdr-${workload}-${arm}-${trial}"
 elif [ "$arm" = pd-agw-static ]; then
@@ -137,11 +144,11 @@ echo "waiting for $job (start barrier $BENCHMARK_START_UNIX)" >&2
 out="$RESULT_DIR/raw_aiperf/$job"
 mkdir -p "$out"
 if [[ $record_export == 1 ]]; then
-  "${kubectl_vc[@]}" exec -i "${NIX_STAGER_POD:-dynamo-component-store-stager}" -- \
+  "${kubectl_vc[@]}" exec -i "$stager_pod" -- \
     sh -c "cd /shared/nix/aiperf/results/$job && tar -cf - ?/profile_export_aiperf.json ?/profile_export_aiperf.csv ?/profile_export_console.txt ?/profile_export.jsonl" |
     tar -C "$out" -xf -
 else
-  "${kubectl_vc[@]}" exec -i "${NIX_STAGER_POD:-dynamo-component-store-stager}" -- \
+  "${kubectl_vc[@]}" exec -i "$stager_pod" -- \
     sh -c "cd /shared/nix/aiperf/results/$job && tar -cf - ?/profile_export_aiperf.json ?/profile_export_aiperf.csv ?/profile_export_console.txt" |
     tar -C "$out" -xf -
 fi

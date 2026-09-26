@@ -14,7 +14,7 @@ component=$1
 [[ $VCLUSTER_NAMESPACE == dynamo-components-v2 ]] || exit 2
 [[ $PD_RPC_BINARY == /nix/store/*/bin/dynamo-component-facade ]] || exit 2
 sample_every=${PD_RPC_SAMPLE_EVERY:-0}
-[[ $sample_every == 0 || $sample_every == 1000 ]] || exit 2
+[[ $sample_every == 0 || $sample_every == 1 || $sample_every == 1000 ]] || exit 2
 actual_server=$(kubectl --kubeconfig "$VCLUSTER_KUBECONFIG" \
   config view --minify -o jsonpath='{.clusters[0].cluster.server}')
 [[ $actual_server == "$VCLUSTER_EXPECTED_SERVER" ]] || exit 2
