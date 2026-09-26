@@ -14,23 +14,28 @@ frozen raw ISL4000 payload (SHA256
 preprocessor, four selector, four prefill, and 16 decode mock-worker replicas.
 Each AIPerf node carries three clients. The gateway is pinned to one
 32-core node; its `workerThreads` setting is the only gateway change in
-`r87`. All valid runs had zero AIPerf errors or cancellations.
+`r87`. All window-valid runs had zero AIPerf errors or cancellations.
+However, the third AIPerf node (`...-79r2b`) also hosted four of our
+decode mockers and four unrelated KV workers. The nine-client runs are
+therefore **not isolated client-scaling comparisons** with the six-client
+runs, and must not be used as a clean gateway-ceiling estimate.
 
 | Job | Clients/nodes | Gateway workers | Requests | Exported RPS | Start skew | Audit |
 | --- | ---: | ---: | ---: | ---: | ---: | --- |
-| r82 | 6 / 2 | 16 | 438,896 | 9,729.20 | 2 s | valid |
-| r84 | 9 / 3 | 16 | 468,800 | 10,397.18 | 3 s | valid |
-| r85 | 6 / 2 | 16 | 447,638 | 9,916.35 | 2 s | valid |
-| r86 | 9 / 3 | 16 | 456,667 | 10,130.22 | 1 s | valid |
-| r87 | 9 / 3 | 32 | 469,022 | 10,402.32 | 1 s | valid |
+| r82 | 6 / 2 | 16 | 438,896 | 9,729.20 | 2 s | window-valid |
+| r84 | 9 / 3 | 16 | 468,800 | 10,397.18 | 3 s | window-valid; shared node |
+| r85 | 6 / 2 | 16 | 447,638 | 9,916.35 | 2 s | window-valid |
+| r86 | 9 / 3 | 16 | 456,667 | 10,130.22 | 1 s | window-valid; shared node |
+| r87 | 9 / 3 | 32 | 469,022 | 10,402.32 | 1 s | window-valid; shared node |
 
 The two six-client controls have a 9,822.78 RPS midpoint; the two
 nine-client/16-worker runs have a 10,263.70 RPS midpoint (+4.49%).
 Nine-client effective concurrency was about 108–122 per client, versus
 about 45–68 in the earlier six-client correlated generic run. This is
-consistent with the nine-client run applying more load, but does not by
-itself locate the remaining bottleneck. The one 32-worker result is within
-the observed nine-client range and does not establish a throughput gain.
+consistent with the nine-client run applying more load, but node-C
+co-location prevents attributing the small throughput difference to the
+gateway. The one 32-worker result is within the observed nine-client range
+and does not establish a throughput gain in this shared-node topology.
 
 Read-only cgroup `cpu.stat` samples from the gateway Pod, both entirely
 inside the exported measurement windows, are retained in
@@ -40,8 +45,8 @@ used 478,214,544 CPU µs over 31 s, or approximately 15.43 cores. The
 24.07 cores. Both reported zero cgroup throttling. Extra worker threads
 therefore increased CPU use substantially without a comparably large
 RPS improvement; this single pair cannot distinguish contention in the
-gateway from a saturated downstream component. Scaling components or
-profiling the gateway is the next attribution test.
+gateway from a saturated downstream component or shared-node client
+interference. An isolated load-generator topology is required next.
 
 `r83` is deliberately **excluded**. Its twelve Pods targeted a fourth node
 that was `Ready` but tainted and unschedulable. Only three Pods initially
