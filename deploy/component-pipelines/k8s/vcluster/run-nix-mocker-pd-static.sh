@@ -21,6 +21,8 @@ dry_run=${PD_DRY_RUN:-0}
 preprocess_linger_us=${PD_PREPROCESS_BATCH_LINGER_US:-200}
 [[ $preprocess_linger_us =~ ^[0-9]+$ ]] &&
   (( preprocess_linger_us <= 1000000 )) || exit 2
+preprocess_batch_max=${PD_PREPROCESS_BATCH_MAX:-}
+[[ -z $preprocess_batch_max || ( $preprocess_batch_max =~ ^[1-9][0-9]*$ && $preprocess_batch_max -le 128 ) ]] || exit 2
 worker_threads=${PD_WORKER_THREADS:-12}
 [[ $worker_threads =~ ^[1-9][0-9]*$ ]] &&
   (( worker_threads <= 128 )) || exit 2
@@ -69,7 +71,7 @@ config=$(jq -c --arg threads "$worker_threads" '
 apply_json "$config"
 
 source_deployment=$("${vc[@]}" get deployment agw-static -o json)
-deployment=$(jq -c --arg binary "$binary" --arg linger "$preprocess_linger_us" --arg channels "$grpc_channels" --arg timing "$stage_timing_every" --arg batch_stats "$batch_stats_every" --arg rust_log "$rust_log" '
+deployment=$(jq -c --arg binary "$binary" --arg linger "$preprocess_linger_us" --arg batch_max "$preprocess_batch_max" --arg channels "$grpc_channels" --arg timing "$stage_timing_every" --arg batch_stats "$batch_stats_every" --arg rust_log "$rust_log" '
   {apiVersion,kind,metadata:{name:"dynamo-pd-agw-static"},spec:.spec}
   | .spec.replicas=1
   | .spec.selector.matchLabels.app="dynamo-pd-agw-static"
@@ -89,6 +91,11 @@ deployment=$(jq -c --arg binary "$binary" --arg linger "$preprocess_linger_us" -
   | .spec.template.spec.containers[0].env |= map(
       if .name == "DYN_PREPROCESS_BATCH_LINGER_US"
       then .value=$linger else . end)
+  | .spec.template.spec.containers[0].env |= (
+      if $batch_max == "" then .
+      else map(select(.name != "DYN_PREPROCESS_BATCH_MAX")) +
+        [{name:"DYN_PREPROCESS_BATCH_MAX",value:$batch_max}]
+      end)
   | .spec.template.spec.containers[0].env |= (
       if $channels == "" then .
       else map(select(.name != "DYN_GRPC_CHANNELS_PER_ENDPOINT")) +
