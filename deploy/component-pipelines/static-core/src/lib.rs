@@ -185,7 +185,20 @@ pub struct StaticAggregatePipeline {
     next_selector: Arc<AtomicUsize>,
     prefill_channels: Option<Arc<Vec<Channel>>>,
     next_prefill: Arc<AtomicUsize>,
-    worker_channels: Arc<Mutex<HashMap<String, Channel>>>,
+    worker_channels: Arc<Mutex<HashMap<String, Arc<ChannelPool>>>>,
+    worker_channels_per_endpoint: usize,
+}
+
+struct ChannelPool {
+    channels: Vec<Channel>,
+    next: AtomicUsize,
+}
+
+impl ChannelPool {
+    fn next(&self) -> Channel {
+        let index = self.next.fetch_add(1, Ordering::Relaxed) % self.channels.len();
+        self.channels[index].clone()
+    }
 }
 
 impl StaticAggregatePipeline {
@@ -199,6 +212,7 @@ impl StaticAggregatePipeline {
             prefill_channels: None,
             next_prefill: Arc::new(AtomicUsize::new(0)),
             worker_channels: Arc::new(Mutex::new(HashMap::new())),
+            worker_channels_per_endpoint: 1,
         }
     }
 
@@ -291,26 +305,27 @@ impl StaticAggregatePipeline {
             prefill_channels,
             next_prefill: Arc::new(AtomicUsize::new(0)),
             worker_channels: Arc::new(Mutex::new(HashMap::new())),
+            worker_channels_per_endpoint: pool_size,
         })
     }
 
     async fn worker_channel(&self, endpoint: &str) -> Result<Channel, PipelineError> {
-        if let Some(channel) = self.worker_channels.lock().await.get(endpoint).cloned() {
-            return Ok(channel);
+        let mut pools = self.worker_channels.lock().await;
+        if let Some(pool) = pools.get(endpoint) {
+            return Ok(pool.next());
         }
-        let channel = Channel::from_shared(endpoint.to_string())
-            .map_err(|error| PipelineError::Endpoint(error.to_string()))?
-            .tcp_nodelay(true)
-            .initial_stream_window_size(Some(GRPC_STREAM_WINDOW_BYTES))
-            .initial_connection_window_size(Some(GRPC_CONNECTION_WINDOW_BYTES))
-            .connect()
-            .await
-            .map_err(|error| PipelineError::Endpoint(error.to_string()))?;
-        self.worker_channels
-            .lock()
-            .await
-            .insert(endpoint.to_string(), channel.clone());
-        Ok(channel)
+        // Match the generic gRPC transport: lazy channels are independent
+        // HTTP/2 connections, and their construction does not await network
+        // I/O while holding the endpoint-map lock.
+        let configured = configured_endpoint(endpoint.to_string())?;
+        let pool = Arc::new(ChannelPool {
+            channels: (0..self.worker_channels_per_endpoint)
+                .map(|_| configured.clone().connect_lazy())
+                .collect(),
+            next: AtomicUsize::new(0),
+        });
+        pools.insert(endpoint.to_string(), pool.clone());
+        Ok(pool.next())
     }
 
     /// Execute the compiled prepare -> [prefill] -> select -> decode/postprocess state machine.
