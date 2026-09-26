@@ -7,7 +7,7 @@
 set -euo pipefail
 
 if [ "$#" -ne 3 ]; then
-  echo "usage: $0 {agw-static|agw-generic|envoy-generic|envoy-callouts|dynamo-reference} {short|isl4000|mooncake} rN" >&2
+  echo "usage: $0 {agw-static|agw-generic|envoy-generic|envoy-callouts|dynamo-reference|pd-agw-generic} {short|isl4000|mooncake} rN" >&2
   exit 2
 fi
 
@@ -20,6 +20,7 @@ case "$arm" in
   envoy-generic) service=envoy-independent ;;
   envoy-callouts) service=envoy-callouts ;;
   dynamo-reference) service=dynamo-frontend-reference ;;
+  pd-agw-generic) service=dynamo-pd-agw-generic ;;
   *) echo "unsupported arm: $arm" >&2; exit 2 ;;
 esac
 case "$workload" in
@@ -51,7 +52,13 @@ if [ "$actual_server" != "$VCLUSTER_EXPECTED_SERVER" ]; then
 fi
 
 kubectl_vc=(kubectl --kubeconfig "$VCLUSTER_KUBECONFIG" -n "$VCLUSTER_NAMESPACE")
-job="nixv2-${workload}-${arm}-${trial}"
+if [ "$arm" = pd-agw-generic ] && [ "$workload" = mooncake ] && [ "${BENCHMARK_DURATION:-45}" = 46 ]; then
+  job="nixpdg-${workload}-${arm}-${trial}"
+elif [ "$arm" = pd-agw-generic ]; then
+  job="nixpd-${workload}-${arm}-${trial}"
+else
+  job="nixv2-${workload}-${arm}-${trial}"
+fi
 if "${kubectl_vc[@]}" get job "$job" >/dev/null 2>&1; then
   echo "refusing to reuse existing Job $job" >&2
   exit 2
@@ -61,7 +68,12 @@ fi
     echo "gateway deployment $service must be exactly 1/1 Ready" >&2
     exit 2
   }
-for component in dynamo-preprocessor:4 dynamo-selector:1 dynamo-benchmark-worker:16; do
+if [ "$arm" = pd-agw-generic ]; then
+  components=(dynamo-pd-preprocessor:4 dynamo-pd-selector:4 dynamo-pd-prefill:4 dynamo-pd-decode:16)
+else
+  components=(dynamo-preprocessor:4 dynamo-selector:1 dynamo-benchmark-worker:16)
+fi
+for component in "${components[@]}"; do
   name=${component%:*}
   expected=${component#*:}
   "${kubectl_vc[@]}" get deployment "$name" -o json |
@@ -83,9 +95,13 @@ export VCLUSTER_NAMESPACE AIPERF_NODE_A AIPERF_NODE_B
 export NIX_STORE_NFS_SERVER NIX_STORE_NFS_PATH
 export BENCHMARK_START_UNIX=$(( $(date -u +%s) + 90 ))
 if [ "$workload" = mooncake ]; then
+  export BENCHMARK_DURATION=${BENCHMARK_DURATION:-45}
+  [[ $BENCHMARK_DURATION == 45 ]] || {
+    [[ $arm == pd-agw-generic && $BENCHMARK_DURATION == 46 ]] || exit 2
+  }
   export JOB_NAME=$job ARM_NAME=$arm
   export TARGET_URL="http://${service}:8080/v1/chat/completions"
-  "$envsubst_bin" '${JOB_NAME} ${VCLUSTER_NAMESPACE} ${ARM_NAME} ${AIPERF_NODE_A} ${AIPERF_NODE_B} ${BENCHMARK_START_UNIX} ${TARGET_URL} ${NIX_STORE_NFS_SERVER} ${NIX_STORE_NFS_PATH}' \
+  "$envsubst_bin" '${JOB_NAME} ${VCLUSTER_NAMESPACE} ${ARM_NAME} ${AIPERF_NODE_A} ${AIPERF_NODE_B} ${BENCHMARK_START_UNIX} ${TARGET_URL} ${BENCHMARK_DURATION} ${NIX_STORE_NFS_SERVER} ${NIX_STORE_NFS_PATH}' \
     < "$(dirname "$0")/mooncake-job.yaml.tmpl" | "${kubectl_vc[@]}" apply -f -
 else
   export RUN_NAME=$job ARM_SERVICE=$service DATASET=$dataset

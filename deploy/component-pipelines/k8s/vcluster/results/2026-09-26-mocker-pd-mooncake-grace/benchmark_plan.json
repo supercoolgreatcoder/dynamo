@@ -1,0 +1,55 @@
+{
+  "plan_id": "mocker-pd-agw-generic-mooncake-grace-v1",
+  "benchmark_series_id_by_workload": {
+    "mooncake": "mocker-pd-agw-generic-mooncake-grace-v1-2026-09-26"
+  },
+  "question": "Does one additional AIPerf drain second retain every scheduled Mooncake request without changing trace timestamps or serving topology?",
+  "intent": "trace-completeness diagnostic; distinct series from the 45-second reference replay",
+  "candidate": {
+    "source_commit": "995c04e74f785a498470f305d37875703fb72b86",
+    "facade_nix_output": "/nix/store/w77ac5nlyc9543kgkwdxpf9a7yk5l7y6-dynamo-component-facade-1.6.0-995c04e74f",
+    "gateway_nix_output": "/nix/store/d9n60x9aylvjvj9j56654640xshsai1x-dynamo-component-pipelines-accf6af699",
+    "graph": "deploy/component-pipelines/graphs/disaggregated.yaml",
+    "gateway_replicas": 1,
+    "preprocessor_replicas": 4,
+    "selector_replicas": 4,
+    "prefill_replicas": 4,
+    "decode_replicas": 16,
+    "worker_kind": "synthetic benchmark-only Dynamo AsyncEngine behind the real facade"
+  },
+  "execution": {
+    "vcluster_server": "https://gateway-poc.mkhadkevich-dev:443",
+    "namespace": "dynamo-components-v2",
+    "endpoint": "http://dynamo-pd-agw-generic:8080/v1/chat/completions",
+    "model": "Qwen/Qwen2.5-0.5B-Instruct",
+    "tokenizer": "Qwen/Qwen2.5-0.5B-Instruct",
+    "endpoint_type": "chat",
+    "streaming": true,
+    "clients": 6,
+    "concurrency_per_client": 128,
+    "benchmark_duration_seconds": 46,
+    "repetitions_per_workload": 1,
+    "seed": 42,
+    "aiperf_version": "0.12.0",
+    "aiperf_image": "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
+    "aiperf_version_resolution": "Reference-reproduction exception: AIPerf 0.12.0 retains the original replay semantics; 0.13.0 single-manager Mooncake preparation failed before measurement",
+    "aiperf_nodes": ["cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67", "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4"],
+    "measurement_limit_seconds": 1800,
+    "raw_summary_export": true,
+    "per_request_export": false
+  },
+  "workloads": {
+    "mooncake": {
+      "source": "frozen_reference_trace_with_prebuilt_mmap_cache",
+      "path": "/shared/aiperf/mooncake-qwen2.5-0.5b/mooncake-512-context.jsonl",
+      "sha256": "28a94e9bc1b63fdc88e5217bdd5c647a0487c08c83bdc64a814ec0840562f550",
+      "rows_per_client": 22699,
+      "schedule": "fixed_trace_timestamps_with_one_second_completion_grace",
+      "isl_block_size": 512,
+      "tokenization_during_measurement": false
+    }
+  },
+  "metrics": ["successful_requests_per_second", "output_tokens_per_second", "request_latency", "errors", "cancelled"],
+  "quality_gates": "Six completed clients, six mmap cache hits, zero errors/cancellations, and all 136194 scheduled requests present in successful AIPerf counts",
+  "comparison_limit": "The extra drain second changes the measured window. Do not compare RPS to the 45-second reference as a same-series performance result."
+}
