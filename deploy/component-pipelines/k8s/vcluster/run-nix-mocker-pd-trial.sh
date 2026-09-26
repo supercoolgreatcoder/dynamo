@@ -6,7 +6,7 @@
 # identity even when the AIPerf export validation fails.
 set -euo pipefail
 [[ $# -ge 2 && $# -le 3 && $1 =~ ^(short|isl4000|mooncake)$ && $2 =~ ^r[1-9][0-9]*$ ]] || {
-  echo "usage: $0 {short|isl4000|mooncake} rN [grace|envoy|envoy-unified|callouts|callouts-unified|static|static-unified|static-channels4|static-channels4-threads16|static-linger100|static-linger0|static-tuned-timing|static-batch-diagnostic|static-batch-diagnostic-off|static-batch-clock-only|static-batch64|static-summary-off|static-summary-on|static-batch16|static-async-handler|generic-refresh|generic-metadata|generic-unified|generic-unified-rest|generic-step-stats-off|generic-step-stats-on|agw-records|envoy-records]" >&2
+  echo "usage: $0 {short|isl4000|mooncake} rN [grace|envoy|envoy-unified|callouts|callouts-unified|static|static-unified|static-channels4|static-channels4-threads16|static-linger100|static-linger0|static-tuned-timing|static-batch-diagnostic|static-batch-diagnostic-off|static-batch-clock-only|static-batch64|static-summary-off|static-summary-on|static-batch16|static-shards1|static-shards2|static-async-handler|generic-refresh|generic-metadata|generic-unified|generic-unified-rest|generic-step-stats-off|generic-step-stats-on|agw-records|envoy-records]" >&2
   exit 2
 }
 workload=$1
@@ -147,6 +147,20 @@ elif [[ ${3:-} == static-batch16 ]]; then
   job_prefix=nixpds
   arm=pd-agw-static
   export PD_RECORD_EXPORT=0
+elif [[ ${3:-} == static-shards1 ]]; then
+  [[ $workload == isl4000 ]] || exit 2
+  export RESULT_DIR=$script_dir/results/2026-09-26-mocker-pd-static-shards1
+  plan_sha256=4ba4b57064a38ca4af7fc9bf941d63eb70bd5a8b8fdf631b97ceee3a41a6171f
+  job_prefix=nixpds
+  arm=pd-agw-static
+  export PD_RECORD_EXPORT=0
+elif [[ ${3:-} == static-shards2 ]]; then
+  [[ $workload == isl4000 ]] || exit 2
+  export RESULT_DIR=$script_dir/results/2026-09-26-mocker-pd-static-shards2
+  plan_sha256=cbd01dccb99d923ddf2f85c91d5aa4f4191f68c2b24bb5ad6fa0a0fa234e0c81
+  job_prefix=nixpds
+  arm=pd-agw-static
+  export PD_RECORD_EXPORT=0
 elif [[ ${3:-} == static-async-handler ]]; then
   [[ $workload == isl4000 ]] || exit 2
   export RESULT_DIR=$script_dir/results/2026-09-26-mocker-pd-static-async-handler
@@ -258,9 +272,10 @@ if [[ $arm == pd-agw-static ]]; then
   expected_timing=$(jq -r '.candidate.stage_timing_every // 0 | tostring' "$plan")
   expected_batch_stats=$(jq -r '.candidate.batch_stats_every // 0 | tostring' "$plan")
   expected_batch_summary=$(jq -r '.candidate.batch_summary_secs // 0 | tostring' "$plan")
+  expected_batch_shards=$(jq -r '.candidate.batch_shards // 1 | tostring' "$plan")
   expected_rust_log=$(jq -r '.candidate.rust_log // ""' "$plan")
   "${vc[@]}" get deployment dynamo-pd-agw-static -o json |
-    jq -e --arg binary "$expected_binary" --arg linger "$expected_linger" --arg batch_max "$expected_batch_max" --arg timing "$expected_timing" --arg batch_stats "$expected_batch_stats" --arg summary "$expected_batch_summary" --arg rust_log "$expected_rust_log" --arg channels "$expected_channels" '
+    jq -e --arg binary "$expected_binary" --arg linger "$expected_linger" --arg batch_max "$expected_batch_max" --arg timing "$expected_timing" --arg batch_stats "$expected_batch_stats" --arg summary "$expected_batch_summary" --arg shards "$expected_batch_shards" --arg rust_log "$expected_rust_log" --arg channels "$expected_channels" '
       .spec.template.spec.containers[0].command[0] == $binary
       and any(.spec.template.spec.containers[0].env[];
         .name == "DYN_PREFILL_ENDPOINT" and .value == "http://dynamo-pd-prefill:50051")
@@ -279,6 +294,12 @@ if [[ $arm == pd-agw-static ]]; then
           .name != "DYN_STATIC_BATCH_SUMMARY_SECS")
       else any(.spec.template.spec.containers[0].env[];
           .name == "DYN_STATIC_BATCH_SUMMARY_SECS" and .value == $summary)
+      end)
+      and (if $shards == "1" then
+        all(.spec.template.spec.containers[0].env[];
+          .name != "DYN_PREPROCESS_BATCH_SHARDS")
+      else any(.spec.template.spec.containers[0].env[];
+          .name == "DYN_PREPROCESS_BATCH_SHARDS" and .value == $shards)
       end)
       and ($rust_log == "" or any(.spec.template.spec.containers[0].env[];
         .name == "RUST_LOG" and .value == $rust_log))
@@ -378,7 +399,8 @@ fi
 job_json=$("${vc[@]}" get job "$job" -o json)
 pods_json=$("${vc[@]}" get pods -l "job-name=$job" -o json)
 cleanup_log_follow
-if [[ ${3:-} == static-summary-on || ${3:-} == static-batch16 ]]; then
+if [[ ${3:-} == static-summary-on || ${3:-} == static-batch16 ||
+      ${3:-} == static-shards1 || ${3:-} == static-shards2 ]]; then
   gateway_pod=$("${vc[@]}" get pods -l app=dynamo-pd-agw-static -o json |
     jq -er '[.items[] | select(.metadata.deletionTimestamp == null) |
       select(.status.phase == "Running") |
