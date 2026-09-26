@@ -11,6 +11,7 @@ from datetime import datetime
 from pathlib import Path
 
 FIELD = re.compile(r"(?:^|\s)([a-z_][a-z_0-9]*)=([^\s]+)")
+ANSI = re.compile(r"\x1b\[[0-9;]*m")
 
 
 def events(paths: list[Path], target: str, **filters: str) -> dict[str, dict]:
@@ -18,9 +19,12 @@ def events(paths: list[Path], target: str, **filters: str) -> dict[str, dict]:
     for path in paths:
         with path.open(encoding="utf-8") as log:
             for line in log:
-                if f"\t{target}\t" not in line:
+                line = ANSI.sub("", line)
+                if target not in line:
                     continue
-                fields = dict(FIELD.findall(line))
+                fields = {
+                    key: value.strip('"') for key, value in FIELD.findall(line)
+                }
                 if any(fields.get(key) != value for key, value in filters.items()):
                     continue
                 request_id = fields.get("request_id")
@@ -28,7 +32,7 @@ def events(paths: list[Path], target: str, **filters: str) -> dict[str, dict]:
                     continue
                 if request_id in found:
                     raise ValueError(f"duplicate {target} sample for {request_id}")
-                timestamp = line.split("\t", 1)[0].replace("Z", "+00:00")
+                timestamp = line.split(maxsplit=1)[0].replace("Z", "+00:00")
                 fields["timestamp_us"] = int(
                     datetime.fromisoformat(timestamp).timestamp() * 1e6
                 )
@@ -164,6 +168,13 @@ def main() -> None:
     )
     result = {
         "job": args.job,
+        "all_stage_joined_samples": len(
+            gateway_prefill.keys()
+            & gateway_selector.keys()
+            & prefill_handlers.keys()
+            & prefill_terminals.keys()
+            & selector_handlers.keys()
+        ),
         "prefill": prefill(gateway_prefill, prefill_handlers, prefill_terminals),
         "selector": selector(gateway_selector, selector_handlers),
         "clock_note": (
@@ -171,6 +182,8 @@ def main() -> None:
             "outside-facade durations do not."
         ),
     }
+    if not result["all_stage_joined_samples"]:
+        parser.error("no matching gateway/facade request IDs for both RPC stages")
     print(json.dumps(result, indent=2))
 
 

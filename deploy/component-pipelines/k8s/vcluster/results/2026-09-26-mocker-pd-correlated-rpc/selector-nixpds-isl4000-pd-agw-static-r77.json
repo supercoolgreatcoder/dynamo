@@ -1,0 +1,157 @@
+{
+    "apiVersion": "apps/v1",
+    "kind": "Deployment",
+    "metadata": {
+        "annotations": {
+            "deployment.kubernetes.io/revision": "8",
+            "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"apps/v1\",\"kind\":\"Deployment\",\"metadata\":{\"annotations\":{},\"name\":\"dynamo-pd-selector\",\"namespace\":\"dynamo-components-v2\"},\"spec\":{\"progressDeadlineSeconds\":600,\"replicas\":4,\"revisionHistoryLimit\":10,\"selector\":{\"matchLabels\":{\"app\":\"dynamo-pd-selector\"}},\"strategy\":{\"rollingUpdate\":{\"maxSurge\":\"25%\",\"maxUnavailable\":\"25%\"},\"type\":\"RollingUpdate\"},\"template\":{\"metadata\":{\"annotations\":{\"kubectl.kubernetes.io/restartedAt\":\"2026-09-23T18:07:01Z\"},\"labels\":{\"app\":\"dynamo-pd-selector\"}},\"spec\":{\"containers\":[{\"args\":[\"--listen\",\"0.0.0.0:50051\",\"selector\",\"--discovery-config\",\"/config/discovery.json\"],\"command\":[\"/nix/store/n6pnf4jdd2756w35y27lmhqpm7ksdw5i-dynamo-component-facade-1.6.0-4b10d580de/bin/dynamo-component-facade\"],\"env\":[{\"name\":\"RUST_LOG\",\"value\":\"warn,dynamo_component_rpc_sample=debug\"},{\"name\":\"DYN_COMPONENT_RPC_SAMPLE_EVERY\",\"value\":\"1000\"},{\"name\":\"DYN_COMPONENT_CORRELATED_TIMING\",\"value\":\"1\"}],\"image\":\"busybox:1.36\",\"imagePullPolicy\":\"IfNotPresent\",\"name\":\"facade\",\"ports\":[{\"containerPort\":50051,\"protocol\":\"TCP\"}],\"readinessProbe\":{\"failureThreshold\":3,\"periodSeconds\":1,\"successThreshold\":1,\"tcpSocket\":{\"port\":50051},\"timeoutSeconds\":1},\"resources\":{},\"terminationMessagePath\":\"/dev/termination-log\",\"terminationMessagePolicy\":\"File\",\"volumeMounts\":[{\"mountPath\":\"/nix/store\",\"name\":\"nix\",\"readOnly\":true,\"subPath\":\"store\"},{\"mountPath\":\"/config\",\"name\":\"config\",\"readOnly\":true}]}],\"dnsPolicy\":\"ClusterFirst\",\"restartPolicy\":\"Always\",\"schedulerName\":\"default-scheduler\",\"securityContext\":{},\"serviceAccount\":\"component-selector\",\"serviceAccountName\":\"component-selector\",\"terminationGracePeriodSeconds\":30,\"volumes\":[{\"name\":\"nix\",\"nfs\":{\"path\":\"/unikorn-identity-03cfadd31877-551/pvc-19aeb650-5f77-45c4-8b8b-0a3b88542f39\",\"readOnly\":true,\"server\":\"192.168.0.220\"}},{\"configMap\":{\"defaultMode\":420,\"name\":\"dynamo-pd-selector-config\"},\"name\":\"config\"}]}}}}\n"
+        },
+        "creationTimestamp": "2026-09-26T04:33:45Z",
+        "generation": 8,
+        "name": "dynamo-pd-selector",
+        "namespace": "dynamo-components-v2",
+        "resourceVersion": "12218480",
+        "uid": "fa57a9e4-7e1d-411d-84b8-57fed85778d6"
+    },
+    "spec": {
+        "progressDeadlineSeconds": 600,
+        "replicas": 4,
+        "revisionHistoryLimit": 10,
+        "selector": {
+            "matchLabels": {
+                "app": "dynamo-pd-selector"
+            }
+        },
+        "strategy": {
+            "rollingUpdate": {
+                "maxSurge": "25%",
+                "maxUnavailable": "25%"
+            },
+            "type": "RollingUpdate"
+        },
+        "template": {
+            "metadata": {
+                "annotations": {
+                    "kubectl.kubernetes.io/restartedAt": "2026-09-23T18:07:01Z"
+                },
+                "labels": {
+                    "app": "dynamo-pd-selector"
+                }
+            },
+            "spec": {
+                "containers": [
+                    {
+                        "args": [
+                            "--listen",
+                            "0.0.0.0:50051",
+                            "selector",
+                            "--discovery-config",
+                            "/config/discovery.json"
+                        ],
+                        "command": [
+                            "/nix/store/n6pnf4jdd2756w35y27lmhqpm7ksdw5i-dynamo-component-facade-1.6.0-4b10d580de/bin/dynamo-component-facade"
+                        ],
+                        "env": [
+                            {
+                                "name": "RUST_LOG",
+                                "value": "warn,dynamo_component_rpc_sample=debug"
+                            },
+                            {
+                                "name": "DYN_COMPONENT_RPC_SAMPLE_EVERY",
+                                "value": "1000"
+                            },
+                            {
+                                "name": "DYN_COMPONENT_CORRELATED_TIMING",
+                                "value": "1"
+                            }
+                        ],
+                        "image": "busybox:1.36",
+                        "imagePullPolicy": "IfNotPresent",
+                        "name": "facade",
+                        "ports": [
+                            {
+                                "containerPort": 50051,
+                                "protocol": "TCP"
+                            }
+                        ],
+                        "readinessProbe": {
+                            "failureThreshold": 3,
+                            "periodSeconds": 1,
+                            "successThreshold": 1,
+                            "tcpSocket": {
+                                "port": 50051
+                            },
+                            "timeoutSeconds": 1
+                        },
+                        "resources": {},
+                        "terminationMessagePath": "/dev/termination-log",
+                        "terminationMessagePolicy": "File",
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/nix/store",
+                                "name": "nix",
+                                "readOnly": true,
+                                "subPath": "store"
+                            },
+                            {
+                                "mountPath": "/config",
+                                "name": "config",
+                                "readOnly": true
+                            }
+                        ]
+                    }
+                ],
+                "dnsPolicy": "ClusterFirst",
+                "restartPolicy": "Always",
+                "schedulerName": "default-scheduler",
+                "securityContext": {},
+                "serviceAccount": "component-selector",
+                "serviceAccountName": "component-selector",
+                "terminationGracePeriodSeconds": 30,
+                "volumes": [
+                    {
+                        "name": "nix",
+                        "nfs": {
+                            "path": "/unikorn-identity-03cfadd31877-551/pvc-19aeb650-5f77-45c4-8b8b-0a3b88542f39",
+                            "readOnly": true,
+                            "server": "192.168.0.220"
+                        }
+                    },
+                    {
+                        "configMap": {
+                            "defaultMode": 420,
+                            "name": "dynamo-pd-selector-config"
+                        },
+                        "name": "config"
+                    }
+                ]
+            }
+        }
+    },
+    "status": {
+        "availableReplicas": 4,
+        "conditions": [
+            {
+                "lastTransitionTime": "2026-09-26T04:36:06Z",
+                "lastUpdateTime": "2026-09-26T04:36:06Z",
+                "message": "Deployment has minimum availability.",
+                "reason": "MinimumReplicasAvailable",
+                "status": "True",
+                "type": "Available"
+            },
+            {
+                "lastTransitionTime": "2026-09-26T04:33:45Z",
+                "lastUpdateTime": "2026-09-26T21:17:07Z",
+                "message": "ReplicaSet \"dynamo-pd-selector-5d9cd4bfb7\" has successfully progressed.",
+                "reason": "NewReplicaSetAvailable",
+                "status": "True",
+                "type": "Progressing"
+            }
+        ],
+        "observedGeneration": 8,
+        "readyReplicas": 4,
+        "replicas": 4,
+        "terminatingReplicas": 0,
+        "updatedReplicas": 4
+    }
+}

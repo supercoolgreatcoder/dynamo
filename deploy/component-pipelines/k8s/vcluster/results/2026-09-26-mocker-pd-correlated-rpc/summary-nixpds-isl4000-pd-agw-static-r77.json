@@ -1,0 +1,9 @@
+{
+  "status": "completed",
+  "job": "nixpds-isl4000-pd-agw-static-r77",
+  "clients": 6,
+  "exported_rps": 6429.876497860234,
+  "requests": 289838,
+  "errors": 0,
+  "cancelled": false
+}
