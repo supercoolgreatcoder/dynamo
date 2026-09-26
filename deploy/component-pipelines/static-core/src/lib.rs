@@ -80,6 +80,10 @@ impl PreprocessBatcher {
             .and_then(|value| value.parse::<usize>().ok())
             .unwrap_or(1)
             .clamp(1, MAX_PREPROCESS_BATCH_SHARDS);
+        let is_sleep_drain_enabled = std::env::var("DYN_PREPROCESS_BATCH_SLEEP_DRAIN")
+            .ok()
+            .as_deref()
+            == Some("1");
         let stats_every = std::env::var("DYN_STATIC_BATCH_STATS_EVERY")
             .ok()
             .and_then(|value| value.parse::<usize>().ok())
@@ -135,6 +139,14 @@ impl PreprocessBatcher {
                     batch.push(first);
                     if linger_us == 0 {
                         tokio::task::yield_now().await;
+                        while batch.len() < max_batch {
+                            match receiver.try_recv() {
+                                Ok(item) => batch.push(item),
+                                Err(_) => break,
+                            }
+                        }
+                    } else if is_sleep_drain_enabled {
+                        tokio::time::sleep(Duration::from_micros(linger_us)).await;
                         while batch.len() < max_batch {
                             match receiver.try_recv() {
                                 Ok(item) => batch.push(item),
