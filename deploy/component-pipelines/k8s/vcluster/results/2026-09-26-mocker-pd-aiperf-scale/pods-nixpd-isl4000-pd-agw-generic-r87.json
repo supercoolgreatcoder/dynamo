@@ -1,0 +1,2403 @@
+{
+    "apiVersion": "v1",
+    "items": [
+        {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {
+                "annotations": {
+                    "batch.kubernetes.io/job-completion-index": "0"
+                },
+                "creationTimestamp": "2026-09-26T23:35:32Z",
+                "generateName": "nixpd-isl4000-pd-agw-generic-r87-0-",
+                "generation": 1,
+                "labels": {
+                    "batch.kubernetes.io/controller-uid": "cfe2520a-d9db-42d2-9b1e-61eaddedecd2",
+                    "batch.kubernetes.io/job-completion-index": "0",
+                    "batch.kubernetes.io/job-name": "nixpd-isl4000-pd-agw-generic-r87",
+                    "benchmark": "frozen-raw-capacity",
+                    "benchmark-run": "nixpd-isl4000-pd-agw-generic-r87",
+                    "controller-uid": "cfe2520a-d9db-42d2-9b1e-61eaddedecd2",
+                    "job-name": "nixpd-isl4000-pd-agw-generic-r87",
+                    "topology.kubernetes.io/zone": "nova"
+                },
+                "name": "nixpd-isl4000-pd-agw-generic-r87-0-z96j9",
+                "namespace": "dynamo-components-v2",
+                "ownerReferences": [
+                    {
+                        "apiVersion": "batch/v1",
+                        "blockOwnerDeletion": true,
+                        "controller": true,
+                        "kind": "Job",
+                        "name": "nixpd-isl4000-pd-agw-generic-r87",
+                        "uid": "cfe2520a-d9db-42d2-9b1e-61eaddedecd2"
+                    }
+                ],
+                "resourceVersion": "12233713",
+                "uid": "8ca37aab-3784-4f9e-8268-f0aafb5c1ec7"
+            },
+            "spec": {
+                "affinity": {
+                    "nodeAffinity": {
+                        "requiredDuringSchedulingIgnoredDuringExecution": {
+                            "nodeSelectorTerms": [
+                                {
+                                    "matchExpressions": [
+                                        {
+                                            "key": "kubernetes.io/hostname",
+                                            "operator": "In",
+                                            "values": [
+                                                "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+                                                "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4",
+                                                "cluster-0967a26d-pool-1f83edbe-mj5s4-79r2b"
+                                            ]
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                },
+                "automountServiceAccountToken": false,
+                "containers": [
+                    {
+                        "args": [
+                            "set -euo pipefail\nbarrier=/shared/aiperf/barriers/nixpd-isl4000-pd-agw-generic-r87\nwhile [ ! -s \"$barrier\" ]; do sleep 0.2; done\nstart_unix=$(cat \"$barrier\")\nwhile [ \"$(date +%s)\" -lt \"$start_unix\" ]; do sleep 0.2; done\nwhile [ \"$(date +%s)\" -lt \"1790465822\" ]; do sleep 0.2; done\nexport HF_HOME=/tmp/hf HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1\ncache=/tmp/hf/hub/models--Qwen--Qwen2.5-0.5B-Instruct\nmkdir -p \"$cache/snapshots\" \"$cache/refs\"\nln -s /model/tokenizer \"$cache/snapshots/nix\"\nprintf nix \u003e \"$cache/refs/main\"\ndataset=/shared/aiperf/static-qwen2.5-0.5b/isl4000-claude-sonnet-raw.jsonl\ntest -s \"$dataset\"\nexec aiperf profile --url \"http://dynamo-pd-agw-generic:8080/v1/chat/completions\" \\\n  --model Qwen/Qwen2.5-0.5B-Instruct \\\n  --tokenizer Qwen/Qwen2.5-0.5B-Instruct \\\n  --endpoint-type chat --streaming --use-server-token-count \\\n  --use-legacy-max-tokens --custom-dataset-type raw_payload \\\n  --input-file \"$dataset\" --random-seed 42 \\\n  --concurrency 128 --benchmark-duration 45 \\\n  --export-level summary --record-processors 16 \\\n  --output-artifact-dir /shared/aiperf/results/nixpd-isl4000-pd-agw-generic-r87/$(JOB_COMPLETION_INDEX)"
+                        ],
+                        "command": [
+                            "/bin/bash",
+                            "-lc"
+                        ],
+                        "env": [
+                            {
+                                "name": "JOB_COMPLETION_INDEX",
+                                "valueFrom": {
+                                    "fieldRef": {
+                                        "apiVersion": "v1",
+                                        "fieldPath": "metadata.labels['batch.kubernetes.io/job-completion-index']"
+                                    }
+                                }
+                            }
+                        ],
+                        "image": "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
+                        "imagePullPolicy": "IfNotPresent",
+                        "name": "benchmark",
+                        "resources": {},
+                        "securityContext": {
+                            "runAsUser": 0
+                        },
+                        "terminationMessagePath": "/dev/termination-log",
+                        "terminationMessagePolicy": "File",
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/nix/store",
+                                "name": "nix-store",
+                                "readOnly": true,
+                                "subPath": "store"
+                            },
+                            {
+                                "mountPath": "/model/tokenizer",
+                                "name": "nix-store",
+                                "readOnly": true,
+                                "subPath": "store/wjq1b3wfjpzak4yd4rmj9arwqk1gkiir-qwen-tokenizer"
+                            },
+                            {
+                                "mountPath": "/shared",
+                                "name": "nix-store"
+                            }
+                        ]
+                    }
+                ],
+                "dnsPolicy": "ClusterFirst",
+                "enableServiceLinks": true,
+                "hostname": "nixpd-isl4000-pd-agw-generic-r87-0",
+                "nodeName": "cluster-0967a26d-pool-1f83edbe-mj5s4-79r2b",
+                "nodeSelector": {
+                    "topology.unikorn-cloud.org/node-pool": "cpu-pool"
+                },
+                "preemptionPolicy": "PreemptLowerPriority",
+                "priority": 0,
+                "restartPolicy": "Never",
+                "schedulerName": "default-scheduler",
+                "securityContext": {},
+                "serviceAccount": "default",
+                "serviceAccountName": "default",
+                "terminationGracePeriodSeconds": 30,
+                "tolerations": [
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/not-ready",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    },
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/unreachable",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    }
+                ],
+                "topologySpreadConstraints": [
+                    {
+                        "labelSelector": {
+                            "matchLabels": {
+                                "benchmark-run": "nixpd-isl4000-pd-agw-generic-r87"
+                            }
+                        },
+                        "maxSkew": 1,
+                        "topologyKey": "kubernetes.io/hostname",
+                        "whenUnsatisfiable": "DoNotSchedule"
+                    }
+                ],
+                "volumes": [
+                    {
+                        "name": "nix-store",
+                        "nfs": {
+                            "path": "/unikorn-identity-03cfadd31877-551/pvc-19aeb650-5f77-45c4-8b8b-0a3b88542f39",
+                            "server": "192.168.0.220"
+                        }
+                    }
+                ]
+            },
+            "status": {
+                "conditions": [
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-09-26T23:38:01Z",
+                        "observedGeneration": 1,
+                        "status": "False",
+                        "type": "PodReadyToStartContainers"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-09-26T23:35:32Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "True",
+                        "type": "Initialized"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-09-26T23:38:00Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "False",
+                        "type": "Ready"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-09-26T23:38:00Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "False",
+                        "type": "ContainersReady"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-09-26T23:35:32Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "PodScheduled"
+                    }
+                ],
+                "containerStatuses": [
+                    {
+                        "containerID": "containerd://b8e08ef7be45226363c9a7755a1ed4578fde03155cd7c4d8dfce5162f88af348",
+                        "image": "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
+                        "imageID": "nvcr.io/nvidia/ai-dynamo/aiperf@sha256:d22eb02bccadcd2acbbd905a1742f1e642f2bdd7bc3a0377cebda685a233902d",
+                        "lastState": {},
+                        "name": "benchmark",
+                        "ready": false,
+                        "resources": {},
+                        "restartCount": 0,
+                        "started": false,
+                        "state": {
+                            "terminated": {
+                                "containerID": "containerd://b8e08ef7be45226363c9a7755a1ed4578fde03155cd7c4d8dfce5162f88af348",
+                                "exitCode": 0,
+                                "finishedAt": "2026-09-26T23:37:59Z",
+                                "reason": "Completed",
+                                "startedAt": "2026-09-26T23:35:33Z"
+                            }
+                        },
+                        "user": {
+                            "linux": {
+                                "gid": 0,
+                                "supplementalGroups": [
+                                    0
+                                ],
+                                "uid": 0
+                            }
+                        },
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/nix/store",
+                                "name": "nix-store",
+                                "readOnly": true,
+                                "recursiveReadOnly": "Disabled"
+                            },
+                            {
+                                "mountPath": "/model/tokenizer",
+                                "name": "nix-store",
+                                "readOnly": true,
+                                "recursiveReadOnly": "Disabled"
+                            },
+                            {
+                                "mountPath": "/shared",
+                                "name": "nix-store"
+                            }
+                        ]
+                    }
+                ],
+                "hostIP": "192.168.0.164",
+                "hostIPs": [
+                    {
+                        "ip": "192.168.0.164"
+                    }
+                ],
+                "observedGeneration": 1,
+                "phase": "Succeeded",
+                "podIP": "10.0.25.84",
+                "podIPs": [
+                    {
+                        "ip": "10.0.25.84"
+                    }
+                ],
+                "qosClass": "BestEffort",
+                "startTime": "2026-09-26T23:35:32Z"
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {
+                "annotations": {
+                    "batch.kubernetes.io/job-completion-index": "1"
+                },
+                "creationTimestamp": "2026-09-26T23:35:32Z",
+                "generateName": "nixpd-isl4000-pd-agw-generic-r87-1-",
+                "generation": 1,
+                "labels": {
+                    "batch.kubernetes.io/controller-uid": "cfe2520a-d9db-42d2-9b1e-61eaddedecd2",
+                    "batch.kubernetes.io/job-completion-index": "1",
+                    "batch.kubernetes.io/job-name": "nixpd-isl4000-pd-agw-generic-r87",
+                    "benchmark": "frozen-raw-capacity",
+                    "benchmark-run": "nixpd-isl4000-pd-agw-generic-r87",
+                    "controller-uid": "cfe2520a-d9db-42d2-9b1e-61eaddedecd2",
+                    "job-name": "nixpd-isl4000-pd-agw-generic-r87",
+                    "topology.kubernetes.io/zone": "nova"
+                },
+                "name": "nixpd-isl4000-pd-agw-generic-r87-1-5ppjx",
+                "namespace": "dynamo-components-v2",
+                "ownerReferences": [
+                    {
+                        "apiVersion": "batch/v1",
+                        "blockOwnerDeletion": true,
+                        "controller": true,
+                        "kind": "Job",
+                        "name": "nixpd-isl4000-pd-agw-generic-r87",
+                        "uid": "cfe2520a-d9db-42d2-9b1e-61eaddedecd2"
+                    }
+                ],
+                "resourceVersion": "12233710",
+                "uid": "4c1b4aa7-33ab-4ed8-bf54-a0ea80ee2859"
+            },
+            "spec": {
+                "affinity": {
+                    "nodeAffinity": {
+                        "requiredDuringSchedulingIgnoredDuringExecution": {
+                            "nodeSelectorTerms": [
+                                {
+                                    "matchExpressions": [
+                                        {
+                                            "key": "kubernetes.io/hostname",
+                                            "operator": "In",
+                                            "values": [
+                                                "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+                                                "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4",
+                                                "cluster-0967a26d-pool-1f83edbe-mj5s4-79r2b"
+                                            ]
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                },
+                "automountServiceAccountToken": false,
+                "containers": [
+                    {
+                        "args": [
+                            "set -euo pipefail\nbarrier=/shared/aiperf/barriers/nixpd-isl4000-pd-agw-generic-r87\nwhile [ ! -s \"$barrier\" ]; do sleep 0.2; done\nstart_unix=$(cat \"$barrier\")\nwhile [ \"$(date +%s)\" -lt \"$start_unix\" ]; do sleep 0.2; done\nwhile [ \"$(date +%s)\" -lt \"1790465822\" ]; do sleep 0.2; done\nexport HF_HOME=/tmp/hf HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1\ncache=/tmp/hf/hub/models--Qwen--Qwen2.5-0.5B-Instruct\nmkdir -p \"$cache/snapshots\" \"$cache/refs\"\nln -s /model/tokenizer \"$cache/snapshots/nix\"\nprintf nix \u003e \"$cache/refs/main\"\ndataset=/shared/aiperf/static-qwen2.5-0.5b/isl4000-claude-sonnet-raw.jsonl\ntest -s \"$dataset\"\nexec aiperf profile --url \"http://dynamo-pd-agw-generic:8080/v1/chat/completions\" \\\n  --model Qwen/Qwen2.5-0.5B-Instruct \\\n  --tokenizer Qwen/Qwen2.5-0.5B-Instruct \\\n  --endpoint-type chat --streaming --use-server-token-count \\\n  --use-legacy-max-tokens --custom-dataset-type raw_payload \\\n  --input-file \"$dataset\" --random-seed 42 \\\n  --concurrency 128 --benchmark-duration 45 \\\n  --export-level summary --record-processors 16 \\\n  --output-artifact-dir /shared/aiperf/results/nixpd-isl4000-pd-agw-generic-r87/$(JOB_COMPLETION_INDEX)"
+                        ],
+                        "command": [
+                            "/bin/bash",
+                            "-lc"
+                        ],
+                        "env": [
+                            {
+                                "name": "JOB_COMPLETION_INDEX",
+                                "valueFrom": {
+                                    "fieldRef": {
+                                        "apiVersion": "v1",
+                                        "fieldPath": "metadata.labels['batch.kubernetes.io/job-completion-index']"
+                                    }
+                                }
+                            }
+                        ],
+                        "image": "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
+                        "imagePullPolicy": "IfNotPresent",
+                        "name": "benchmark",
+                        "resources": {},
+                        "securityContext": {
+                            "runAsUser": 0
+                        },
+                        "terminationMessagePath": "/dev/termination-log",
+                        "terminationMessagePolicy": "File",
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/nix/store",
+                                "name": "nix-store",
+                                "readOnly": true,
+                                "subPath": "store"
+                            },
+                            {
+                                "mountPath": "/model/tokenizer",
+                                "name": "nix-store",
+                                "readOnly": true,
+                                "subPath": "store/wjq1b3wfjpzak4yd4rmj9arwqk1gkiir-qwen-tokenizer"
+                            },
+                            {
+                                "mountPath": "/shared",
+                                "name": "nix-store"
+                            }
+                        ]
+                    }
+                ],
+                "dnsPolicy": "ClusterFirst",
+                "enableServiceLinks": true,
+                "hostname": "nixpd-isl4000-pd-agw-generic-r87-1",
+                "nodeName": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+                "nodeSelector": {
+                    "topology.unikorn-cloud.org/node-pool": "cpu-pool"
+                },
+                "preemptionPolicy": "PreemptLowerPriority",
+                "priority": 0,
+                "restartPolicy": "Never",
+                "schedulerName": "default-scheduler",
+                "securityContext": {},
+                "serviceAccount": "default",
+                "serviceAccountName": "default",
+                "terminationGracePeriodSeconds": 30,
+                "tolerations": [
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/not-ready",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    },
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/unreachable",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    }
+                ],
+                "topologySpreadConstraints": [
+                    {
+                        "labelSelector": {
+                            "matchLabels": {
+                                "benchmark-run": "nixpd-isl4000-pd-agw-generic-r87"
+                            }
+                        },
+                        "maxSkew": 1,
+                        "topologyKey": "kubernetes.io/hostname",
+                        "whenUnsatisfiable": "DoNotSchedule"
+                    }
+                ],
+                "volumes": [
+                    {
+                        "name": "nix-store",
+                        "nfs": {
+                            "path": "/unikorn-identity-03cfadd31877-551/pvc-19aeb650-5f77-45c4-8b8b-0a3b88542f39",
+                            "server": "192.168.0.220"
+                        }
+                    }
+                ]
+            },
+            "status": {
+                "conditions": [
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-09-26T23:38:01Z",
+                        "observedGeneration": 1,
+                        "status": "False",
+                        "type": "PodReadyToStartContainers"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-09-26T23:35:32Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "True",
+                        "type": "Initialized"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-09-26T23:37:59Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "False",
+                        "type": "Ready"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-09-26T23:37:59Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "False",
+                        "type": "ContainersReady"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-09-26T23:35:32Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "PodScheduled"
+                    }
+                ],
+                "containerStatuses": [
+                    {
+                        "containerID": "containerd://d7e3569194159d3a552a0b750ec2bdce1c2a46d57e15ebda57c3f3f282fa974c",
+                        "image": "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
+                        "imageID": "nvcr.io/nvidia/ai-dynamo/aiperf@sha256:d22eb02bccadcd2acbbd905a1742f1e642f2bdd7bc3a0377cebda685a233902d",
+                        "lastState": {},
+                        "name": "benchmark",
+                        "ready": false,
+                        "resources": {},
+                        "restartCount": 0,
+                        "started": false,
+                        "state": {
+                            "terminated": {
+                                "containerID": "containerd://d7e3569194159d3a552a0b750ec2bdce1c2a46d57e15ebda57c3f3f282fa974c",
+                                "exitCode": 0,
+                                "finishedAt": "2026-09-26T23:37:59Z",
+                                "reason": "Completed",
+                                "startedAt": "2026-09-26T23:35:33Z"
+                            }
+                        },
+                        "user": {
+                            "linux": {
+                                "gid": 0,
+                                "supplementalGroups": [
+                                    0
+                                ],
+                                "uid": 0
+                            }
+                        },
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/nix/store",
+                                "name": "nix-store",
+                                "readOnly": true,
+                                "recursiveReadOnly": "Disabled"
+                            },
+                            {
+                                "mountPath": "/model/tokenizer",
+                                "name": "nix-store",
+                                "readOnly": true,
+                                "recursiveReadOnly": "Disabled"
+                            },
+                            {
+                                "mountPath": "/shared",
+                                "name": "nix-store"
+                            }
+                        ]
+                    }
+                ],
+                "hostIP": "192.168.0.250",
+                "hostIPs": [
+                    {
+                        "ip": "192.168.0.250"
+                    }
+                ],
+                "observedGeneration": 1,
+                "phase": "Succeeded",
+                "podIP": "10.0.30.38",
+                "podIPs": [
+                    {
+                        "ip": "10.0.30.38"
+                    }
+                ],
+                "qosClass": "BestEffort",
+                "startTime": "2026-09-26T23:35:32Z"
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {
+                "annotations": {
+                    "batch.kubernetes.io/job-completion-index": "2"
+                },
+                "creationTimestamp": "2026-09-26T23:35:32Z",
+                "generateName": "nixpd-isl4000-pd-agw-generic-r87-2-",
+                "generation": 1,
+                "labels": {
+                    "batch.kubernetes.io/controller-uid": "cfe2520a-d9db-42d2-9b1e-61eaddedecd2",
+                    "batch.kubernetes.io/job-completion-index": "2",
+                    "batch.kubernetes.io/job-name": "nixpd-isl4000-pd-agw-generic-r87",
+                    "benchmark": "frozen-raw-capacity",
+                    "benchmark-run": "nixpd-isl4000-pd-agw-generic-r87",
+                    "controller-uid": "cfe2520a-d9db-42d2-9b1e-61eaddedecd2",
+                    "job-name": "nixpd-isl4000-pd-agw-generic-r87",
+                    "topology.kubernetes.io/zone": "nova"
+                },
+                "name": "nixpd-isl4000-pd-agw-generic-r87-2-78sq4",
+                "namespace": "dynamo-components-v2",
+                "ownerReferences": [
+                    {
+                        "apiVersion": "batch/v1",
+                        "blockOwnerDeletion": true,
+                        "controller": true,
+                        "kind": "Job",
+                        "name": "nixpd-isl4000-pd-agw-generic-r87",
+                        "uid": "cfe2520a-d9db-42d2-9b1e-61eaddedecd2"
+                    }
+                ],
+                "resourceVersion": "12233699",
+                "uid": "dc25e339-741f-469c-8184-2a54a8561786"
+            },
+            "spec": {
+                "affinity": {
+                    "nodeAffinity": {
+                        "requiredDuringSchedulingIgnoredDuringExecution": {
+                            "nodeSelectorTerms": [
+                                {
+                                    "matchExpressions": [
+                                        {
+                                            "key": "kubernetes.io/hostname",
+                                            "operator": "In",
+                                            "values": [
+                                                "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+                                                "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4",
+                                                "cluster-0967a26d-pool-1f83edbe-mj5s4-79r2b"
+                                            ]
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                },
+                "automountServiceAccountToken": false,
+                "containers": [
+                    {
+                        "args": [
+                            "set -euo pipefail\nbarrier=/shared/aiperf/barriers/nixpd-isl4000-pd-agw-generic-r87\nwhile [ ! -s \"$barrier\" ]; do sleep 0.2; done\nstart_unix=$(cat \"$barrier\")\nwhile [ \"$(date +%s)\" -lt \"$start_unix\" ]; do sleep 0.2; done\nwhile [ \"$(date +%s)\" -lt \"1790465822\" ]; do sleep 0.2; done\nexport HF_HOME=/tmp/hf HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1\ncache=/tmp/hf/hub/models--Qwen--Qwen2.5-0.5B-Instruct\nmkdir -p \"$cache/snapshots\" \"$cache/refs\"\nln -s /model/tokenizer \"$cache/snapshots/nix\"\nprintf nix \u003e \"$cache/refs/main\"\ndataset=/shared/aiperf/static-qwen2.5-0.5b/isl4000-claude-sonnet-raw.jsonl\ntest -s \"$dataset\"\nexec aiperf profile --url \"http://dynamo-pd-agw-generic:8080/v1/chat/completions\" \\\n  --model Qwen/Qwen2.5-0.5B-Instruct \\\n  --tokenizer Qwen/Qwen2.5-0.5B-Instruct \\\n  --endpoint-type chat --streaming --use-server-token-count \\\n  --use-legacy-max-tokens --custom-dataset-type raw_payload \\\n  --input-file \"$dataset\" --random-seed 42 \\\n  --concurrency 128 --benchmark-duration 45 \\\n  --export-level summary --record-processors 16 \\\n  --output-artifact-dir /shared/aiperf/results/nixpd-isl4000-pd-agw-generic-r87/$(JOB_COMPLETION_INDEX)"
+                        ],
+                        "command": [
+                            "/bin/bash",
+                            "-lc"
+                        ],
+                        "env": [
+                            {
+                                "name": "JOB_COMPLETION_INDEX",
+                                "valueFrom": {
+                                    "fieldRef": {
+                                        "apiVersion": "v1",
+                                        "fieldPath": "metadata.labels['batch.kubernetes.io/job-completion-index']"
+                                    }
+                                }
+                            }
+                        ],
+                        "image": "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
+                        "imagePullPolicy": "IfNotPresent",
+                        "name": "benchmark",
+                        "resources": {},
+                        "securityContext": {
+                            "runAsUser": 0
+                        },
+                        "terminationMessagePath": "/dev/termination-log",
+                        "terminationMessagePolicy": "File",
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/nix/store",
+                                "name": "nix-store",
+                                "readOnly": true,
+                                "subPath": "store"
+                            },
+                            {
+                                "mountPath": "/model/tokenizer",
+                                "name": "nix-store",
+                                "readOnly": true,
+                                "subPath": "store/wjq1b3wfjpzak4yd4rmj9arwqk1gkiir-qwen-tokenizer"
+                            },
+                            {
+                                "mountPath": "/shared",
+                                "name": "nix-store"
+                            }
+                        ]
+                    }
+                ],
+                "dnsPolicy": "ClusterFirst",
+                "enableServiceLinks": true,
+                "hostname": "nixpd-isl4000-pd-agw-generic-r87-2",
+                "nodeName": "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4",
+                "nodeSelector": {
+                    "topology.unikorn-cloud.org/node-pool": "cpu-pool"
+                },
+                "preemptionPolicy": "PreemptLowerPriority",
+                "priority": 0,
+                "restartPolicy": "Never",
+                "schedulerName": "default-scheduler",
+                "securityContext": {},
+                "serviceAccount": "default",
+                "serviceAccountName": "default",
+                "terminationGracePeriodSeconds": 30,
+                "tolerations": [
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/not-ready",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    },
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/unreachable",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    }
+                ],
+                "topologySpreadConstraints": [
+                    {
+                        "labelSelector": {
+                            "matchLabels": {
+                                "benchmark-run": "nixpd-isl4000-pd-agw-generic-r87"
+                            }
+                        },
+                        "maxSkew": 1,
+                        "topologyKey": "kubernetes.io/hostname",
+                        "whenUnsatisfiable": "DoNotSchedule"
+                    }
+                ],
+                "volumes": [
+                    {
+                        "name": "nix-store",
+                        "nfs": {
+                            "path": "/unikorn-identity-03cfadd31877-551/pvc-19aeb650-5f77-45c4-8b8b-0a3b88542f39",
+                            "server": "192.168.0.220"
+                        }
+                    }
+                ]
+            },
+            "status": {
+                "conditions": [
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-09-26T23:38:00Z",
+                        "observedGeneration": 1,
+                        "status": "False",
+                        "type": "PodReadyToStartContainers"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-09-26T23:35:32Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "True",
+                        "type": "Initialized"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-09-26T23:37:59Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "False",
+                        "type": "Ready"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-09-26T23:37:59Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "False",
+                        "type": "ContainersReady"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-09-26T23:35:32Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "PodScheduled"
+                    }
+                ],
+                "containerStatuses": [
+                    {
+                        "containerID": "containerd://a81bda7dc3715b7b626a206b36bc9e851bdb47bb81665c21ce5862005e8edf0d",
+                        "image": "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
+                        "imageID": "nvcr.io/nvidia/ai-dynamo/aiperf@sha256:d22eb02bccadcd2acbbd905a1742f1e642f2bdd7bc3a0377cebda685a233902d",
+                        "lastState": {},
+                        "name": "benchmark",
+                        "ready": false,
+                        "resources": {},
+                        "restartCount": 0,
+                        "started": false,
+                        "state": {
+                            "terminated": {
+                                "containerID": "containerd://a81bda7dc3715b7b626a206b36bc9e851bdb47bb81665c21ce5862005e8edf0d",
+                                "exitCode": 0,
+                                "finishedAt": "2026-09-26T23:37:59Z",
+                                "reason": "Completed",
+                                "startedAt": "2026-09-26T23:35:33Z"
+                            }
+                        },
+                        "user": {
+                            "linux": {
+                                "gid": 0,
+                                "supplementalGroups": [
+                                    0
+                                ],
+                                "uid": 0
+                            }
+                        },
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/nix/store",
+                                "name": "nix-store",
+                                "readOnly": true,
+                                "recursiveReadOnly": "Disabled"
+                            },
+                            {
+                                "mountPath": "/model/tokenizer",
+                                "name": "nix-store",
+                                "readOnly": true,
+                                "recursiveReadOnly": "Disabled"
+                            },
+                            {
+                                "mountPath": "/shared",
+                                "name": "nix-store"
+                            }
+                        ]
+                    }
+                ],
+                "hostIP": "192.168.0.172",
+                "hostIPs": [
+                    {
+                        "ip": "192.168.0.172"
+                    }
+                ],
+                "observedGeneration": 1,
+                "phase": "Succeeded",
+                "podIP": "10.0.21.74",
+                "podIPs": [
+                    {
+                        "ip": "10.0.21.74"
+                    }
+                ],
+                "qosClass": "BestEffort",
+                "startTime": "2026-09-26T23:35:32Z"
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {
+                "annotations": {
+                    "batch.kubernetes.io/job-completion-index": "3"
+                },
+                "creationTimestamp": "2026-09-26T23:35:32Z",
+                "generateName": "nixpd-isl4000-pd-agw-generic-r87-3-",
+                "generation": 1,
+                "labels": {
+                    "batch.kubernetes.io/controller-uid": "cfe2520a-d9db-42d2-9b1e-61eaddedecd2",
+                    "batch.kubernetes.io/job-completion-index": "3",
+                    "batch.kubernetes.io/job-name": "nixpd-isl4000-pd-agw-generic-r87",
+                    "benchmark": "frozen-raw-capacity",
+                    "benchmark-run": "nixpd-isl4000-pd-agw-generic-r87",
+                    "controller-uid": "cfe2520a-d9db-42d2-9b1e-61eaddedecd2",
+                    "job-name": "nixpd-isl4000-pd-agw-generic-r87",
+                    "topology.kubernetes.io/zone": "nova"
+                },
+                "name": "nixpd-isl4000-pd-agw-generic-r87-3-xlpqj",
+                "namespace": "dynamo-components-v2",
+                "ownerReferences": [
+                    {
+                        "apiVersion": "batch/v1",
+                        "blockOwnerDeletion": true,
+                        "controller": true,
+                        "kind": "Job",
+                        "name": "nixpd-isl4000-pd-agw-generic-r87",
+                        "uid": "cfe2520a-d9db-42d2-9b1e-61eaddedecd2"
+                    }
+                ],
+                "resourceVersion": "12233711",
+                "uid": "3059697b-ea49-4d88-a115-66351c3ad5a3"
+            },
+            "spec": {
+                "affinity": {
+                    "nodeAffinity": {
+                        "requiredDuringSchedulingIgnoredDuringExecution": {
+                            "nodeSelectorTerms": [
+                                {
+                                    "matchExpressions": [
+                                        {
+                                            "key": "kubernetes.io/hostname",
+                                            "operator": "In",
+                                            "values": [
+                                                "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+                                                "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4",
+                                                "cluster-0967a26d-pool-1f83edbe-mj5s4-79r2b"
+                                            ]
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                },
+                "automountServiceAccountToken": false,
+                "containers": [
+                    {
+                        "args": [
+                            "set -euo pipefail\nbarrier=/shared/aiperf/barriers/nixpd-isl4000-pd-agw-generic-r87\nwhile [ ! -s \"$barrier\" ]; do sleep 0.2; done\nstart_unix=$(cat \"$barrier\")\nwhile [ \"$(date +%s)\" -lt \"$start_unix\" ]; do sleep 0.2; done\nwhile [ \"$(date +%s)\" -lt \"1790465822\" ]; do sleep 0.2; done\nexport HF_HOME=/tmp/hf HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1\ncache=/tmp/hf/hub/models--Qwen--Qwen2.5-0.5B-Instruct\nmkdir -p \"$cache/snapshots\" \"$cache/refs\"\nln -s /model/tokenizer \"$cache/snapshots/nix\"\nprintf nix \u003e \"$cache/refs/main\"\ndataset=/shared/aiperf/static-qwen2.5-0.5b/isl4000-claude-sonnet-raw.jsonl\ntest -s \"$dataset\"\nexec aiperf profile --url \"http://dynamo-pd-agw-generic:8080/v1/chat/completions\" \\\n  --model Qwen/Qwen2.5-0.5B-Instruct \\\n  --tokenizer Qwen/Qwen2.5-0.5B-Instruct \\\n  --endpoint-type chat --streaming --use-server-token-count \\\n  --use-legacy-max-tokens --custom-dataset-type raw_payload \\\n  --input-file \"$dataset\" --random-seed 42 \\\n  --concurrency 128 --benchmark-duration 45 \\\n  --export-level summary --record-processors 16 \\\n  --output-artifact-dir /shared/aiperf/results/nixpd-isl4000-pd-agw-generic-r87/$(JOB_COMPLETION_INDEX)"
+                        ],
+                        "command": [
+                            "/bin/bash",
+                            "-lc"
+                        ],
+                        "env": [
+                            {
+                                "name": "JOB_COMPLETION_INDEX",
+                                "valueFrom": {
+                                    "fieldRef": {
+                                        "apiVersion": "v1",
+                                        "fieldPath": "metadata.labels['batch.kubernetes.io/job-completion-index']"
+                                    }
+                                }
+                            }
+                        ],
+                        "image": "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
+                        "imagePullPolicy": "IfNotPresent",
+                        "name": "benchmark",
+                        "resources": {},
+                        "securityContext": {
+                            "runAsUser": 0
+                        },
+                        "terminationMessagePath": "/dev/termination-log",
+                        "terminationMessagePolicy": "File",
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/nix/store",
+                                "name": "nix-store",
+                                "readOnly": true,
+                                "subPath": "store"
+                            },
+                            {
+                                "mountPath": "/model/tokenizer",
+                                "name": "nix-store",
+                                "readOnly": true,
+                                "subPath": "store/wjq1b3wfjpzak4yd4rmj9arwqk1gkiir-qwen-tokenizer"
+                            },
+                            {
+                                "mountPath": "/shared",
+                                "name": "nix-store"
+                            }
+                        ]
+                    }
+                ],
+                "dnsPolicy": "ClusterFirst",
+                "enableServiceLinks": true,
+                "hostname": "nixpd-isl4000-pd-agw-generic-r87-3",
+                "nodeName": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+                "nodeSelector": {
+                    "topology.unikorn-cloud.org/node-pool": "cpu-pool"
+                },
+                "preemptionPolicy": "PreemptLowerPriority",
+                "priority": 0,
+                "restartPolicy": "Never",
+                "schedulerName": "default-scheduler",
+                "securityContext": {},
+                "serviceAccount": "default",
+                "serviceAccountName": "default",
+                "terminationGracePeriodSeconds": 30,
+                "tolerations": [
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/not-ready",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    },
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/unreachable",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    }
+                ],
+                "topologySpreadConstraints": [
+                    {
+                        "labelSelector": {
+                            "matchLabels": {
+                                "benchmark-run": "nixpd-isl4000-pd-agw-generic-r87"
+                            }
+                        },
+                        "maxSkew": 1,
+                        "topologyKey": "kubernetes.io/hostname",
+                        "whenUnsatisfiable": "DoNotSchedule"
+                    }
+                ],
+                "volumes": [
+                    {
+                        "name": "nix-store",
+                        "nfs": {
+                            "path": "/unikorn-identity-03cfadd31877-551/pvc-19aeb650-5f77-45c4-8b8b-0a3b88542f39",
+                            "server": "192.168.0.220"
+                        }
+                    }
+                ]
+            },
+            "status": {
+                "conditions": [
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-09-26T23:38:01Z",
+                        "observedGeneration": 1,
+                        "status": "False",
+                        "type": "PodReadyToStartContainers"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-09-26T23:35:32Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "True",
+                        "type": "Initialized"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-09-26T23:37:59Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "False",
+                        "type": "Ready"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-09-26T23:37:59Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "False",
+                        "type": "ContainersReady"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-09-26T23:35:32Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "PodScheduled"
+                    }
+                ],
+                "containerStatuses": [
+                    {
+                        "containerID": "containerd://8d9ce17f147bdb33e6d0fa280cd0bec6193a1073ea08dacca703f55c12bf7cda",
+                        "image": "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
+                        "imageID": "nvcr.io/nvidia/ai-dynamo/aiperf@sha256:d22eb02bccadcd2acbbd905a1742f1e642f2bdd7bc3a0377cebda685a233902d",
+                        "lastState": {},
+                        "name": "benchmark",
+                        "ready": false,
+                        "resources": {},
+                        "restartCount": 0,
+                        "started": false,
+                        "state": {
+                            "terminated": {
+                                "containerID": "containerd://8d9ce17f147bdb33e6d0fa280cd0bec6193a1073ea08dacca703f55c12bf7cda",
+                                "exitCode": 0,
+                                "finishedAt": "2026-09-26T23:37:59Z",
+                                "reason": "Completed",
+                                "startedAt": "2026-09-26T23:35:33Z"
+                            }
+                        },
+                        "user": {
+                            "linux": {
+                                "gid": 0,
+                                "supplementalGroups": [
+                                    0
+                                ],
+                                "uid": 0
+                            }
+                        },
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/nix/store",
+                                "name": "nix-store",
+                                "readOnly": true,
+                                "recursiveReadOnly": "Disabled"
+                            },
+                            {
+                                "mountPath": "/model/tokenizer",
+                                "name": "nix-store",
+                                "readOnly": true,
+                                "recursiveReadOnly": "Disabled"
+                            },
+                            {
+                                "mountPath": "/shared",
+                                "name": "nix-store"
+                            }
+                        ]
+                    }
+                ],
+                "hostIP": "192.168.0.250",
+                "hostIPs": [
+                    {
+                        "ip": "192.168.0.250"
+                    }
+                ],
+                "observedGeneration": 1,
+                "phase": "Succeeded",
+                "podIP": "10.0.30.115",
+                "podIPs": [
+                    {
+                        "ip": "10.0.30.115"
+                    }
+                ],
+                "qosClass": "BestEffort",
+                "startTime": "2026-09-26T23:35:32Z"
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {
+                "annotations": {
+                    "batch.kubernetes.io/job-completion-index": "4"
+                },
+                "creationTimestamp": "2026-09-26T23:35:32Z",
+                "generateName": "nixpd-isl4000-pd-agw-generic-r87-4-",
+                "generation": 1,
+                "labels": {
+                    "batch.kubernetes.io/controller-uid": "cfe2520a-d9db-42d2-9b1e-61eaddedecd2",
+                    "batch.kubernetes.io/job-completion-index": "4",
+                    "batch.kubernetes.io/job-name": "nixpd-isl4000-pd-agw-generic-r87",
+                    "benchmark": "frozen-raw-capacity",
+                    "benchmark-run": "nixpd-isl4000-pd-agw-generic-r87",
+                    "controller-uid": "cfe2520a-d9db-42d2-9b1e-61eaddedecd2",
+                    "job-name": "nixpd-isl4000-pd-agw-generic-r87",
+                    "topology.kubernetes.io/zone": "nova"
+                },
+                "name": "nixpd-isl4000-pd-agw-generic-r87-4-xchmg",
+                "namespace": "dynamo-components-v2",
+                "ownerReferences": [
+                    {
+                        "apiVersion": "batch/v1",
+                        "blockOwnerDeletion": true,
+                        "controller": true,
+                        "kind": "Job",
+                        "name": "nixpd-isl4000-pd-agw-generic-r87",
+                        "uid": "cfe2520a-d9db-42d2-9b1e-61eaddedecd2"
+                    }
+                ],
+                "resourceVersion": "12233701",
+                "uid": "42bd1fbb-aa54-4578-9566-3a9fed729bb8"
+            },
+            "spec": {
+                "affinity": {
+                    "nodeAffinity": {
+                        "requiredDuringSchedulingIgnoredDuringExecution": {
+                            "nodeSelectorTerms": [
+                                {
+                                    "matchExpressions": [
+                                        {
+                                            "key": "kubernetes.io/hostname",
+                                            "operator": "In",
+                                            "values": [
+                                                "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+                                                "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4",
+                                                "cluster-0967a26d-pool-1f83edbe-mj5s4-79r2b"
+                                            ]
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                },
+                "automountServiceAccountToken": false,
+                "containers": [
+                    {
+                        "args": [
+                            "set -euo pipefail\nbarrier=/shared/aiperf/barriers/nixpd-isl4000-pd-agw-generic-r87\nwhile [ ! -s \"$barrier\" ]; do sleep 0.2; done\nstart_unix=$(cat \"$barrier\")\nwhile [ \"$(date +%s)\" -lt \"$start_unix\" ]; do sleep 0.2; done\nwhile [ \"$(date +%s)\" -lt \"1790465822\" ]; do sleep 0.2; done\nexport HF_HOME=/tmp/hf HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1\ncache=/tmp/hf/hub/models--Qwen--Qwen2.5-0.5B-Instruct\nmkdir -p \"$cache/snapshots\" \"$cache/refs\"\nln -s /model/tokenizer \"$cache/snapshots/nix\"\nprintf nix \u003e \"$cache/refs/main\"\ndataset=/shared/aiperf/static-qwen2.5-0.5b/isl4000-claude-sonnet-raw.jsonl\ntest -s \"$dataset\"\nexec aiperf profile --url \"http://dynamo-pd-agw-generic:8080/v1/chat/completions\" \\\n  --model Qwen/Qwen2.5-0.5B-Instruct \\\n  --tokenizer Qwen/Qwen2.5-0.5B-Instruct \\\n  --endpoint-type chat --streaming --use-server-token-count \\\n  --use-legacy-max-tokens --custom-dataset-type raw_payload \\\n  --input-file \"$dataset\" --random-seed 42 \\\n  --concurrency 128 --benchmark-duration 45 \\\n  --export-level summary --record-processors 16 \\\n  --output-artifact-dir /shared/aiperf/results/nixpd-isl4000-pd-agw-generic-r87/$(JOB_COMPLETION_INDEX)"
+                        ],
+                        "command": [
+                            "/bin/bash",
+                            "-lc"
+                        ],
+                        "env": [
+                            {
+                                "name": "JOB_COMPLETION_INDEX",
+                                "valueFrom": {
+                                    "fieldRef": {
+                                        "apiVersion": "v1",
+                                        "fieldPath": "metadata.labels['batch.kubernetes.io/job-completion-index']"
+                                    }
+                                }
+                            }
+                        ],
+                        "image": "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
+                        "imagePullPolicy": "IfNotPresent",
+                        "name": "benchmark",
+                        "resources": {},
+                        "securityContext": {
+                            "runAsUser": 0
+                        },
+                        "terminationMessagePath": "/dev/termination-log",
+                        "terminationMessagePolicy": "File",
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/nix/store",
+                                "name": "nix-store",
+                                "readOnly": true,
+                                "subPath": "store"
+                            },
+                            {
+                                "mountPath": "/model/tokenizer",
+                                "name": "nix-store",
+                                "readOnly": true,
+                                "subPath": "store/wjq1b3wfjpzak4yd4rmj9arwqk1gkiir-qwen-tokenizer"
+                            },
+                            {
+                                "mountPath": "/shared",
+                                "name": "nix-store"
+                            }
+                        ]
+                    }
+                ],
+                "dnsPolicy": "ClusterFirst",
+                "enableServiceLinks": true,
+                "hostname": "nixpd-isl4000-pd-agw-generic-r87-4",
+                "nodeName": "cluster-0967a26d-pool-1f83edbe-mj5s4-79r2b",
+                "nodeSelector": {
+                    "topology.unikorn-cloud.org/node-pool": "cpu-pool"
+                },
+                "preemptionPolicy": "PreemptLowerPriority",
+                "priority": 0,
+                "restartPolicy": "Never",
+                "schedulerName": "default-scheduler",
+                "securityContext": {},
+                "serviceAccount": "default",
+                "serviceAccountName": "default",
+                "terminationGracePeriodSeconds": 30,
+                "tolerations": [
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/not-ready",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    },
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/unreachable",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    }
+                ],
+                "topologySpreadConstraints": [
+                    {
+                        "labelSelector": {
+                            "matchLabels": {
+                                "benchmark-run": "nixpd-isl4000-pd-agw-generic-r87"
+                            }
+                        },
+                        "maxSkew": 1,
+                        "topologyKey": "kubernetes.io/hostname",
+                        "whenUnsatisfiable": "DoNotSchedule"
+                    }
+                ],
+                "volumes": [
+                    {
+                        "name": "nix-store",
+                        "nfs": {
+                            "path": "/unikorn-identity-03cfadd31877-551/pvc-19aeb650-5f77-45c4-8b8b-0a3b88542f39",
+                            "server": "192.168.0.220"
+                        }
+                    }
+                ]
+            },
+            "status": {
+                "conditions": [
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-09-26T23:38:00Z",
+                        "observedGeneration": 1,
+                        "status": "False",
+                        "type": "PodReadyToStartContainers"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-09-26T23:35:32Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "True",
+                        "type": "Initialized"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-09-26T23:37:59Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "False",
+                        "type": "Ready"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-09-26T23:37:59Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "False",
+                        "type": "ContainersReady"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-09-26T23:35:32Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "PodScheduled"
+                    }
+                ],
+                "containerStatuses": [
+                    {
+                        "containerID": "containerd://e819c1563f1e6ee30f9938e9bbccb92b42d166829b6214b782b4edb38550e46b",
+                        "image": "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
+                        "imageID": "nvcr.io/nvidia/ai-dynamo/aiperf@sha256:d22eb02bccadcd2acbbd905a1742f1e642f2bdd7bc3a0377cebda685a233902d",
+                        "lastState": {},
+                        "name": "benchmark",
+                        "ready": false,
+                        "resources": {},
+                        "restartCount": 0,
+                        "started": false,
+                        "state": {
+                            "terminated": {
+                                "containerID": "containerd://e819c1563f1e6ee30f9938e9bbccb92b42d166829b6214b782b4edb38550e46b",
+                                "exitCode": 0,
+                                "finishedAt": "2026-09-26T23:37:58Z",
+                                "reason": "Completed",
+                                "startedAt": "2026-09-26T23:35:33Z"
+                            }
+                        },
+                        "user": {
+                            "linux": {
+                                "gid": 0,
+                                "supplementalGroups": [
+                                    0
+                                ],
+                                "uid": 0
+                            }
+                        },
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/nix/store",
+                                "name": "nix-store",
+                                "readOnly": true,
+                                "recursiveReadOnly": "Disabled"
+                            },
+                            {
+                                "mountPath": "/model/tokenizer",
+                                "name": "nix-store",
+                                "readOnly": true,
+                                "recursiveReadOnly": "Disabled"
+                            },
+                            {
+                                "mountPath": "/shared",
+                                "name": "nix-store"
+                            }
+                        ]
+                    }
+                ],
+                "hostIP": "192.168.0.164",
+                "hostIPs": [
+                    {
+                        "ip": "192.168.0.164"
+                    }
+                ],
+                "observedGeneration": 1,
+                "phase": "Succeeded",
+                "podIP": "10.0.25.244",
+                "podIPs": [
+                    {
+                        "ip": "10.0.25.244"
+                    }
+                ],
+                "qosClass": "BestEffort",
+                "startTime": "2026-09-26T23:35:32Z"
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {
+                "annotations": {
+                    "batch.kubernetes.io/job-completion-index": "5"
+                },
+                "creationTimestamp": "2026-09-26T23:35:32Z",
+                "generateName": "nixpd-isl4000-pd-agw-generic-r87-5-",
+                "generation": 1,
+                "labels": {
+                    "batch.kubernetes.io/controller-uid": "cfe2520a-d9db-42d2-9b1e-61eaddedecd2",
+                    "batch.kubernetes.io/job-completion-index": "5",
+                    "batch.kubernetes.io/job-name": "nixpd-isl4000-pd-agw-generic-r87",
+                    "benchmark": "frozen-raw-capacity",
+                    "benchmark-run": "nixpd-isl4000-pd-agw-generic-r87",
+                    "controller-uid": "cfe2520a-d9db-42d2-9b1e-61eaddedecd2",
+                    "job-name": "nixpd-isl4000-pd-agw-generic-r87",
+                    "topology.kubernetes.io/zone": "nova"
+                },
+                "name": "nixpd-isl4000-pd-agw-generic-r87-5-hxppb",
+                "namespace": "dynamo-components-v2",
+                "ownerReferences": [
+                    {
+                        "apiVersion": "batch/v1",
+                        "blockOwnerDeletion": true,
+                        "controller": true,
+                        "kind": "Job",
+                        "name": "nixpd-isl4000-pd-agw-generic-r87",
+                        "uid": "cfe2520a-d9db-42d2-9b1e-61eaddedecd2"
+                    }
+                ],
+                "resourceVersion": "12233714",
+                "uid": "6fde7e77-d7ba-44cc-b124-0270df450329"
+            },
+            "spec": {
+                "affinity": {
+                    "nodeAffinity": {
+                        "requiredDuringSchedulingIgnoredDuringExecution": {
+                            "nodeSelectorTerms": [
+                                {
+                                    "matchExpressions": [
+                                        {
+                                            "key": "kubernetes.io/hostname",
+                                            "operator": "In",
+                                            "values": [
+                                                "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+                                                "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4",
+                                                "cluster-0967a26d-pool-1f83edbe-mj5s4-79r2b"
+                                            ]
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                },
+                "automountServiceAccountToken": false,
+                "containers": [
+                    {
+                        "args": [
+                            "set -euo pipefail\nbarrier=/shared/aiperf/barriers/nixpd-isl4000-pd-agw-generic-r87\nwhile [ ! -s \"$barrier\" ]; do sleep 0.2; done\nstart_unix=$(cat \"$barrier\")\nwhile [ \"$(date +%s)\" -lt \"$start_unix\" ]; do sleep 0.2; done\nwhile [ \"$(date +%s)\" -lt \"1790465822\" ]; do sleep 0.2; done\nexport HF_HOME=/tmp/hf HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1\ncache=/tmp/hf/hub/models--Qwen--Qwen2.5-0.5B-Instruct\nmkdir -p \"$cache/snapshots\" \"$cache/refs\"\nln -s /model/tokenizer \"$cache/snapshots/nix\"\nprintf nix \u003e \"$cache/refs/main\"\ndataset=/shared/aiperf/static-qwen2.5-0.5b/isl4000-claude-sonnet-raw.jsonl\ntest -s \"$dataset\"\nexec aiperf profile --url \"http://dynamo-pd-agw-generic:8080/v1/chat/completions\" \\\n  --model Qwen/Qwen2.5-0.5B-Instruct \\\n  --tokenizer Qwen/Qwen2.5-0.5B-Instruct \\\n  --endpoint-type chat --streaming --use-server-token-count \\\n  --use-legacy-max-tokens --custom-dataset-type raw_payload \\\n  --input-file \"$dataset\" --random-seed 42 \\\n  --concurrency 128 --benchmark-duration 45 \\\n  --export-level summary --record-processors 16 \\\n  --output-artifact-dir /shared/aiperf/results/nixpd-isl4000-pd-agw-generic-r87/$(JOB_COMPLETION_INDEX)"
+                        ],
+                        "command": [
+                            "/bin/bash",
+                            "-lc"
+                        ],
+                        "env": [
+                            {
+                                "name": "JOB_COMPLETION_INDEX",
+                                "valueFrom": {
+                                    "fieldRef": {
+                                        "apiVersion": "v1",
+                                        "fieldPath": "metadata.labels['batch.kubernetes.io/job-completion-index']"
+                                    }
+                                }
+                            }
+                        ],
+                        "image": "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
+                        "imagePullPolicy": "IfNotPresent",
+                        "name": "benchmark",
+                        "resources": {},
+                        "securityContext": {
+                            "runAsUser": 0
+                        },
+                        "terminationMessagePath": "/dev/termination-log",
+                        "terminationMessagePolicy": "File",
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/nix/store",
+                                "name": "nix-store",
+                                "readOnly": true,
+                                "subPath": "store"
+                            },
+                            {
+                                "mountPath": "/model/tokenizer",
+                                "name": "nix-store",
+                                "readOnly": true,
+                                "subPath": "store/wjq1b3wfjpzak4yd4rmj9arwqk1gkiir-qwen-tokenizer"
+                            },
+                            {
+                                "mountPath": "/shared",
+                                "name": "nix-store"
+                            }
+                        ]
+                    }
+                ],
+                "dnsPolicy": "ClusterFirst",
+                "enableServiceLinks": true,
+                "hostname": "nixpd-isl4000-pd-agw-generic-r87-5",
+                "nodeName": "cluster-0967a26d-pool-1f83edbe-mj5s4-79r2b",
+                "nodeSelector": {
+                    "topology.unikorn-cloud.org/node-pool": "cpu-pool"
+                },
+                "preemptionPolicy": "PreemptLowerPriority",
+                "priority": 0,
+                "restartPolicy": "Never",
+                "schedulerName": "default-scheduler",
+                "securityContext": {},
+                "serviceAccount": "default",
+                "serviceAccountName": "default",
+                "terminationGracePeriodSeconds": 30,
+                "tolerations": [
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/not-ready",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    },
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/unreachable",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    }
+                ],
+                "topologySpreadConstraints": [
+                    {
+                        "labelSelector": {
+                            "matchLabels": {
+                                "benchmark-run": "nixpd-isl4000-pd-agw-generic-r87"
+                            }
+                        },
+                        "maxSkew": 1,
+                        "topologyKey": "kubernetes.io/hostname",
+                        "whenUnsatisfiable": "DoNotSchedule"
+                    }
+                ],
+                "volumes": [
+                    {
+                        "name": "nix-store",
+                        "nfs": {
+                            "path": "/unikorn-identity-03cfadd31877-551/pvc-19aeb650-5f77-45c4-8b8b-0a3b88542f39",
+                            "server": "192.168.0.220"
+                        }
+                    }
+                ]
+            },
+            "status": {
+                "conditions": [
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-09-26T23:38:01Z",
+                        "observedGeneration": 1,
+                        "status": "False",
+                        "type": "PodReadyToStartContainers"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-09-26T23:35:32Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "True",
+                        "type": "Initialized"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-09-26T23:38:00Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "False",
+                        "type": "Ready"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-09-26T23:38:00Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "False",
+                        "type": "ContainersReady"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-09-26T23:35:32Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "PodScheduled"
+                    }
+                ],
+                "containerStatuses": [
+                    {
+                        "containerID": "containerd://1777871a8883ec10b4abaa94b36cd946aed92114aea0a30985b11d33d75e1b6e",
+                        "image": "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
+                        "imageID": "nvcr.io/nvidia/ai-dynamo/aiperf@sha256:d22eb02bccadcd2acbbd905a1742f1e642f2bdd7bc3a0377cebda685a233902d",
+                        "lastState": {},
+                        "name": "benchmark",
+                        "ready": false,
+                        "resources": {},
+                        "restartCount": 0,
+                        "started": false,
+                        "state": {
+                            "terminated": {
+                                "containerID": "containerd://1777871a8883ec10b4abaa94b36cd946aed92114aea0a30985b11d33d75e1b6e",
+                                "exitCode": 0,
+                                "finishedAt": "2026-09-26T23:37:59Z",
+                                "reason": "Completed",
+                                "startedAt": "2026-09-26T23:35:33Z"
+                            }
+                        },
+                        "user": {
+                            "linux": {
+                                "gid": 0,
+                                "supplementalGroups": [
+                                    0
+                                ],
+                                "uid": 0
+                            }
+                        },
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/nix/store",
+                                "name": "nix-store",
+                                "readOnly": true,
+                                "recursiveReadOnly": "Disabled"
+                            },
+                            {
+                                "mountPath": "/model/tokenizer",
+                                "name": "nix-store",
+                                "readOnly": true,
+                                "recursiveReadOnly": "Disabled"
+                            },
+                            {
+                                "mountPath": "/shared",
+                                "name": "nix-store"
+                            }
+                        ]
+                    }
+                ],
+                "hostIP": "192.168.0.164",
+                "hostIPs": [
+                    {
+                        "ip": "192.168.0.164"
+                    }
+                ],
+                "observedGeneration": 1,
+                "phase": "Succeeded",
+                "podIP": "10.0.25.237",
+                "podIPs": [
+                    {
+                        "ip": "10.0.25.237"
+                    }
+                ],
+                "qosClass": "BestEffort",
+                "startTime": "2026-09-26T23:35:32Z"
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {
+                "annotations": {
+                    "batch.kubernetes.io/job-completion-index": "6"
+                },
+                "creationTimestamp": "2026-09-26T23:35:32Z",
+                "generateName": "nixpd-isl4000-pd-agw-generic-r87-6-",
+                "generation": 1,
+                "labels": {
+                    "batch.kubernetes.io/controller-uid": "cfe2520a-d9db-42d2-9b1e-61eaddedecd2",
+                    "batch.kubernetes.io/job-completion-index": "6",
+                    "batch.kubernetes.io/job-name": "nixpd-isl4000-pd-agw-generic-r87",
+                    "benchmark": "frozen-raw-capacity",
+                    "benchmark-run": "nixpd-isl4000-pd-agw-generic-r87",
+                    "controller-uid": "cfe2520a-d9db-42d2-9b1e-61eaddedecd2",
+                    "job-name": "nixpd-isl4000-pd-agw-generic-r87",
+                    "topology.kubernetes.io/zone": "nova"
+                },
+                "name": "nixpd-isl4000-pd-agw-generic-r87-6-cdv84",
+                "namespace": "dynamo-components-v2",
+                "ownerReferences": [
+                    {
+                        "apiVersion": "batch/v1",
+                        "blockOwnerDeletion": true,
+                        "controller": true,
+                        "kind": "Job",
+                        "name": "nixpd-isl4000-pd-agw-generic-r87",
+                        "uid": "cfe2520a-d9db-42d2-9b1e-61eaddedecd2"
+                    }
+                ],
+                "resourceVersion": "12233712",
+                "uid": "e431ce85-d4d0-45ac-9fe9-5b9664403b85"
+            },
+            "spec": {
+                "affinity": {
+                    "nodeAffinity": {
+                        "requiredDuringSchedulingIgnoredDuringExecution": {
+                            "nodeSelectorTerms": [
+                                {
+                                    "matchExpressions": [
+                                        {
+                                            "key": "kubernetes.io/hostname",
+                                            "operator": "In",
+                                            "values": [
+                                                "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+                                                "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4",
+                                                "cluster-0967a26d-pool-1f83edbe-mj5s4-79r2b"
+                                            ]
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                },
+                "automountServiceAccountToken": false,
+                "containers": [
+                    {
+                        "args": [
+                            "set -euo pipefail\nbarrier=/shared/aiperf/barriers/nixpd-isl4000-pd-agw-generic-r87\nwhile [ ! -s \"$barrier\" ]; do sleep 0.2; done\nstart_unix=$(cat \"$barrier\")\nwhile [ \"$(date +%s)\" -lt \"$start_unix\" ]; do sleep 0.2; done\nwhile [ \"$(date +%s)\" -lt \"1790465822\" ]; do sleep 0.2; done\nexport HF_HOME=/tmp/hf HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1\ncache=/tmp/hf/hub/models--Qwen--Qwen2.5-0.5B-Instruct\nmkdir -p \"$cache/snapshots\" \"$cache/refs\"\nln -s /model/tokenizer \"$cache/snapshots/nix\"\nprintf nix \u003e \"$cache/refs/main\"\ndataset=/shared/aiperf/static-qwen2.5-0.5b/isl4000-claude-sonnet-raw.jsonl\ntest -s \"$dataset\"\nexec aiperf profile --url \"http://dynamo-pd-agw-generic:8080/v1/chat/completions\" \\\n  --model Qwen/Qwen2.5-0.5B-Instruct \\\n  --tokenizer Qwen/Qwen2.5-0.5B-Instruct \\\n  --endpoint-type chat --streaming --use-server-token-count \\\n  --use-legacy-max-tokens --custom-dataset-type raw_payload \\\n  --input-file \"$dataset\" --random-seed 42 \\\n  --concurrency 128 --benchmark-duration 45 \\\n  --export-level summary --record-processors 16 \\\n  --output-artifact-dir /shared/aiperf/results/nixpd-isl4000-pd-agw-generic-r87/$(JOB_COMPLETION_INDEX)"
+                        ],
+                        "command": [
+                            "/bin/bash",
+                            "-lc"
+                        ],
+                        "env": [
+                            {
+                                "name": "JOB_COMPLETION_INDEX",
+                                "valueFrom": {
+                                    "fieldRef": {
+                                        "apiVersion": "v1",
+                                        "fieldPath": "metadata.labels['batch.kubernetes.io/job-completion-index']"
+                                    }
+                                }
+                            }
+                        ],
+                        "image": "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
+                        "imagePullPolicy": "IfNotPresent",
+                        "name": "benchmark",
+                        "resources": {},
+                        "securityContext": {
+                            "runAsUser": 0
+                        },
+                        "terminationMessagePath": "/dev/termination-log",
+                        "terminationMessagePolicy": "File",
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/nix/store",
+                                "name": "nix-store",
+                                "readOnly": true,
+                                "subPath": "store"
+                            },
+                            {
+                                "mountPath": "/model/tokenizer",
+                                "name": "nix-store",
+                                "readOnly": true,
+                                "subPath": "store/wjq1b3wfjpzak4yd4rmj9arwqk1gkiir-qwen-tokenizer"
+                            },
+                            {
+                                "mountPath": "/shared",
+                                "name": "nix-store"
+                            }
+                        ]
+                    }
+                ],
+                "dnsPolicy": "ClusterFirst",
+                "enableServiceLinks": true,
+                "hostname": "nixpd-isl4000-pd-agw-generic-r87-6",
+                "nodeName": "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+                "nodeSelector": {
+                    "topology.unikorn-cloud.org/node-pool": "cpu-pool"
+                },
+                "preemptionPolicy": "PreemptLowerPriority",
+                "priority": 0,
+                "restartPolicy": "Never",
+                "schedulerName": "default-scheduler",
+                "securityContext": {},
+                "serviceAccount": "default",
+                "serviceAccountName": "default",
+                "terminationGracePeriodSeconds": 30,
+                "tolerations": [
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/not-ready",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    },
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/unreachable",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    }
+                ],
+                "topologySpreadConstraints": [
+                    {
+                        "labelSelector": {
+                            "matchLabels": {
+                                "benchmark-run": "nixpd-isl4000-pd-agw-generic-r87"
+                            }
+                        },
+                        "maxSkew": 1,
+                        "topologyKey": "kubernetes.io/hostname",
+                        "whenUnsatisfiable": "DoNotSchedule"
+                    }
+                ],
+                "volumes": [
+                    {
+                        "name": "nix-store",
+                        "nfs": {
+                            "path": "/unikorn-identity-03cfadd31877-551/pvc-19aeb650-5f77-45c4-8b8b-0a3b88542f39",
+                            "server": "192.168.0.220"
+                        }
+                    }
+                ]
+            },
+            "status": {
+                "conditions": [
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-09-26T23:38:01Z",
+                        "observedGeneration": 1,
+                        "status": "False",
+                        "type": "PodReadyToStartContainers"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-09-26T23:35:32Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "True",
+                        "type": "Initialized"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-09-26T23:37:59Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "False",
+                        "type": "Ready"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-09-26T23:37:59Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "False",
+                        "type": "ContainersReady"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-09-26T23:35:32Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "PodScheduled"
+                    }
+                ],
+                "containerStatuses": [
+                    {
+                        "containerID": "containerd://af8eb70cc33bfbd9192d7d1a96e6e62290ac46a88fef366378305fd8d693ed52",
+                        "image": "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
+                        "imageID": "nvcr.io/nvidia/ai-dynamo/aiperf@sha256:d22eb02bccadcd2acbbd905a1742f1e642f2bdd7bc3a0377cebda685a233902d",
+                        "lastState": {},
+                        "name": "benchmark",
+                        "ready": false,
+                        "resources": {},
+                        "restartCount": 0,
+                        "started": false,
+                        "state": {
+                            "terminated": {
+                                "containerID": "containerd://af8eb70cc33bfbd9192d7d1a96e6e62290ac46a88fef366378305fd8d693ed52",
+                                "exitCode": 0,
+                                "finishedAt": "2026-09-26T23:37:59Z",
+                                "reason": "Completed",
+                                "startedAt": "2026-09-26T23:35:33Z"
+                            }
+                        },
+                        "user": {
+                            "linux": {
+                                "gid": 0,
+                                "supplementalGroups": [
+                                    0
+                                ],
+                                "uid": 0
+                            }
+                        },
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/nix/store",
+                                "name": "nix-store",
+                                "readOnly": true,
+                                "recursiveReadOnly": "Disabled"
+                            },
+                            {
+                                "mountPath": "/model/tokenizer",
+                                "name": "nix-store",
+                                "readOnly": true,
+                                "recursiveReadOnly": "Disabled"
+                            },
+                            {
+                                "mountPath": "/shared",
+                                "name": "nix-store"
+                            }
+                        ]
+                    }
+                ],
+                "hostIP": "192.168.0.250",
+                "hostIPs": [
+                    {
+                        "ip": "192.168.0.250"
+                    }
+                ],
+                "observedGeneration": 1,
+                "phase": "Succeeded",
+                "podIP": "10.0.30.57",
+                "podIPs": [
+                    {
+                        "ip": "10.0.30.57"
+                    }
+                ],
+                "qosClass": "BestEffort",
+                "startTime": "2026-09-26T23:35:32Z"
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {
+                "annotations": {
+                    "batch.kubernetes.io/job-completion-index": "7"
+                },
+                "creationTimestamp": "2026-09-26T23:35:32Z",
+                "generateName": "nixpd-isl4000-pd-agw-generic-r87-7-",
+                "generation": 1,
+                "labels": {
+                    "batch.kubernetes.io/controller-uid": "cfe2520a-d9db-42d2-9b1e-61eaddedecd2",
+                    "batch.kubernetes.io/job-completion-index": "7",
+                    "batch.kubernetes.io/job-name": "nixpd-isl4000-pd-agw-generic-r87",
+                    "benchmark": "frozen-raw-capacity",
+                    "benchmark-run": "nixpd-isl4000-pd-agw-generic-r87",
+                    "controller-uid": "cfe2520a-d9db-42d2-9b1e-61eaddedecd2",
+                    "job-name": "nixpd-isl4000-pd-agw-generic-r87",
+                    "topology.kubernetes.io/zone": "nova"
+                },
+                "name": "nixpd-isl4000-pd-agw-generic-r87-7-ds95q",
+                "namespace": "dynamo-components-v2",
+                "ownerReferences": [
+                    {
+                        "apiVersion": "batch/v1",
+                        "blockOwnerDeletion": true,
+                        "controller": true,
+                        "kind": "Job",
+                        "name": "nixpd-isl4000-pd-agw-generic-r87",
+                        "uid": "cfe2520a-d9db-42d2-9b1e-61eaddedecd2"
+                    }
+                ],
+                "resourceVersion": "12233715",
+                "uid": "38fcff3e-a912-46f8-812b-10b9e384fb3a"
+            },
+            "spec": {
+                "affinity": {
+                    "nodeAffinity": {
+                        "requiredDuringSchedulingIgnoredDuringExecution": {
+                            "nodeSelectorTerms": [
+                                {
+                                    "matchExpressions": [
+                                        {
+                                            "key": "kubernetes.io/hostname",
+                                            "operator": "In",
+                                            "values": [
+                                                "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+                                                "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4",
+                                                "cluster-0967a26d-pool-1f83edbe-mj5s4-79r2b"
+                                            ]
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                },
+                "automountServiceAccountToken": false,
+                "containers": [
+                    {
+                        "args": [
+                            "set -euo pipefail\nbarrier=/shared/aiperf/barriers/nixpd-isl4000-pd-agw-generic-r87\nwhile [ ! -s \"$barrier\" ]; do sleep 0.2; done\nstart_unix=$(cat \"$barrier\")\nwhile [ \"$(date +%s)\" -lt \"$start_unix\" ]; do sleep 0.2; done\nwhile [ \"$(date +%s)\" -lt \"1790465822\" ]; do sleep 0.2; done\nexport HF_HOME=/tmp/hf HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1\ncache=/tmp/hf/hub/models--Qwen--Qwen2.5-0.5B-Instruct\nmkdir -p \"$cache/snapshots\" \"$cache/refs\"\nln -s /model/tokenizer \"$cache/snapshots/nix\"\nprintf nix \u003e \"$cache/refs/main\"\ndataset=/shared/aiperf/static-qwen2.5-0.5b/isl4000-claude-sonnet-raw.jsonl\ntest -s \"$dataset\"\nexec aiperf profile --url \"http://dynamo-pd-agw-generic:8080/v1/chat/completions\" \\\n  --model Qwen/Qwen2.5-0.5B-Instruct \\\n  --tokenizer Qwen/Qwen2.5-0.5B-Instruct \\\n  --endpoint-type chat --streaming --use-server-token-count \\\n  --use-legacy-max-tokens --custom-dataset-type raw_payload \\\n  --input-file \"$dataset\" --random-seed 42 \\\n  --concurrency 128 --benchmark-duration 45 \\\n  --export-level summary --record-processors 16 \\\n  --output-artifact-dir /shared/aiperf/results/nixpd-isl4000-pd-agw-generic-r87/$(JOB_COMPLETION_INDEX)"
+                        ],
+                        "command": [
+                            "/bin/bash",
+                            "-lc"
+                        ],
+                        "env": [
+                            {
+                                "name": "JOB_COMPLETION_INDEX",
+                                "valueFrom": {
+                                    "fieldRef": {
+                                        "apiVersion": "v1",
+                                        "fieldPath": "metadata.labels['batch.kubernetes.io/job-completion-index']"
+                                    }
+                                }
+                            }
+                        ],
+                        "image": "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
+                        "imagePullPolicy": "IfNotPresent",
+                        "name": "benchmark",
+                        "resources": {},
+                        "securityContext": {
+                            "runAsUser": 0
+                        },
+                        "terminationMessagePath": "/dev/termination-log",
+                        "terminationMessagePolicy": "File",
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/nix/store",
+                                "name": "nix-store",
+                                "readOnly": true,
+                                "subPath": "store"
+                            },
+                            {
+                                "mountPath": "/model/tokenizer",
+                                "name": "nix-store",
+                                "readOnly": true,
+                                "subPath": "store/wjq1b3wfjpzak4yd4rmj9arwqk1gkiir-qwen-tokenizer"
+                            },
+                            {
+                                "mountPath": "/shared",
+                                "name": "nix-store"
+                            }
+                        ]
+                    }
+                ],
+                "dnsPolicy": "ClusterFirst",
+                "enableServiceLinks": true,
+                "hostname": "nixpd-isl4000-pd-agw-generic-r87-7",
+                "nodeName": "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4",
+                "nodeSelector": {
+                    "topology.unikorn-cloud.org/node-pool": "cpu-pool"
+                },
+                "preemptionPolicy": "PreemptLowerPriority",
+                "priority": 0,
+                "restartPolicy": "Never",
+                "schedulerName": "default-scheduler",
+                "securityContext": {},
+                "serviceAccount": "default",
+                "serviceAccountName": "default",
+                "terminationGracePeriodSeconds": 30,
+                "tolerations": [
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/not-ready",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    },
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/unreachable",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    }
+                ],
+                "topologySpreadConstraints": [
+                    {
+                        "labelSelector": {
+                            "matchLabels": {
+                                "benchmark-run": "nixpd-isl4000-pd-agw-generic-r87"
+                            }
+                        },
+                        "maxSkew": 1,
+                        "topologyKey": "kubernetes.io/hostname",
+                        "whenUnsatisfiable": "DoNotSchedule"
+                    }
+                ],
+                "volumes": [
+                    {
+                        "name": "nix-store",
+                        "nfs": {
+                            "path": "/unikorn-identity-03cfadd31877-551/pvc-19aeb650-5f77-45c4-8b8b-0a3b88542f39",
+                            "server": "192.168.0.220"
+                        }
+                    }
+                ]
+            },
+            "status": {
+                "conditions": [
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-09-26T23:38:02Z",
+                        "observedGeneration": 1,
+                        "status": "False",
+                        "type": "PodReadyToStartContainers"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-09-26T23:35:32Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "True",
+                        "type": "Initialized"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-09-26T23:38:00Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "False",
+                        "type": "Ready"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-09-26T23:38:00Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "False",
+                        "type": "ContainersReady"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-09-26T23:35:32Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "PodScheduled"
+                    }
+                ],
+                "containerStatuses": [
+                    {
+                        "containerID": "containerd://f63e2395abcc57a7c3f4d20f411a749395e805bbaca8076ec75ceed2c5927366",
+                        "image": "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
+                        "imageID": "nvcr.io/nvidia/ai-dynamo/aiperf@sha256:d22eb02bccadcd2acbbd905a1742f1e642f2bdd7bc3a0377cebda685a233902d",
+                        "lastState": {},
+                        "name": "benchmark",
+                        "ready": false,
+                        "resources": {},
+                        "restartCount": 0,
+                        "started": false,
+                        "state": {
+                            "terminated": {
+                                "containerID": "containerd://f63e2395abcc57a7c3f4d20f411a749395e805bbaca8076ec75ceed2c5927366",
+                                "exitCode": 0,
+                                "finishedAt": "2026-09-26T23:37:59Z",
+                                "reason": "Completed",
+                                "startedAt": "2026-09-26T23:35:33Z"
+                            }
+                        },
+                        "user": {
+                            "linux": {
+                                "gid": 0,
+                                "supplementalGroups": [
+                                    0
+                                ],
+                                "uid": 0
+                            }
+                        },
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/nix/store",
+                                "name": "nix-store",
+                                "readOnly": true,
+                                "recursiveReadOnly": "Disabled"
+                            },
+                            {
+                                "mountPath": "/model/tokenizer",
+                                "name": "nix-store",
+                                "readOnly": true,
+                                "recursiveReadOnly": "Disabled"
+                            },
+                            {
+                                "mountPath": "/shared",
+                                "name": "nix-store"
+                            }
+                        ]
+                    }
+                ],
+                "hostIP": "192.168.0.172",
+                "hostIPs": [
+                    {
+                        "ip": "192.168.0.172"
+                    }
+                ],
+                "observedGeneration": 1,
+                "phase": "Succeeded",
+                "podIP": "10.0.21.178",
+                "podIPs": [
+                    {
+                        "ip": "10.0.21.178"
+                    }
+                ],
+                "qosClass": "BestEffort",
+                "startTime": "2026-09-26T23:35:32Z"
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {
+                "annotations": {
+                    "batch.kubernetes.io/job-completion-index": "8"
+                },
+                "creationTimestamp": "2026-09-26T23:35:32Z",
+                "generateName": "nixpd-isl4000-pd-agw-generic-r87-8-",
+                "generation": 1,
+                "labels": {
+                    "batch.kubernetes.io/controller-uid": "cfe2520a-d9db-42d2-9b1e-61eaddedecd2",
+                    "batch.kubernetes.io/job-completion-index": "8",
+                    "batch.kubernetes.io/job-name": "nixpd-isl4000-pd-agw-generic-r87",
+                    "benchmark": "frozen-raw-capacity",
+                    "benchmark-run": "nixpd-isl4000-pd-agw-generic-r87",
+                    "controller-uid": "cfe2520a-d9db-42d2-9b1e-61eaddedecd2",
+                    "job-name": "nixpd-isl4000-pd-agw-generic-r87",
+                    "topology.kubernetes.io/zone": "nova"
+                },
+                "name": "nixpd-isl4000-pd-agw-generic-r87-8-wlh4f",
+                "namespace": "dynamo-components-v2",
+                "ownerReferences": [
+                    {
+                        "apiVersion": "batch/v1",
+                        "blockOwnerDeletion": true,
+                        "controller": true,
+                        "kind": "Job",
+                        "name": "nixpd-isl4000-pd-agw-generic-r87",
+                        "uid": "cfe2520a-d9db-42d2-9b1e-61eaddedecd2"
+                    }
+                ],
+                "resourceVersion": "12233700",
+                "uid": "3110518b-ccdc-4551-8f16-24250ddc2d84"
+            },
+            "spec": {
+                "affinity": {
+                    "nodeAffinity": {
+                        "requiredDuringSchedulingIgnoredDuringExecution": {
+                            "nodeSelectorTerms": [
+                                {
+                                    "matchExpressions": [
+                                        {
+                                            "key": "kubernetes.io/hostname",
+                                            "operator": "In",
+                                            "values": [
+                                                "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67",
+                                                "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4",
+                                                "cluster-0967a26d-pool-1f83edbe-mj5s4-79r2b"
+                                            ]
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                },
+                "automountServiceAccountToken": false,
+                "containers": [
+                    {
+                        "args": [
+                            "set -euo pipefail\nbarrier=/shared/aiperf/barriers/nixpd-isl4000-pd-agw-generic-r87\nwhile [ ! -s \"$barrier\" ]; do sleep 0.2; done\nstart_unix=$(cat \"$barrier\")\nwhile [ \"$(date +%s)\" -lt \"$start_unix\" ]; do sleep 0.2; done\nwhile [ \"$(date +%s)\" -lt \"1790465822\" ]; do sleep 0.2; done\nexport HF_HOME=/tmp/hf HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1\ncache=/tmp/hf/hub/models--Qwen--Qwen2.5-0.5B-Instruct\nmkdir -p \"$cache/snapshots\" \"$cache/refs\"\nln -s /model/tokenizer \"$cache/snapshots/nix\"\nprintf nix \u003e \"$cache/refs/main\"\ndataset=/shared/aiperf/static-qwen2.5-0.5b/isl4000-claude-sonnet-raw.jsonl\ntest -s \"$dataset\"\nexec aiperf profile --url \"http://dynamo-pd-agw-generic:8080/v1/chat/completions\" \\\n  --model Qwen/Qwen2.5-0.5B-Instruct \\\n  --tokenizer Qwen/Qwen2.5-0.5B-Instruct \\\n  --endpoint-type chat --streaming --use-server-token-count \\\n  --use-legacy-max-tokens --custom-dataset-type raw_payload \\\n  --input-file \"$dataset\" --random-seed 42 \\\n  --concurrency 128 --benchmark-duration 45 \\\n  --export-level summary --record-processors 16 \\\n  --output-artifact-dir /shared/aiperf/results/nixpd-isl4000-pd-agw-generic-r87/$(JOB_COMPLETION_INDEX)"
+                        ],
+                        "command": [
+                            "/bin/bash",
+                            "-lc"
+                        ],
+                        "env": [
+                            {
+                                "name": "JOB_COMPLETION_INDEX",
+                                "valueFrom": {
+                                    "fieldRef": {
+                                        "apiVersion": "v1",
+                                        "fieldPath": "metadata.labels['batch.kubernetes.io/job-completion-index']"
+                                    }
+                                }
+                            }
+                        ],
+                        "image": "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
+                        "imagePullPolicy": "IfNotPresent",
+                        "name": "benchmark",
+                        "resources": {},
+                        "securityContext": {
+                            "runAsUser": 0
+                        },
+                        "terminationMessagePath": "/dev/termination-log",
+                        "terminationMessagePolicy": "File",
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/nix/store",
+                                "name": "nix-store",
+                                "readOnly": true,
+                                "subPath": "store"
+                            },
+                            {
+                                "mountPath": "/model/tokenizer",
+                                "name": "nix-store",
+                                "readOnly": true,
+                                "subPath": "store/wjq1b3wfjpzak4yd4rmj9arwqk1gkiir-qwen-tokenizer"
+                            },
+                            {
+                                "mountPath": "/shared",
+                                "name": "nix-store"
+                            }
+                        ]
+                    }
+                ],
+                "dnsPolicy": "ClusterFirst",
+                "enableServiceLinks": true,
+                "hostname": "nixpd-isl4000-pd-agw-generic-r87-8",
+                "nodeName": "cluster-0967a26d-pool-1f83edbe-mj5s4-gnsf4",
+                "nodeSelector": {
+                    "topology.unikorn-cloud.org/node-pool": "cpu-pool"
+                },
+                "preemptionPolicy": "PreemptLowerPriority",
+                "priority": 0,
+                "restartPolicy": "Never",
+                "schedulerName": "default-scheduler",
+                "securityContext": {},
+                "serviceAccount": "default",
+                "serviceAccountName": "default",
+                "terminationGracePeriodSeconds": 30,
+                "tolerations": [
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/not-ready",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    },
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/unreachable",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    }
+                ],
+                "topologySpreadConstraints": [
+                    {
+                        "labelSelector": {
+                            "matchLabels": {
+                                "benchmark-run": "nixpd-isl4000-pd-agw-generic-r87"
+                            }
+                        },
+                        "maxSkew": 1,
+                        "topologyKey": "kubernetes.io/hostname",
+                        "whenUnsatisfiable": "DoNotSchedule"
+                    }
+                ],
+                "volumes": [
+                    {
+                        "name": "nix-store",
+                        "nfs": {
+                            "path": "/unikorn-identity-03cfadd31877-551/pvc-19aeb650-5f77-45c4-8b8b-0a3b88542f39",
+                            "server": "192.168.0.220"
+                        }
+                    }
+                ]
+            },
+            "status": {
+                "conditions": [
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-09-26T23:38:01Z",
+                        "observedGeneration": 1,
+                        "status": "False",
+                        "type": "PodReadyToStartContainers"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-09-26T23:35:32Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "True",
+                        "type": "Initialized"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-09-26T23:37:59Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "False",
+                        "type": "Ready"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-09-26T23:37:59Z",
+                        "observedGeneration": 1,
+                        "reason": "PodCompleted",
+                        "status": "False",
+                        "type": "ContainersReady"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-09-26T23:35:32Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "PodScheduled"
+                    }
+                ],
+                "containerStatuses": [
+                    {
+                        "containerID": "containerd://f4d636f1bcfc182e2f7a369498493614f9d09e71b5a1bd1eec1e4e9f420dd874",
+                        "image": "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
+                        "imageID": "nvcr.io/nvidia/ai-dynamo/aiperf@sha256:d22eb02bccadcd2acbbd905a1742f1e642f2bdd7bc3a0377cebda685a233902d",
+                        "lastState": {},
+                        "name": "benchmark",
+                        "ready": false,
+                        "resources": {},
+                        "restartCount": 0,
+                        "started": false,
+                        "state": {
+                            "terminated": {
+                                "containerID": "containerd://f4d636f1bcfc182e2f7a369498493614f9d09e71b5a1bd1eec1e4e9f420dd874",
+                                "exitCode": 0,
+                                "finishedAt": "2026-09-26T23:37:59Z",
+                                "reason": "Completed",
+                                "startedAt": "2026-09-26T23:35:33Z"
+                            }
+                        },
+                        "user": {
+                            "linux": {
+                                "gid": 0,
+                                "supplementalGroups": [
+                                    0
+                                ],
+                                "uid": 0
+                            }
+                        },
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/nix/store",
+                                "name": "nix-store",
+                                "readOnly": true,
+                                "recursiveReadOnly": "Disabled"
+                            },
+                            {
+                                "mountPath": "/model/tokenizer",
+                                "name": "nix-store",
+                                "readOnly": true,
+                                "recursiveReadOnly": "Disabled"
+                            },
+                            {
+                                "mountPath": "/shared",
+                                "name": "nix-store"
+                            }
+                        ]
+                    }
+                ],
+                "hostIP": "192.168.0.172",
+                "hostIPs": [
+                    {
+                        "ip": "192.168.0.172"
+                    }
+                ],
+                "observedGeneration": 1,
+                "phase": "Succeeded",
+                "podIP": "10.0.21.83",
+                "podIPs": [
+                    {
+                        "ip": "10.0.21.83"
+                    }
+                ],
+                "qosClass": "BestEffort",
+                "startTime": "2026-09-26T23:35:32Z"
+            }
+        }
+    ],
+    "kind": "List",
+    "metadata": {
+        "resourceVersion": ""
+    }
+}
