@@ -181,7 +181,8 @@ pub struct StaticAggregatePipeline {
     preprocessors: Arc<Vec<PreprocessorClient<Channel>>>,
     next_preprocessor: Arc<AtomicUsize>,
     preprocess_batcher: Option<PreprocessBatcher>,
-    selector: SelectorClient<Channel>,
+    selectors: Arc<Vec<SelectorClient<Channel>>>,
+    next_selector: Arc<AtomicUsize>,
     prefill_channels: Option<Arc<Vec<Channel>>>,
     next_prefill: Arc<AtomicUsize>,
     worker_channels: Arc<Mutex<HashMap<String, Channel>>>,
@@ -193,7 +194,8 @@ impl StaticAggregatePipeline {
             preprocessors: Arc::new(vec![PreprocessorClient::new(preprocessor)]),
             next_preprocessor: Arc::new(AtomicUsize::new(0)),
             preprocess_batcher: None,
-            selector: SelectorClient::new(selector),
+            selectors: Arc::new(vec![SelectorClient::new(selector)]),
+            next_selector: Arc::new(AtomicUsize::new(0)),
             prefill_channels: None,
             next_prefill: Arc::new(AtomicUsize::new(0)),
             worker_channels: Arc::new(Mutex::new(HashMap::new())),
@@ -236,14 +238,16 @@ impl StaticAggregatePipeline {
                 .map_err(|error| PipelineError::Endpoint(error.to_string()))?;
             preprocessors.push(PreprocessorClient::new(channel));
         }
-        let selector = Channel::from_shared(selector_endpoint)
-            .map_err(|error| PipelineError::Endpoint(error.to_string()))?
-            .tcp_nodelay(true)
-            .initial_stream_window_size(Some(GRPC_STREAM_WINDOW_BYTES))
-            .initial_connection_window_size(Some(GRPC_CONNECTION_WINDOW_BYTES))
-            .connect()
-            .await
-            .map_err(|error| PipelineError::Endpoint(error.to_string()))?;
+        // Selector traffic also goes through a Kubernetes Service. A single
+        // tonic Channel would pin every request to one selector replica.
+        let mut selectors = Vec::with_capacity(pool_size);
+        for _ in 0..pool_size {
+            let channel = configured_endpoint(selector_endpoint.clone())?
+                .connect()
+                .await
+                .map_err(|error| PipelineError::Endpoint(error.to_string()))?;
+            selectors.push(SelectorClient::new(channel));
+        }
         let preprocessors = Arc::new(preprocessors);
         let next_preprocessor = Arc::new(AtomicUsize::new(0));
         let max_batch = std::env::var("DYN_PREPROCESS_BATCH_MAX")
@@ -282,7 +286,8 @@ impl StaticAggregatePipeline {
             preprocessors,
             next_preprocessor,
             preprocess_batcher,
-            selector: SelectorClient::new(selector),
+            selectors: Arc::new(selectors),
+            next_selector: Arc::new(AtomicUsize::new(0)),
             prefill_channels,
             next_prefill: Arc::new(AtomicUsize::new(0)),
             worker_channels: Arc::new(Mutex::new(HashMap::new())),
@@ -402,8 +407,9 @@ impl StaticAggregatePipeline {
             Vec::new()
         };
 
-        let selected = self
-            .selector
+        let selector_index =
+            self.next_selector.fetch_add(1, Ordering::Relaxed) % self.selectors.len();
+        let selected = self.selectors[selector_index]
             .clone()
             .select(JsonItem {
                 item_id: request_id.clone(),
