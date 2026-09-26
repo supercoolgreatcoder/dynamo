@@ -4,9 +4,10 @@
 # Render with envsubst restricted to RUN_NAME, VCLUSTER_NAMESPACE,
 # BENCHMARK_START_UNIX, ARM_SERVICE, DATASET, AIPERF_NODE_A,
 # AIPERF_NODE_B, AIPERF_CLIENTS, AIPERF_EXTRA_NODE_VALUES,
+# AIPERF_BARRIER_COMMAND,
 # TOKENIZER_STORE_BASENAME, NIX_STORE_NFS_SERVER, and NIX_STORE_NFS_PATH.
-# The default remains six clients on two nodes. The opt-in twelve-client
-# ceiling sweep uses four nodes, retaining three clients per node.
+# The default remains six clients on two nodes. Opt-in nine/twelve-client
+# ceiling sweeps use three/four nodes, retaining three clients per node.
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -58,6 +59,7 @@ ${AIPERF_EXTRA_NODE_VALUES}
           args:
             - |-
               set -euo pipefail
+${AIPERF_BARRIER_COMMAND}
               while [ "$(date +%s)" -lt "${BENCHMARK_START_UNIX}" ]; do sleep 0.2; done
               export HF_HOME=/tmp/hf HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
               cache=/tmp/hf/hub/models--Qwen--Qwen2.5-0.5B-Instruct
