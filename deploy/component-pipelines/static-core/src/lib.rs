@@ -84,6 +84,10 @@ impl PreprocessBatcher {
             .ok()
             .as_deref()
             == Some("1");
+        let ready_threshold = std::env::var("DYN_PREPROCESS_BATCH_READY_THRESHOLD")
+            .ok()
+            .and_then(|value| value.parse::<usize>().ok())
+            .filter(|threshold| (1..=max_batch).contains(threshold));
         let stats_every = std::env::var("DYN_STATIC_BATCH_STATS_EVERY")
             .ok()
             .and_then(|value| value.parse::<usize>().ok())
@@ -137,8 +141,12 @@ impl PreprocessBatcher {
                     let received_at = (should_emit_stats || summary.is_some()).then(Instant::now);
                     let mut batch = Vec::with_capacity(max_batch);
                     batch.push(first);
-                    if linger_us == 0 {
-                        tokio::task::yield_now().await;
+                    if linger_us == 0
+                        || ready_threshold.is_some_and(|threshold| receiver.len() >= threshold)
+                    {
+                        if linger_us == 0 {
+                            tokio::task::yield_now().await;
+                        }
                         while batch.len() < max_batch {
                             match receiver.try_recv() {
                                 Ok(item) => batch.push(item),
