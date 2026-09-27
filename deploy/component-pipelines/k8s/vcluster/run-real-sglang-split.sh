@@ -32,6 +32,11 @@ if [[ "$actual_server" != "$VCLUSTER_EXPECTED_SERVER" ]]; then
   echo "refusing non-vCluster API: expected $VCLUSTER_EXPECTED_SERVER, got $actual_server" >&2
   exit 2
 fi
+if [[ "$VCLUSTER_EXPECTED_SERVER" != "https://gateway-poc.mkhadkevich-dev:443" ||
+      "$VCLUSTER_NAMESPACE" != "dynamo-components-v2" ]]; then
+  echo "refusing unexpected vCluster server or namespace" >&2
+  exit 2
+fi
 case "$FACADE_STORE_PATH" in
   /nix/store/*) ;;
   *) echo "FACADE_STORE_PATH must be an immutable Nix store path" >&2; exit 2 ;;

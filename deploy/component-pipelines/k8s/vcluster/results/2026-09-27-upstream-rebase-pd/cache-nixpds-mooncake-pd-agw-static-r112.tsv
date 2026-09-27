@@ -1,0 +1,6 @@
+0	nixpds-mooncake-pd-agw-static-r112-0-fxsqs	05:05:09.028 INFO     Memory-mapped dataset cache HIT (key=4632ec92287b39f9033acd98c8c8b55f); skipping tokenizer + composer. (dataset_manager.py:194)
+1	nixpds-mooncake-pd-agw-static-r112-1-dwq92	05:05:09.291 INFO     Memory-mapped dataset cache HIT (key=4632ec92287b39f9033acd98c8c8b55f); skipping tokenizer + composer. (dataset_manager.py:194)
+2	nixpds-mooncake-pd-agw-static-r112-2-tr5h5	05:05:09.219 INFO     Memory-mapped dataset cache HIT (key=4632ec92287b39f9033acd98c8c8b55f); skipping tokenizer + composer. (dataset_manager.py:194)
+3	nixpds-mooncake-pd-agw-static-r112-3-jps2g	05:05:08.908 INFO     Memory-mapped dataset cache HIT (key=4632ec92287b39f9033acd98c8c8b55f); skipping tokenizer + composer. (dataset_manager.py:194)
+4	nixpds-mooncake-pd-agw-static-r112-4-8sb4g	05:05:09.119 INFO     Memory-mapped dataset cache HIT (key=4632ec92287b39f9033acd98c8c8b55f); skipping tokenizer + composer. (dataset_manager.py:194)
+5	nixpds-mooncake-pd-agw-static-r112-5-wrv7x	05:05:08.934 INFO     Memory-mapped dataset cache HIT (key=4632ec92287b39f9033acd98c8c8b55f); skipping tokenizer + composer. (dataset_manager.py:194)

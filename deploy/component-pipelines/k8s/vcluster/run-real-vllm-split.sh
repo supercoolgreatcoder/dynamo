@@ -18,6 +18,7 @@ for name in "${required[@]}"; do
 done
 kubectl_bin=${KUBECTL_BIN:-kubectl}
 envsubst_bin=${ENVSUBST_BIN:-envsubst}
+stager_pod=${NIX_STAGER_POD:-dynamo-component-store-stager}
 command -v "$kubectl_bin" >/dev/null
 command -v "$envsubst_bin" >/dev/null
 actual_server=$(
@@ -26,6 +27,11 @@ actual_server=$(
 )
 if [[ "$actual_server" != "$VCLUSTER_EXPECTED_SERVER" ]]; then
   echo "refusing non-vCluster API: $actual_server" >&2
+  exit 2
+fi
+if [[ "$VCLUSTER_EXPECTED_SERVER" != "https://gateway-poc.mkhadkevich-dev:443" ||
+      "$VCLUSTER_NAMESPACE" != "dynamo-components-v2" ]]; then
+  echo "refusing unexpected vCluster server or namespace" >&2
   exit 2
 fi
 for name in FACADE_STORE_PATH VLLM_WORKER_ENV_PATH VLLM_RS_PATH GATEWAY_BUNDLE_PATH; do
@@ -56,7 +62,7 @@ for artifact in \
   "${VLLM_WORKER_ENV_PATH#/nix/store/}/bin/python" \
   "${VLLM_RS_PATH#/nix/store/}/bin/vllm-rs" \
   "${GATEWAY_BUNDLE_PATH#/nix/store/}/bin/agentgateway"; do
-  "${vc[@]}" exec dynamo-component-store-stager -- \
+  "${vc[@]}" exec "$stager_pod" -- \
     test -x "/shared/nix/store/$artifact"
 done
 

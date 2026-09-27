@@ -1,0 +1,48 @@
+{
+  "series_id": "dynamo-pd-b140-2026-09-27",
+  "source_pin": "b140462e2c674b98c4102db0464e0e48660d96e8",
+  "bundle": "/nix/store/1jycyv3idc78rz9mn67z3ygv6a1gg6rd-dynamo-component-pipelines-b140462e2c",
+  "vcluster_api_server": "https://gateway-poc.mkhadkevich-dev:443",
+  "namespace": "dynamo-components-v2",
+  "aiperf_image": "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
+  "client_nodes": [
+    "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+    "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67"
+  ],
+  "clients_per_job": 6,
+  "clients_per_node": 3,
+  "concurrency_per_client": 128,
+  "trials": ["r110", "r111", "r112"],
+  "topology": {
+    "gateway_replicas": 1,
+    "preprocessor_replicas": 4,
+    "selector_replicas": 4,
+    "prefill_mocker_replicas": 4,
+    "decode_mocker_replicas": 16
+  },
+  "arms": ["pd-agw-static", "pd-agw-generic", "pd-envoy-generic", "pd-envoy-callouts"],
+  "workloads": {
+    "short": {
+      "path": "/shared/aiperf/static-qwen2.5-0.5b/short-claude-sonnet-raw.jsonl",
+      "sha256": "ab030551a31fb4ac8e7a864a940862a68bc0d386b152b4aba7bc249322833426",
+      "duration_seconds": 45,
+      "policy": "closed-loop-concurrency"
+    },
+    "isl4000": {
+      "path": "/shared/aiperf/static-qwen2.5-0.5b/isl4000-claude-sonnet-raw.jsonl",
+      "sha256": "3ad382586f5417f4255d7eea774700d9817bc39acbc7b537e2efa7d89145c743",
+      "duration_seconds": 45,
+      "policy": "closed-loop-concurrency"
+    },
+    "mooncake": {
+      "path": "/shared/aiperf/mooncake-qwen2.5-0.5b/mooncake-512-context.jsonl",
+      "sha256": "28a94e9bc1b63fdc88e5217bdd5c647a0487c08c83bdc64a814ec0840562f550",
+      "duration_seconds": 46,
+      "policy": "fixed-schedule",
+      "requests_per_client": 22699,
+      "requires_prebuilt_mmap_cache": true
+    }
+  },
+  "primary_metric": "median of six-client summed successful requests per second, three valid runs per cell",
+  "historical_context_metric": "successful requests divided by each Job's global observed six-client window"
+}

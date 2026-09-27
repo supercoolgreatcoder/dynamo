@@ -1,0 +1,42 @@
+{
+  "series_id": "dynamo-pd-historical-control-2026-09-27",
+  "source_pin": "995c04e74f785a498470f305d37875703fb72b86",
+  "facade": "/nix/store/w77ac5nlyc9543kgkwdxpf9a7yk5l7y6-dynamo-component-facade-1.6.0-995c04e74f",
+  "gateway_bundle": "/nix/store/d9n60x9aylvjvj9j56654640xshsai1x-dynamo-component-pipelines-accf6af699",
+  "graph_source": "995c04e74f785a498470f305d37875703fb72b86:deploy/component-pipelines/graphs/disaggregated.yaml",
+  "mounted_graph_sha256": "84e242ccc5769538a00fe6f9f2cb1c9e5b4e7d624f2b77b3d04786a58cf15002",
+  "vcluster_api_server": "https://gateway-poc.mkhadkevich-dev:443",
+  "namespace": "dynamo-components-v2",
+  "aiperf_image": "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
+  "client_nodes": [
+    "cluster-0967a26d-pool-1f83edbe-mj5s4-lhwhj",
+    "cluster-0967a26d-pool-1f83edbe-mj5s4-dlq67"
+  ],
+  "clients_per_job": 6,
+  "clients_per_node": 3,
+  "concurrency_per_client": 128,
+  "trials": ["r120", "r121", "r122"],
+  "topology": {
+    "gateway_replicas": 1,
+    "preprocessor_replicas": 4,
+    "selector_replicas": 4,
+    "prefill_mocker_replicas": 4,
+    "decode_mocker_replicas": 16
+  },
+  "arm": "pd-envoy-callouts",
+  "workloads": {
+    "short": {
+      "path": "/shared/aiperf/static-qwen2.5-0.5b/short-claude-sonnet-raw.jsonl",
+      "sha256": "ab030551a31fb4ac8e7a864a940862a68bc0d386b152b4aba7bc249322833426",
+      "duration_seconds": 45,
+      "policy": "closed-loop-concurrency"
+    },
+    "isl4000": {
+      "path": "/shared/aiperf/static-qwen2.5-0.5b/isl4000-claude-sonnet-raw.jsonl",
+      "sha256": "3ad382586f5417f4255d7eea774700d9817bc39acbc7b537e2efa7d89145c743",
+      "duration_seconds": 45,
+      "policy": "closed-loop-concurrency"
+    }
+  },
+  "metric": "median of six-client summed successful request throughput over three valid runs per workload"
+}
