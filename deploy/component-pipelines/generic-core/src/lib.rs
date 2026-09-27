@@ -763,6 +763,10 @@ paths:
         for call in [&calls[1], &calls[2], &calls[3]] {
             assert_eq!(call.body["token_ids_le"], json!("AQAAAA=="));
         }
+        assert_eq!(calls[1].body["prompt_tokens"], json!(1));
+        assert_eq!(calls[1].body["image_count"], json!(2));
+        assert_eq!(calls[1].body["video_count"], json!(3));
+        assert_eq!(calls[1].body["audio_count"], json!(4));
         assert_eq!(calls[3].body["prompt_tokens"], json!(1));
         assert_eq!(calls[3].body["prompt_injected_reasoning"], json!(true));
         assert_eq!(calls[3].body["uses_tool_call_structural_tag"], json!(true));
