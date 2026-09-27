@@ -12,7 +12,7 @@ the same aggregate/disaggregated graph semantics.
 
 `generic-core` is the domain-independent validated DAG runtime proven in the retained
 prototype branch, imported here as one Dynamo workspace crate and audited to exclude
-tokenizer, selector, worker, and inference policy. Its 88 unit tests remain intact.
+tokenizer, selector, worker, and inference policy. Its unit suite remains intact.
 `grpc-transport` is the small descriptor-driven transport baseline; it resolves methods
 from the descriptor emitted by `dynamo-component-facades`, not generated shadow clients.
 
@@ -30,6 +30,30 @@ The transport supports two explicit protobuf/JSON bridge extensions:
 worker-side composition of a supplied Dynamo backend engine plus Dynamo's canonical
 postprocessor. The gateway does not render prompts, compute KV policy, decode tokens,
 or parse reasoning/tools.
+
+The facades import Dynamo's pipeline traits and annotated data types from
+`dynamo-runtime`, but do not construct a `DistributedRuntime` or use its
+NATS/etcd control plane. The selector builds Dynamo's standalone
+`SelectionService`, supplies Dynamo's built-in worker-selection policy
+factory, and uses the reusable InferencePool watcher from `dynamo-ext-proc`;
+it does not enable the EPP server. Runtime metadata comes from watched Pod
+annotations. The real-worker facade composes Dynamo's `EngineAdapter`,
+`Backend`, and native vLLM/SGLang sidecar engines rather than copying their
+inference or detokenization logic.
+
+## Upgrade Dynamo
+
+Keep a pinned, benchmarked branch as a reference. On a new branch, rebase the
+component commits onto the desired upstream Dynamo `main`, regenerate
+`Cargo.lock` with Cargo when dependencies change, and run at least the
+facade, generic, static, and gRPC transport suites before rebuilding the
+Nix bundle. The selector's default policy factory is a host-supplied Dynamo
+plugin; use `dynamo_custom_policy_builtin::default_factory()` rather than
+maintaining a parallel selection policy. A source rebase and unit tests do
+not establish deployment or throughput parity: rebuild all four hosts,
+smoke real workers, and rerun the frozen benchmark matrix in the vCluster.
+The [September 27 rebase audit](k8s/vcluster/results/2026-09-27-upstream-rebase/README.md)
+records one such upgrade and its remaining validation gates.
 
 `graphs/disaggregated.yaml` is an initial vLLM-style two-role graph. It
 drains the prefill worker's canonical raw stream without emitting its handoff

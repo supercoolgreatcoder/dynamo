@@ -529,7 +529,8 @@ async fn main() -> anyhow::Result<()> {
                 SelectionServiceBuilder::new(
                     router_config,
                     config.worker_type,
-                    RouterPluginRegistry::default(),
+                    RouterPluginRegistry::default()
+                        .with_default_factory(dynamo_custom_policy_builtin::default_factory()),
                 )
                 .indexer_threads(config.indexer_threads)
                 .build()

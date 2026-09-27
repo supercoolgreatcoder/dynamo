@@ -25,7 +25,8 @@ async fn facade() -> SelectorFacade {
     let service = SelectionServiceBuilder::new(
         config,
         WorkerType::Aggregated,
-        RouterPluginRegistry::default(),
+        RouterPluginRegistry::default()
+            .with_default_factory(dynamo_custom_policy_builtin::default_factory()),
     )
     .indexer_threads(1)
     .build()

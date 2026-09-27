@@ -2468,6 +2468,7 @@ dependencies = [
  "anyhow",
  "clap",
  "dynamo-backend-common",
+ "dynamo-custom-policy-builtin",
  "dynamo-ext-proc",
  "dynamo-kv-router",
  "dynamo-llm",

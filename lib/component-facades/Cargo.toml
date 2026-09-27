@@ -16,6 +16,7 @@ ignored = ["prost"]
 
 [dependencies]
 dynamo-backend-common = { workspace = true }
+dynamo-custom-policy-builtin = { workspace = true }
 dynamo-kv-router = { workspace = true, features = ["standalone-selection"] }
 dynamo-llm = { path = "../llm", default-features = false }
 dynamo-runtime = { workspace = true }
