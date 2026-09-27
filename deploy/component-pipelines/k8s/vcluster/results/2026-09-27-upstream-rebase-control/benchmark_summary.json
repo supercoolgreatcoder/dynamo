@@ -1,0 +1,138 @@
+{
+  "series_id": "nix-component-pipeline-accf6af-control-2026-09-27",
+  "metric": "aggregate successful request throughput",
+  "unit": "requests/second",
+  "runs": [
+    {
+      "job": "nixv2-isl4000-envoy-callouts-r104",
+      "clients": 6,
+      "aiperf_version": "0.12.0",
+      "endpoint": "http://envoy-callouts:8080/v1/chat/completions",
+      "dataset": {
+        "name": "main",
+        "type": "file",
+        "path": "/shared/aiperf/static-qwen2.5-0.5b/isl4000-claude-sonnet-raw.jsonl",
+        "format": "raw_payload",
+        "random_seed": 42
+      },
+      "phase": {
+        "name": "profiling",
+        "kind": "profiling",
+        "type": "concurrency",
+        "duration": 45.0,
+        "concurrency": 128,
+        "grace_period": 30.0
+      },
+      "aggregate_rps": 10138.56460343784,
+      "successful_requests": 457529,
+      "failed_requests": 0,
+      "cancelled": false,
+      "effective_concurrency": 287.9725946756613,
+      "mean_request_latency_ms": 28.356067380729964,
+      "error_summary": [],
+      "workload": "isl4000",
+      "arm": "envoy-callouts",
+      "trial": "r104"
+    },
+    {
+      "job": "nixv2-short-agw-generic-r104",
+      "clients": 6,
+      "aiperf_version": "0.12.0",
+      "endpoint": "http://agw-generic:8080/v1/chat/completions",
+      "dataset": {
+        "name": "main",
+        "type": "file",
+        "path": "/shared/aiperf/static-qwen2.5-0.5b/short-claude-sonnet-raw.jsonl",
+        "format": "raw_payload",
+        "random_seed": 42
+      },
+      "phase": {
+        "name": "profiling",
+        "kind": "profiling",
+        "type": "concurrency",
+        "duration": 45.0,
+        "concurrency": 128,
+        "grace_period": 30.0
+      },
+      "aggregate_rps": 11732.564957810497,
+      "successful_requests": 529171,
+      "failed_requests": 0,
+      "cancelled": false,
+      "effective_concurrency": 211.05108904047574,
+      "mean_request_latency_ms": 17.98932256017242,
+      "error_summary": [],
+      "workload": "short",
+      "arm": "agw-generic",
+      "trial": "r104"
+    },
+    {
+      "job": "nixv2-short-envoy-generic-r104",
+      "clients": 6,
+      "aiperf_version": "0.12.0",
+      "endpoint": "http://envoy-independent:8080/v1/chat/completions",
+      "dataset": {
+        "name": "main",
+        "type": "file",
+        "path": "/shared/aiperf/static-qwen2.5-0.5b/short-claude-sonnet-raw.jsonl",
+        "format": "raw_payload",
+        "random_seed": 42
+      },
+      "phase": {
+        "name": "profiling",
+        "kind": "profiling",
+        "type": "concurrency",
+        "duration": 45.0,
+        "concurrency": 128,
+        "grace_period": 30.0
+      },
+      "aggregate_rps": 11937.077693224339,
+      "successful_requests": 538100,
+      "failed_requests": 0,
+      "cancelled": false,
+      "effective_concurrency": 222.6183135759621,
+      "mean_request_latency_ms": 18.633853402690946,
+      "error_summary": [],
+      "workload": "short",
+      "arm": "envoy-generic",
+      "trial": "r104"
+    }
+  ],
+  "cells": [
+    {
+      "workload": "isl4000",
+      "arm": "envoy-callouts",
+      "valid_jobs": [
+        "nixv2-isl4000-envoy-callouts-r104"
+      ],
+      "invalid_jobs": [],
+      "valid_runs": 1,
+      "median_rps": 10138.56460343784,
+      "min_rps": 10138.56460343784,
+      "max_rps": 10138.56460343784
+    },
+    {
+      "workload": "short",
+      "arm": "agw-generic",
+      "valid_jobs": [
+        "nixv2-short-agw-generic-r104"
+      ],
+      "invalid_jobs": [],
+      "valid_runs": 1,
+      "median_rps": 11732.564957810497,
+      "min_rps": 11732.564957810497,
+      "max_rps": 11732.564957810497
+    },
+    {
+      "workload": "short",
+      "arm": "envoy-generic",
+      "valid_jobs": [
+        "nixv2-short-envoy-generic-r104"
+      ],
+      "invalid_jobs": [],
+      "valid_runs": 1,
+      "median_rps": 11937.077693224339,
+      "min_rps": 11937.077693224339,
+      "max_rps": 11937.077693224339
+    }
+  ]
+}

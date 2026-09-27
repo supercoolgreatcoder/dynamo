@@ -22,6 +22,7 @@ if [ "$actual_server" != "$VCLUSTER_EXPECTED_SERVER" ]; then
   exit 2
 fi
 vc=(kubectl --kubeconfig "$VCLUSTER_KUBECONFIG" -n "$VCLUSTER_NAMESPACE")
+stager_pod=${NIX_STAGER_POD:-dynamo-component-store-stager}
 
 "${vc[@]}" get jobs -o json | jq -e '[.items[] | select((.status.active // 0) > 0)] | length == 0' >/dev/null || {
   echo "refusing to roll out while a benchmark Job is active" >&2
@@ -40,7 +41,7 @@ vc=(kubectl --kubeconfig "$VCLUSTER_KUBECONFIG" -n "$VCLUSTER_NAMESPACE")
     exit 2
   }
 for artifact in bin/agentgateway bin/dynamo-component-facade bin/envoy-static lib/libgeneric_pipeline.so; do
-  "${vc[@]}" exec dynamo-component-store-stager -- test -f "/shared/nix/store/$basename/$artifact" || {
+  "${vc[@]}" exec "$stager_pod" -- test -f "/shared/nix/store/$basename/$artifact" || {
     echo "missing staged artifact: $bundle/$artifact" >&2
     exit 2
   }

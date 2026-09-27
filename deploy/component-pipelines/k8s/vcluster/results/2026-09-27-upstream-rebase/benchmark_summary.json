@@ -1,0 +1,1317 @@
+{
+  "series_id": "nix-component-pipeline-b140-2026-09-27",
+  "metric": "aggregate successful request throughput",
+  "unit": "requests/second",
+  "runs": [
+    {
+      "job": "nixv2-isl4000-agw-generic-r101",
+      "clients": 6,
+      "aiperf_version": "0.12.0",
+      "endpoint": "http://agw-generic:8080/v1/chat/completions",
+      "dataset": {
+        "name": "main",
+        "type": "file",
+        "path": "/shared/aiperf/static-qwen2.5-0.5b/isl4000-claude-sonnet-raw.jsonl",
+        "format": "raw_payload",
+        "random_seed": 42
+      },
+      "phase": {
+        "name": "profiling",
+        "kind": "profiling",
+        "type": "concurrency",
+        "duration": 45.0,
+        "concurrency": 128,
+        "grace_period": 30.0
+      },
+      "aggregate_rps": 10563.725790648732,
+      "successful_requests": 476036,
+      "failed_requests": 0,
+      "cancelled": false,
+      "effective_concurrency": 291.34189301733227,
+      "mean_request_latency_ms": 27.578531936983758,
+      "error_summary": [],
+      "workload": "isl4000",
+      "arm": "agw-generic",
+      "trial": "r101"
+    },
+    {
+      "job": "nixv2-isl4000-agw-generic-r102",
+      "clients": 6,
+      "aiperf_version": "0.12.0",
+      "endpoint": "http://agw-generic:8080/v1/chat/completions",
+      "dataset": {
+        "name": "main",
+        "type": "file",
+        "path": "/shared/aiperf/static-qwen2.5-0.5b/isl4000-claude-sonnet-raw.jsonl",
+        "format": "raw_payload",
+        "random_seed": 42
+      },
+      "phase": {
+        "name": "profiling",
+        "kind": "profiling",
+        "type": "concurrency",
+        "duration": 45.0,
+        "concurrency": 128,
+        "grace_period": 30.0
+      },
+      "aggregate_rps": 10327.510091431528,
+      "successful_requests": 465258,
+      "failed_requests": 0,
+      "cancelled": false,
+      "effective_concurrency": 292.39406700391055,
+      "mean_request_latency_ms": 28.309194111398405,
+      "error_summary": [],
+      "workload": "isl4000",
+      "arm": "agw-generic",
+      "trial": "r102"
+    },
+    {
+      "job": "nixv2-isl4000-agw-generic-r103",
+      "clients": 6,
+      "aiperf_version": "0.12.0",
+      "endpoint": "http://agw-generic:8080/v1/chat/completions",
+      "dataset": {
+        "name": "main",
+        "type": "file",
+        "path": "/shared/aiperf/static-qwen2.5-0.5b/isl4000-claude-sonnet-raw.jsonl",
+        "format": "raw_payload",
+        "random_seed": 42
+      },
+      "phase": {
+        "name": "profiling",
+        "kind": "profiling",
+        "type": "concurrency",
+        "duration": 45.0,
+        "concurrency": 128,
+        "grace_period": 30.0
+      },
+      "aggregate_rps": 10524.287636264908,
+      "successful_requests": 476018,
+      "failed_requests": 0,
+      "cancelled": false,
+      "effective_concurrency": 295.7919277504644,
+      "mean_request_latency_ms": 28.10604633123327,
+      "error_summary": [],
+      "workload": "isl4000",
+      "arm": "agw-generic",
+      "trial": "r103"
+    },
+    {
+      "job": "nixv2-isl4000-agw-static-r101",
+      "clients": 6,
+      "aiperf_version": "0.12.0",
+      "endpoint": "http://agw-static:8080/v1/chat/completions",
+      "dataset": {
+        "name": "main",
+        "type": "file",
+        "path": "/shared/aiperf/static-qwen2.5-0.5b/isl4000-claude-sonnet-raw.jsonl",
+        "format": "raw_payload",
+        "random_seed": 42
+      },
+      "phase": {
+        "name": "profiling",
+        "kind": "profiling",
+        "type": "concurrency",
+        "duration": 45.0,
+        "concurrency": 128,
+        "grace_period": 30.0
+      },
+      "aggregate_rps": 8707.931857901473,
+      "successful_requests": 392549,
+      "failed_requests": 0,
+      "cancelled": false,
+      "effective_concurrency": 596.7058090009193,
+      "mean_request_latency_ms": 68.51757920759957,
+      "error_summary": [],
+      "workload": "isl4000",
+      "arm": "agw-static",
+      "trial": "r101"
+    },
+    {
+      "job": "nixv2-isl4000-agw-static-r102",
+      "clients": 6,
+      "aiperf_version": "0.12.0",
+      "endpoint": "http://agw-static:8080/v1/chat/completions",
+      "dataset": {
+        "name": "main",
+        "type": "file",
+        "path": "/shared/aiperf/static-qwen2.5-0.5b/isl4000-claude-sonnet-raw.jsonl",
+        "format": "raw_payload",
+        "random_seed": 42
+      },
+      "phase": {
+        "name": "profiling",
+        "kind": "profiling",
+        "type": "concurrency",
+        "duration": 45.0,
+        "concurrency": 128,
+        "grace_period": 30.0
+      },
+      "aggregate_rps": 8814.374698385986,
+      "successful_requests": 397236,
+      "failed_requests": 0,
+      "cancelled": false,
+      "effective_concurrency": 598.0123059897982,
+      "mean_request_latency_ms": 67.8385206472223,
+      "error_summary": [],
+      "workload": "isl4000",
+      "arm": "agw-static",
+      "trial": "r102"
+    },
+    {
+      "job": "nixv2-isl4000-agw-static-r105",
+      "clients": 6,
+      "aiperf_version": "0.12.0",
+      "endpoint": "http://agw-static:8080/v1/chat/completions",
+      "dataset": {
+        "name": "main",
+        "type": "file",
+        "path": "/shared/aiperf/static-qwen2.5-0.5b/isl4000-claude-sonnet-raw.jsonl",
+        "format": "raw_payload",
+        "random_seed": 42
+      },
+      "phase": {
+        "name": "profiling",
+        "kind": "profiling",
+        "type": "concurrency",
+        "duration": 45.0,
+        "concurrency": 128,
+        "grace_period": 30.0
+      },
+      "aggregate_rps": 8730.765272300177,
+      "successful_requests": 393511,
+      "failed_requests": 0,
+      "cancelled": false,
+      "effective_concurrency": 583.3587188073476,
+      "mean_request_latency_ms": 66.81063472462269,
+      "error_summary": [],
+      "workload": "isl4000",
+      "arm": "agw-static",
+      "trial": "r105"
+    },
+    {
+      "job": "nixv2-isl4000-envoy-callouts-r101",
+      "clients": 6,
+      "aiperf_version": "0.12.0",
+      "endpoint": "http://envoy-callouts:8080/v1/chat/completions",
+      "dataset": {
+        "name": "main",
+        "type": "file",
+        "path": "/shared/aiperf/static-qwen2.5-0.5b/isl4000-claude-sonnet-raw.jsonl",
+        "format": "raw_payload",
+        "random_seed": 42
+      },
+      "phase": {
+        "name": "profiling",
+        "kind": "profiling",
+        "type": "concurrency",
+        "duration": 45.0,
+        "concurrency": 128,
+        "grace_period": 30.0
+      },
+      "aggregate_rps": 10579.14153382763,
+      "successful_requests": 477451,
+      "failed_requests": 0,
+      "cancelled": false,
+      "effective_concurrency": 306.4174023989246,
+      "mean_request_latency_ms": 28.909571177798348,
+      "error_summary": [],
+      "workload": "isl4000",
+      "arm": "envoy-callouts",
+      "trial": "r101"
+    },
+    {
+      "job": "nixv2-isl4000-envoy-callouts-r102",
+      "clients": 6,
+      "aiperf_version": "0.12.0",
+      "endpoint": "http://envoy-callouts:8080/v1/chat/completions",
+      "dataset": {
+        "name": "main",
+        "type": "file",
+        "path": "/shared/aiperf/static-qwen2.5-0.5b/isl4000-claude-sonnet-raw.jsonl",
+        "format": "raw_payload",
+        "random_seed": 42
+      },
+      "phase": {
+        "name": "profiling",
+        "kind": "profiling",
+        "type": "concurrency",
+        "duration": 45.0,
+        "concurrency": 128,
+        "grace_period": 30.0
+      },
+      "aggregate_rps": 10663.968232481604,
+      "successful_requests": 480514,
+      "failed_requests": 0,
+      "cancelled": false,
+      "effective_concurrency": 288.4743541061334,
+      "mean_request_latency_ms": 27.001271416870267,
+      "error_summary": [],
+      "workload": "isl4000",
+      "arm": "envoy-callouts",
+      "trial": "r102"
+    },
+    {
+      "job": "nixv2-isl4000-envoy-callouts-r103",
+      "clients": 6,
+      "aiperf_version": "0.12.0",
+      "endpoint": "http://envoy-callouts:8080/v1/chat/completions",
+      "dataset": {
+        "name": "main",
+        "type": "file",
+        "path": "/shared/aiperf/static-qwen2.5-0.5b/isl4000-claude-sonnet-raw.jsonl",
+        "format": "raw_payload",
+        "random_seed": 42
+      },
+      "phase": {
+        "name": "profiling",
+        "kind": "profiling",
+        "type": "concurrency",
+        "duration": 45.0,
+        "concurrency": 128,
+        "grace_period": 30.0
+      },
+      "aggregate_rps": 10458.050558863733,
+      "successful_requests": 471776,
+      "failed_requests": 0,
+      "cancelled": false,
+      "effective_concurrency": 297.90577554201025,
+      "mean_request_latency_ms": 28.433006582176713,
+      "error_summary": [],
+      "workload": "isl4000",
+      "arm": "envoy-callouts",
+      "trial": "r103"
+    },
+    {
+      "job": "nixv2-isl4000-envoy-generic-r101",
+      "clients": 6,
+      "aiperf_version": "0.12.0",
+      "endpoint": "http://envoy-independent:8080/v1/chat/completions",
+      "dataset": {
+        "name": "main",
+        "type": "file",
+        "path": "/shared/aiperf/static-qwen2.5-0.5b/isl4000-claude-sonnet-raw.jsonl",
+        "format": "raw_payload",
+        "random_seed": 42
+      },
+      "phase": {
+        "name": "profiling",
+        "kind": "profiling",
+        "type": "concurrency",
+        "duration": 45.0,
+        "concurrency": 128,
+        "grace_period": 30.0
+      },
+      "aggregate_rps": 10264.930696568632,
+      "successful_requests": 462676,
+      "failed_requests": 0,
+      "cancelled": false,
+      "effective_concurrency": 348.3168955448526,
+      "mean_request_latency_ms": 33.90551092080419,
+      "error_summary": [],
+      "workload": "isl4000",
+      "arm": "envoy-generic",
+      "trial": "r101"
+    },
+    {
+      "job": "nixv2-isl4000-envoy-generic-r102",
+      "clients": 6,
+      "aiperf_version": "0.12.0",
+      "endpoint": "http://envoy-independent:8080/v1/chat/completions",
+      "dataset": {
+        "name": "main",
+        "type": "file",
+        "path": "/shared/aiperf/static-qwen2.5-0.5b/isl4000-claude-sonnet-raw.jsonl",
+        "format": "raw_payload",
+        "random_seed": 42
+      },
+      "phase": {
+        "name": "profiling",
+        "kind": "profiling",
+        "type": "concurrency",
+        "duration": 45.0,
+        "concurrency": 128,
+        "grace_period": 30.0
+      },
+      "aggregate_rps": 10356.17890729293,
+      "successful_requests": 467106,
+      "failed_requests": 0,
+      "cancelled": false,
+      "effective_concurrency": 382.88109331401563,
+      "mean_request_latency_ms": 36.94802738817099,
+      "error_summary": [],
+      "workload": "isl4000",
+      "arm": "envoy-generic",
+      "trial": "r102"
+    },
+    {
+      "job": "nixv2-isl4000-envoy-generic-r103",
+      "clients": 6,
+      "aiperf_version": "0.12.0",
+      "endpoint": "http://envoy-independent:8080/v1/chat/completions",
+      "dataset": {
+        "name": "main",
+        "type": "file",
+        "path": "/shared/aiperf/static-qwen2.5-0.5b/isl4000-claude-sonnet-raw.jsonl",
+        "format": "raw_payload",
+        "random_seed": 42
+      },
+      "phase": {
+        "name": "profiling",
+        "kind": "profiling",
+        "type": "concurrency",
+        "duration": 45.0,
+        "concurrency": 128,
+        "grace_period": 30.0
+      },
+      "aggregate_rps": 10213.38025266449,
+      "successful_requests": 460997,
+      "failed_requests": 0,
+      "cancelled": false,
+      "effective_concurrency": 412.2745377478508,
+      "mean_request_latency_ms": 40.33803180734147,
+      "error_summary": [],
+      "workload": "isl4000",
+      "arm": "envoy-generic",
+      "trial": "r103"
+    },
+    {
+      "job": "nixv2-mooncake-agw-generic-r101",
+      "clients": 6,
+      "aiperf_version": "0.12.0",
+      "endpoint": "http://agw-generic:8080/v1/chat/completions",
+      "dataset": {
+        "name": "main",
+        "type": "file",
+        "path": "/shared/aiperf/mooncake-qwen2.5-0.5b/mooncake-512-context.jsonl",
+        "format": "mooncake_trace",
+        "random_seed": 42,
+        "block_size": 512
+      },
+      "phase": {
+        "name": "profiling",
+        "kind": "profiling",
+        "type": "fixed_schedule",
+        "requests": 22699,
+        "duration": 45.0,
+        "concurrency": 128,
+        "grace_period": 30.0
+      },
+      "aggregate_rps": 3023.6672075822794,
+      "successful_requests": 136077,
+      "failed_requests": 0,
+      "cancelled": false,
+      "effective_concurrency": 46.51313343390901,
+      "mean_request_latency_ms": 15.36370855655254,
+      "error_summary": [],
+      "workload": "mooncake",
+      "arm": "agw-generic",
+      "trial": "r101"
+    },
+    {
+      "job": "nixv2-mooncake-agw-generic-r102",
+      "clients": 6,
+      "aiperf_version": "0.12.0",
+      "endpoint": "http://agw-generic:8080/v1/chat/completions",
+      "dataset": {
+        "name": "main",
+        "type": "file",
+        "path": "/shared/aiperf/mooncake-qwen2.5-0.5b/mooncake-512-context.jsonl",
+        "format": "mooncake_trace",
+        "random_seed": 42,
+        "block_size": 512
+      },
+      "phase": {
+        "name": "profiling",
+        "kind": "profiling",
+        "type": "fixed_schedule",
+        "requests": 22699,
+        "duration": 45.0,
+        "concurrency": 128,
+        "grace_period": 30.0
+      },
+      "aggregate_rps": 3023.8010133158673,
+      "successful_requests": 136086,
+      "failed_requests": 0,
+      "cancelled": false,
+      "effective_concurrency": 56.393773067066896,
+      "mean_request_latency_ms": 18.6311281906515,
+      "error_summary": [],
+      "workload": "mooncake",
+      "arm": "agw-generic",
+      "trial": "r102"
+    },
+    {
+      "job": "nixv2-mooncake-agw-generic-r103",
+      "clients": 6,
+      "aiperf_version": "0.12.0",
+      "endpoint": "http://agw-generic:8080/v1/chat/completions",
+      "dataset": {
+        "name": "main",
+        "type": "file",
+        "path": "/shared/aiperf/mooncake-qwen2.5-0.5b/mooncake-512-context.jsonl",
+        "format": "mooncake_trace",
+        "random_seed": 42,
+        "block_size": 512
+      },
+      "phase": {
+        "name": "profiling",
+        "kind": "profiling",
+        "type": "fixed_schedule",
+        "requests": 22699,
+        "duration": 45.0,
+        "concurrency": 128,
+        "grace_period": 30.0
+      },
+      "aggregate_rps": 3023.9074084015892,
+      "successful_requests": 136100,
+      "failed_requests": 0,
+      "cancelled": false,
+      "effective_concurrency": 58.542253900153916,
+      "mean_request_latency_ms": 19.339809952755324,
+      "error_summary": [],
+      "workload": "mooncake",
+      "arm": "agw-generic",
+      "trial": "r103"
+    },
+    {
+      "job": "nixv2-mooncake-agw-static-r101",
+      "clients": 6,
+      "aiperf_version": "0.12.0",
+      "endpoint": "http://agw-static:8080/v1/chat/completions",
+      "dataset": {
+        "name": "main",
+        "type": "file",
+        "path": "/shared/aiperf/mooncake-qwen2.5-0.5b/mooncake-512-context.jsonl",
+        "format": "mooncake_trace",
+        "random_seed": 42,
+        "block_size": 512
+      },
+      "phase": {
+        "name": "profiling",
+        "kind": "profiling",
+        "type": "fixed_schedule",
+        "requests": 22699,
+        "duration": 45.0,
+        "concurrency": 128,
+        "grace_period": 30.0
+      },
+      "aggregate_rps": 3022.793884653792,
+      "successful_requests": 136074,
+      "failed_requests": 0,
+      "cancelled": false,
+      "effective_concurrency": 43.53507220019896,
+      "mean_request_latency_ms": 14.389970386061997,
+      "error_summary": [],
+      "workload": "mooncake",
+      "arm": "agw-static",
+      "trial": "r101"
+    },
+    {
+      "job": "nixv2-mooncake-agw-static-r102",
+      "clients": 6,
+      "aiperf_version": "0.12.0",
+      "endpoint": "http://agw-static:8080/v1/chat/completions",
+      "dataset": {
+        "name": "main",
+        "type": "file",
+        "path": "/shared/aiperf/mooncake-qwen2.5-0.5b/mooncake-512-context.jsonl",
+        "format": "mooncake_trace",
+        "random_seed": 42,
+        "block_size": 512
+      },
+      "phase": {
+        "name": "profiling",
+        "kind": "profiling",
+        "type": "fixed_schedule",
+        "requests": 22699,
+        "duration": 45.0,
+        "concurrency": 128,
+        "grace_period": 30.0
+      },
+      "aggregate_rps": 3023.5814472472325,
+      "successful_requests": 136074,
+      "failed_requests": 0,
+      "cancelled": false,
+      "effective_concurrency": 44.758572913620114,
+      "mean_request_latency_ms": 14.79106731424078,
+      "error_summary": [],
+      "workload": "mooncake",
+      "arm": "agw-static",
+      "trial": "r102"
+    },
+    {
+      "job": "nixv2-mooncake-agw-static-r103",
+      "clients": 6,
+      "aiperf_version": "0.12.0",
+      "endpoint": "http://agw-static:8080/v1/chat/completions",
+      "dataset": {
+        "name": "main",
+        "type": "file",
+        "path": "/shared/aiperf/mooncake-qwen2.5-0.5b/mooncake-512-context.jsonl",
+        "format": "mooncake_trace",
+        "random_seed": 42,
+        "block_size": 512
+      },
+      "phase": {
+        "name": "profiling",
+        "kind": "profiling",
+        "type": "fixed_schedule",
+        "requests": 22699,
+        "duration": 45.0,
+        "concurrency": 128,
+        "grace_period": 30.0
+      },
+      "aggregate_rps": 3023.67472018134,
+      "successful_requests": 136074,
+      "failed_requests": 0,
+      "cancelled": false,
+      "effective_concurrency": 44.411445891916685,
+      "mean_request_latency_ms": 14.675701736577155,
+      "error_summary": [],
+      "workload": "mooncake",
+      "arm": "agw-static",
+      "trial": "r103"
+    },
+    {
+      "job": "nixv2-mooncake-envoy-callouts-r101",
+      "clients": 6,
+      "aiperf_version": "0.12.0",
+      "endpoint": "http://envoy-callouts:8080/v1/chat/completions",
+      "dataset": {
+        "name": "main",
+        "type": "file",
+        "path": "/shared/aiperf/mooncake-qwen2.5-0.5b/mooncake-512-context.jsonl",
+        "format": "mooncake_trace",
+        "random_seed": 42,
+        "block_size": 512
+      },
+      "phase": {
+        "name": "profiling",
+        "kind": "profiling",
+        "type": "fixed_schedule",
+        "requests": 22699,
+        "duration": 45.0,
+        "concurrency": 128,
+        "grace_period": 30.0
+      },
+      "aggregate_rps": 3022.572942120122,
+      "successful_requests": 136084,
+      "failed_requests": 0,
+      "cancelled": false,
+      "effective_concurrency": 62.634605533841935,
+      "mean_request_latency_ms": 20.68462579059992,
+      "error_summary": [],
+      "workload": "mooncake",
+      "arm": "envoy-callouts",
+      "trial": "r101"
+    },
+    {
+      "job": "nixv2-mooncake-envoy-callouts-r102",
+      "clients": 6,
+      "aiperf_version": "0.12.0",
+      "endpoint": "http://envoy-callouts:8080/v1/chat/completions",
+      "dataset": {
+        "name": "main",
+        "type": "file",
+        "path": "/shared/aiperf/mooncake-qwen2.5-0.5b/mooncake-512-context.jsonl",
+        "format": "mooncake_trace",
+        "random_seed": 42,
+        "block_size": 512
+      },
+      "phase": {
+        "name": "profiling",
+        "kind": "profiling",
+        "type": "fixed_schedule",
+        "requests": 22699,
+        "duration": 45.0,
+        "concurrency": 128,
+        "grace_period": 30.0
+      },
+      "aggregate_rps": 3021.326392022882,
+      "successful_requests": 136088,
+      "failed_requests": 0,
+      "cancelled": false,
+      "effective_concurrency": 62.32371616478986,
+      "mean_request_latency_ms": 20.587896068764326,
+      "error_summary": [],
+      "workload": "mooncake",
+      "arm": "envoy-callouts",
+      "trial": "r102"
+    },
+    {
+      "job": "nixv2-mooncake-envoy-callouts-r103",
+      "clients": 6,
+      "aiperf_version": "0.12.0",
+      "endpoint": "http://envoy-callouts:8080/v1/chat/completions",
+      "dataset": {
+        "name": "main",
+        "type": "file",
+        "path": "/shared/aiperf/mooncake-qwen2.5-0.5b/mooncake-512-context.jsonl",
+        "format": "mooncake_trace",
+        "random_seed": 42,
+        "block_size": 512
+      },
+      "phase": {
+        "name": "profiling",
+        "kind": "profiling",
+        "type": "fixed_schedule",
+        "requests": 22699,
+        "duration": 45.0,
+        "concurrency": 128,
+        "grace_period": 30.0
+      },
+      "aggregate_rps": 3023.8614293368237,
+      "successful_requests": 136086,
+      "failed_requests": 0,
+      "cancelled": false,
+      "effective_concurrency": 49.257286246581074,
+      "mean_request_latency_ms": 16.258641102126596,
+      "error_summary": [],
+      "workload": "mooncake",
+      "arm": "envoy-callouts",
+      "trial": "r103"
+    },
+    {
+      "job": "nixv2-mooncake-envoy-generic-r101",
+      "clients": 6,
+      "aiperf_version": "0.12.0",
+      "endpoint": "http://envoy-independent:8080/v1/chat/completions",
+      "dataset": {
+        "name": "main",
+        "type": "file",
+        "path": "/shared/aiperf/mooncake-qwen2.5-0.5b/mooncake-512-context.jsonl",
+        "format": "mooncake_trace",
+        "random_seed": 42,
+        "block_size": 512
+      },
+      "phase": {
+        "name": "profiling",
+        "kind": "profiling",
+        "type": "fixed_schedule",
+        "requests": 22699,
+        "duration": 45.0,
+        "concurrency": 128,
+        "grace_period": 30.0
+      },
+      "aggregate_rps": 3023.6410965173727,
+      "successful_requests": 136080,
+      "failed_requests": 0,
+      "cancelled": false,
+      "effective_concurrency": 63.07518063661077,
+      "mean_request_latency_ms": 20.831253209553203,
+      "error_summary": [],
+      "workload": "mooncake",
+      "arm": "envoy-generic",
+      "trial": "r101"
+    },
+    {
+      "job": "nixv2-mooncake-envoy-generic-r102",
+      "clients": 6,
+      "aiperf_version": "0.12.0",
+      "endpoint": "http://envoy-independent:8080/v1/chat/completions",
+      "dataset": {
+        "name": "main",
+        "type": "file",
+        "path": "/shared/aiperf/mooncake-qwen2.5-0.5b/mooncake-512-context.jsonl",
+        "format": "mooncake_trace",
+        "random_seed": 42,
+        "block_size": 512
+      },
+      "phase": {
+        "name": "profiling",
+        "kind": "profiling",
+        "type": "fixed_schedule",
+        "requests": 22699,
+        "duration": 45.0,
+        "concurrency": 128,
+        "grace_period": 30.0
+      },
+      "aggregate_rps": 3023.6052342903968,
+      "successful_requests": 136085,
+      "failed_requests": 0,
+      "cancelled": false,
+      "effective_concurrency": 59.59268258187182,
+      "mean_request_latency_ms": 19.679048867648895,
+      "error_summary": [],
+      "workload": "mooncake",
+      "arm": "envoy-generic",
+      "trial": "r102"
+    },
+    {
+      "job": "nixv2-mooncake-envoy-generic-r103",
+      "clients": 6,
+      "aiperf_version": "0.12.0",
+      "endpoint": "http://envoy-independent:8080/v1/chat/completions",
+      "dataset": {
+        "name": "main",
+        "type": "file",
+        "path": "/shared/aiperf/mooncake-qwen2.5-0.5b/mooncake-512-context.jsonl",
+        "format": "mooncake_trace",
+        "random_seed": 42,
+        "block_size": 512
+      },
+      "phase": {
+        "name": "profiling",
+        "kind": "profiling",
+        "type": "fixed_schedule",
+        "requests": 22699,
+        "duration": 45.0,
+        "concurrency": 128,
+        "grace_period": 30.0
+      },
+      "aggregate_rps": 3023.5864510603365,
+      "successful_requests": 136076,
+      "failed_requests": 0,
+      "cancelled": false,
+      "effective_concurrency": 40.51842455588327,
+      "mean_request_latency_ms": 13.374487004078603,
+      "error_summary": [],
+      "workload": "mooncake",
+      "arm": "envoy-generic",
+      "trial": "r103"
+    },
+    {
+      "job": "nixv2-short-agw-generic-r101",
+      "clients": 6,
+      "aiperf_version": "0.12.0",
+      "endpoint": "http://agw-generic:8080/v1/chat/completions",
+      "dataset": {
+        "name": "main",
+        "type": "file",
+        "path": "/shared/aiperf/static-qwen2.5-0.5b/short-claude-sonnet-raw.jsonl",
+        "format": "raw_payload",
+        "random_seed": 42
+      },
+      "phase": {
+        "name": "profiling",
+        "kind": "profiling",
+        "type": "concurrency",
+        "duration": 45.0,
+        "concurrency": 128,
+        "grace_period": 30.0
+      },
+      "aggregate_rps": 12094.810376368829,
+      "successful_requests": 545882,
+      "failed_requests": 0,
+      "cancelled": false,
+      "effective_concurrency": 208.37659994732684,
+      "mean_request_latency_ms": 17.22701240524692,
+      "error_summary": [],
+      "workload": "short",
+      "arm": "agw-generic",
+      "trial": "r101"
+    },
+    {
+      "job": "nixv2-short-agw-generic-r102",
+      "clients": 6,
+      "aiperf_version": "0.12.0",
+      "endpoint": "http://agw-generic:8080/v1/chat/completions",
+      "dataset": {
+        "name": "main",
+        "type": "file",
+        "path": "/shared/aiperf/static-qwen2.5-0.5b/short-claude-sonnet-raw.jsonl",
+        "format": "raw_payload",
+        "random_seed": 42
+      },
+      "phase": {
+        "name": "profiling",
+        "kind": "profiling",
+        "type": "concurrency",
+        "duration": 45.0,
+        "concurrency": 128,
+        "grace_period": 30.0
+      },
+      "aggregate_rps": 11708.490648227376,
+      "successful_requests": 528710,
+      "failed_requests": 0,
+      "cancelled": false,
+      "effective_concurrency": 190.82968963937032,
+      "mean_request_latency_ms": 16.298598427983205,
+      "error_summary": [],
+      "workload": "short",
+      "arm": "agw-generic",
+      "trial": "r102"
+    },
+    {
+      "job": "nixv2-short-agw-generic-r103",
+      "clients": 6,
+      "aiperf_version": "0.12.0",
+      "endpoint": "http://agw-generic:8080/v1/chat/completions",
+      "dataset": {
+        "name": "main",
+        "type": "file",
+        "path": "/shared/aiperf/static-qwen2.5-0.5b/short-claude-sonnet-raw.jsonl",
+        "format": "raw_payload",
+        "random_seed": 42
+      },
+      "phase": {
+        "name": "profiling",
+        "kind": "profiling",
+        "type": "concurrency",
+        "duration": 45.0,
+        "concurrency": 128,
+        "grace_period": 30.0
+      },
+      "aggregate_rps": 11760.399096754772,
+      "successful_requests": 530545,
+      "failed_requests": 0,
+      "cancelled": false,
+      "effective_concurrency": 216.4925482687812,
+      "mean_request_latency_ms": 18.407919778719997,
+      "error_summary": [],
+      "workload": "short",
+      "arm": "agw-generic",
+      "trial": "r103"
+    },
+    {
+      "job": "nixv2-short-agw-static-r101",
+      "clients": 6,
+      "aiperf_version": "0.12.0",
+      "endpoint": "http://agw-static:8080/v1/chat/completions",
+      "dataset": {
+        "name": "main",
+        "type": "file",
+        "path": "/shared/aiperf/static-qwen2.5-0.5b/short-claude-sonnet-raw.jsonl",
+        "format": "raw_payload",
+        "random_seed": 42
+      },
+      "phase": {
+        "name": "profiling",
+        "kind": "profiling",
+        "type": "concurrency",
+        "duration": 45.0,
+        "concurrency": 128,
+        "grace_period": 30.0
+      },
+      "aggregate_rps": 11770.44051012818,
+      "successful_requests": 530908,
+      "failed_requests": 0,
+      "cancelled": false,
+      "effective_concurrency": 262.02876590691625,
+      "mean_request_latency_ms": 22.259132169375864,
+      "error_summary": [],
+      "workload": "short",
+      "arm": "agw-static",
+      "trial": "r101"
+    },
+    {
+      "job": "nixv2-short-agw-static-r102",
+      "clients": 6,
+      "aiperf_version": "0.12.0",
+      "endpoint": "http://agw-static:8080/v1/chat/completions",
+      "dataset": {
+        "name": "main",
+        "type": "file",
+        "path": "/shared/aiperf/static-qwen2.5-0.5b/short-claude-sonnet-raw.jsonl",
+        "format": "raw_payload",
+        "random_seed": 42
+      },
+      "phase": {
+        "name": "profiling",
+        "kind": "profiling",
+        "type": "concurrency",
+        "duration": 45.0,
+        "concurrency": 128,
+        "grace_period": 30.0
+      },
+      "aggregate_rps": 11514.874304657422,
+      "successful_requests": 519574,
+      "failed_requests": 0,
+      "cancelled": false,
+      "effective_concurrency": 250.18746284178818,
+      "mean_request_latency_ms": 21.725511728125348,
+      "error_summary": [],
+      "workload": "short",
+      "arm": "agw-static",
+      "trial": "r102"
+    },
+    {
+      "job": "nixv2-short-agw-static-r103",
+      "clients": 6,
+      "aiperf_version": "0.12.0",
+      "endpoint": "http://agw-static:8080/v1/chat/completions",
+      "dataset": {
+        "name": "main",
+        "type": "file",
+        "path": "/shared/aiperf/static-qwen2.5-0.5b/short-claude-sonnet-raw.jsonl",
+        "format": "raw_payload",
+        "random_seed": 42
+      },
+      "phase": {
+        "name": "profiling",
+        "kind": "profiling",
+        "type": "concurrency",
+        "duration": 45.0,
+        "concurrency": 128,
+        "grace_period": 30.0
+      },
+      "aggregate_rps": 11372.191982663078,
+      "successful_requests": 512649,
+      "failed_requests": 0,
+      "cancelled": false,
+      "effective_concurrency": 234.54948365442667,
+      "mean_request_latency_ms": 20.62189440496714,
+      "error_summary": [],
+      "workload": "short",
+      "arm": "agw-static",
+      "trial": "r103"
+    },
+    {
+      "job": "nixv2-short-envoy-callouts-r101",
+      "clients": 6,
+      "aiperf_version": "0.12.0",
+      "endpoint": "http://envoy-callouts:8080/v1/chat/completions",
+      "dataset": {
+        "name": "main",
+        "type": "file",
+        "path": "/shared/aiperf/static-qwen2.5-0.5b/short-claude-sonnet-raw.jsonl",
+        "format": "raw_payload",
+        "random_seed": 42
+      },
+      "phase": {
+        "name": "profiling",
+        "kind": "profiling",
+        "type": "concurrency",
+        "duration": 45.0,
+        "concurrency": 128,
+        "grace_period": 30.0
+      },
+      "aggregate_rps": 12229.529741538217,
+      "successful_requests": 551272,
+      "failed_requests": 0,
+      "cancelled": false,
+      "effective_concurrency": 230.50181942951122,
+      "mean_request_latency_ms": 18.82021726539893,
+      "error_summary": [],
+      "workload": "short",
+      "arm": "envoy-callouts",
+      "trial": "r101"
+    },
+    {
+      "job": "nixv2-short-envoy-callouts-r102",
+      "clients": 6,
+      "aiperf_version": "0.12.0",
+      "endpoint": "http://envoy-callouts:8080/v1/chat/completions",
+      "dataset": {
+        "name": "main",
+        "type": "file",
+        "path": "/shared/aiperf/static-qwen2.5-0.5b/short-claude-sonnet-raw.jsonl",
+        "format": "raw_payload",
+        "random_seed": 42
+      },
+      "phase": {
+        "name": "profiling",
+        "kind": "profiling",
+        "type": "concurrency",
+        "duration": 45.0,
+        "concurrency": 128,
+        "grace_period": 30.0
+      },
+      "aggregate_rps": 12065.929360680899,
+      "successful_requests": 543931,
+      "failed_requests": 0,
+      "cancelled": false,
+      "effective_concurrency": 218.67756541079908,
+      "mean_request_latency_ms": 18.09643368558696,
+      "error_summary": [],
+      "workload": "short",
+      "arm": "envoy-callouts",
+      "trial": "r102"
+    },
+    {
+      "job": "nixv2-short-envoy-callouts-r103",
+      "clients": 6,
+      "aiperf_version": "0.12.0",
+      "endpoint": "http://envoy-callouts:8080/v1/chat/completions",
+      "dataset": {
+        "name": "main",
+        "type": "file",
+        "path": "/shared/aiperf/static-qwen2.5-0.5b/short-claude-sonnet-raw.jsonl",
+        "format": "raw_payload",
+        "random_seed": 42
+      },
+      "phase": {
+        "name": "profiling",
+        "kind": "profiling",
+        "type": "concurrency",
+        "duration": 45.0,
+        "concurrency": 128,
+        "grace_period": 30.0
+      },
+      "aggregate_rps": 11757.191579446791,
+      "successful_requests": 529629,
+      "failed_requests": 0,
+      "cancelled": false,
+      "effective_concurrency": 228.87435631097958,
+      "mean_request_latency_ms": 19.438653389736967,
+      "error_summary": [],
+      "workload": "short",
+      "arm": "envoy-callouts",
+      "trial": "r103"
+    },
+    {
+      "job": "nixv2-short-envoy-generic-r101",
+      "clients": 6,
+      "aiperf_version": "0.12.0",
+      "endpoint": "http://envoy-independent:8080/v1/chat/completions",
+      "dataset": {
+        "name": "main",
+        "type": "file",
+        "path": "/shared/aiperf/static-qwen2.5-0.5b/short-claude-sonnet-raw.jsonl",
+        "format": "raw_payload",
+        "random_seed": 42
+      },
+      "phase": {
+        "name": "profiling",
+        "kind": "profiling",
+        "type": "concurrency",
+        "duration": 45.0,
+        "concurrency": 128,
+        "grace_period": 30.0
+      },
+      "aggregate_rps": 12536.72024013724,
+      "successful_requests": 566533,
+      "failed_requests": 0,
+      "cancelled": false,
+      "effective_concurrency": 208.5472603272487,
+      "mean_request_latency_ms": 16.622471692563362,
+      "error_summary": [],
+      "workload": "short",
+      "arm": "envoy-generic",
+      "trial": "r101"
+    },
+    {
+      "job": "nixv2-short-envoy-generic-r102",
+      "clients": 6,
+      "aiperf_version": "0.12.0",
+      "endpoint": "http://envoy-independent:8080/v1/chat/completions",
+      "dataset": {
+        "name": "main",
+        "type": "file",
+        "path": "/shared/aiperf/static-qwen2.5-0.5b/short-claude-sonnet-raw.jsonl",
+        "format": "raw_payload",
+        "random_seed": 42
+      },
+      "phase": {
+        "name": "profiling",
+        "kind": "profiling",
+        "type": "concurrency",
+        "duration": 45.0,
+        "concurrency": 128,
+        "grace_period": 30.0
+      },
+      "aggregate_rps": 12367.654213000915,
+      "successful_requests": 557500,
+      "failed_requests": 0,
+      "cancelled": false,
+      "effective_concurrency": 211.96803402760258,
+      "mean_request_latency_ms": 17.125569017078025,
+      "error_summary": [],
+      "workload": "short",
+      "arm": "envoy-generic",
+      "trial": "r102"
+    },
+    {
+      "job": "nixv2-short-envoy-generic-r103",
+      "clients": 6,
+      "aiperf_version": "0.12.0",
+      "endpoint": "http://envoy-independent:8080/v1/chat/completions",
+      "dataset": {
+        "name": "main",
+        "type": "file",
+        "path": "/shared/aiperf/static-qwen2.5-0.5b/short-claude-sonnet-raw.jsonl",
+        "format": "raw_payload",
+        "random_seed": 42
+      },
+      "phase": {
+        "name": "profiling",
+        "kind": "profiling",
+        "type": "concurrency",
+        "duration": 45.0,
+        "concurrency": 128,
+        "grace_period": 30.0
+      },
+      "aggregate_rps": 12032.715309017909,
+      "successful_requests": 542814,
+      "failed_requests": 0,
+      "cancelled": false,
+      "effective_concurrency": 216.96909351415084,
+      "mean_request_latency_ms": 18.01718722080123,
+      "error_summary": [],
+      "workload": "short",
+      "arm": "envoy-generic",
+      "trial": "r103"
+    }
+  ],
+  "cells": [
+    {
+      "workload": "isl4000",
+      "arm": "agw-generic",
+      "valid_jobs": [
+        "nixv2-isl4000-agw-generic-r101",
+        "nixv2-isl4000-agw-generic-r102",
+        "nixv2-isl4000-agw-generic-r103"
+      ],
+      "invalid_jobs": [],
+      "valid_runs": 3,
+      "median_rps": 10524.287636264908,
+      "min_rps": 10327.510091431528,
+      "max_rps": 10563.725790648732
+    },
+    {
+      "workload": "isl4000",
+      "arm": "agw-static",
+      "valid_jobs": [
+        "nixv2-isl4000-agw-static-r101",
+        "nixv2-isl4000-agw-static-r102",
+        "nixv2-isl4000-agw-static-r105"
+      ],
+      "invalid_jobs": [],
+      "valid_runs": 3,
+      "median_rps": 8730.765272300177,
+      "min_rps": 8707.931857901473,
+      "max_rps": 8814.374698385986
+    },
+    {
+      "workload": "isl4000",
+      "arm": "envoy-callouts",
+      "valid_jobs": [
+        "nixv2-isl4000-envoy-callouts-r101",
+        "nixv2-isl4000-envoy-callouts-r102",
+        "nixv2-isl4000-envoy-callouts-r103"
+      ],
+      "invalid_jobs": [],
+      "valid_runs": 3,
+      "median_rps": 10579.14153382763,
+      "min_rps": 10458.050558863733,
+      "max_rps": 10663.968232481604
+    },
+    {
+      "workload": "isl4000",
+      "arm": "envoy-generic",
+      "valid_jobs": [
+        "nixv2-isl4000-envoy-generic-r101",
+        "nixv2-isl4000-envoy-generic-r102",
+        "nixv2-isl4000-envoy-generic-r103"
+      ],
+      "invalid_jobs": [],
+      "valid_runs": 3,
+      "median_rps": 10264.930696568632,
+      "min_rps": 10213.38025266449,
+      "max_rps": 10356.17890729293
+    },
+    {
+      "workload": "mooncake",
+      "arm": "agw-generic",
+      "valid_jobs": [
+        "nixv2-mooncake-agw-generic-r101",
+        "nixv2-mooncake-agw-generic-r102",
+        "nixv2-mooncake-agw-generic-r103"
+      ],
+      "invalid_jobs": [],
+      "valid_runs": 3,
+      "median_rps": 3023.8010133158673,
+      "min_rps": 3023.6672075822794,
+      "max_rps": 3023.9074084015892
+    },
+    {
+      "workload": "mooncake",
+      "arm": "agw-static",
+      "valid_jobs": [
+        "nixv2-mooncake-agw-static-r101",
+        "nixv2-mooncake-agw-static-r102",
+        "nixv2-mooncake-agw-static-r103"
+      ],
+      "invalid_jobs": [],
+      "valid_runs": 3,
+      "median_rps": 3023.5814472472325,
+      "min_rps": 3022.793884653792,
+      "max_rps": 3023.67472018134
+    },
+    {
+      "workload": "mooncake",
+      "arm": "envoy-callouts",
+      "valid_jobs": [
+        "nixv2-mooncake-envoy-callouts-r101",
+        "nixv2-mooncake-envoy-callouts-r102",
+        "nixv2-mooncake-envoy-callouts-r103"
+      ],
+      "invalid_jobs": [],
+      "valid_runs": 3,
+      "median_rps": 3022.572942120122,
+      "min_rps": 3021.326392022882,
+      "max_rps": 3023.8614293368237
+    },
+    {
+      "workload": "mooncake",
+      "arm": "envoy-generic",
+      "valid_jobs": [
+        "nixv2-mooncake-envoy-generic-r101",
+        "nixv2-mooncake-envoy-generic-r102",
+        "nixv2-mooncake-envoy-generic-r103"
+      ],
+      "invalid_jobs": [],
+      "valid_runs": 3,
+      "median_rps": 3023.6052342903968,
+      "min_rps": 3023.5864510603365,
+      "max_rps": 3023.6410965173727
+    },
+    {
+      "workload": "short",
+      "arm": "agw-generic",
+      "valid_jobs": [
+        "nixv2-short-agw-generic-r101",
+        "nixv2-short-agw-generic-r102",
+        "nixv2-short-agw-generic-r103"
+      ],
+      "invalid_jobs": [],
+      "valid_runs": 3,
+      "median_rps": 11760.399096754772,
+      "min_rps": 11708.490648227376,
+      "max_rps": 12094.810376368829
+    },
+    {
+      "workload": "short",
+      "arm": "agw-static",
+      "valid_jobs": [
+        "nixv2-short-agw-static-r101",
+        "nixv2-short-agw-static-r102",
+        "nixv2-short-agw-static-r103"
+      ],
+      "invalid_jobs": [],
+      "valid_runs": 3,
+      "median_rps": 11514.874304657422,
+      "min_rps": 11372.191982663078,
+      "max_rps": 11770.44051012818
+    },
+    {
+      "workload": "short",
+      "arm": "envoy-callouts",
+      "valid_jobs": [
+        "nixv2-short-envoy-callouts-r101",
+        "nixv2-short-envoy-callouts-r102",
+        "nixv2-short-envoy-callouts-r103"
+      ],
+      "invalid_jobs": [],
+      "valid_runs": 3,
+      "median_rps": 12065.929360680899,
+      "min_rps": 11757.191579446791,
+      "max_rps": 12229.529741538217
+    },
+    {
+      "workload": "short",
+      "arm": "envoy-generic",
+      "valid_jobs": [
+        "nixv2-short-envoy-generic-r101",
+        "nixv2-short-envoy-generic-r102",
+        "nixv2-short-envoy-generic-r103"
+      ],
+      "invalid_jobs": [],
+      "valid_runs": 3,
+      "median_rps": 12367.654213000915,
+      "min_rps": 12032.715309017909,
+      "max_rps": 12536.72024013724
+    }
+  ]
+}

@@ -53,7 +53,8 @@ case "$workload" in short|isl4000|mooncake) ;; *) echo "invalid WORKLOAD" >&2; e
 
 # Alternating orders reduce systematic warm/cold bias across clean repeats.
 # r20-r24 belong to the earlier 846821 facade campaign. The accf6af bundle
-# uses new r28-r30 Job names so evidence cannot be confused or overwritten.
+# uses r28-r30. The upstream-rebased b140462 bundle uses r101-r103, so
+# evidence cannot be confused with or overwrite either earlier campaign.
 case "$trial" in
   r20) arms=(envoy-generic agw-generic envoy-callouts agw-static) ;;
   r21) arms=(agw-static envoy-callouts agw-generic envoy-generic) ;;
@@ -63,7 +64,10 @@ case "$trial" in
   r28) arms=(agw-static envoy-callouts agw-generic envoy-generic) ;;
   r29) arms=(envoy-generic agw-generic envoy-callouts agw-static) ;;
   r30) arms=(agw-generic agw-static envoy-generic envoy-callouts) ;;
-  *) echo "this frozen recheck reserves r20-r24 and r28-r30 only" >&2; exit 2 ;;
+  r101) arms=(agw-static envoy-callouts agw-generic envoy-generic) ;;
+  r102) arms=(envoy-generic agw-generic envoy-callouts agw-static) ;;
+  r103) arms=(agw-generic agw-static envoy-generic envoy-callouts) ;;
+  *) echo "this frozen recheck reserves r20-r24, r28-r30, and r101-r103 only" >&2; exit 2 ;;
 esac
 
 service_for_arm() {

@@ -9,6 +9,32 @@ These assets keep the prototype deployment and all benchmark load inside a vClus
 Use the vCluster kubeconfig explicitly for every command; do not apply these resources
 to the host-cluster context.
 
+## Upstream-rebased component campaign
+
+The current upstream-rebased Dynamo source is branch
+`feat/dynamo-component-pipelines-upstream-20260927`, with the tested source
+pin `b140462e2c674b98c4102db0464e0e48660d96e8`. Build the matching
+Nix bundle from `dynamo-nix-envs` branch
+`feat/dynamo-component-pipeline-upstream-20260927` at
+`40cebd4f0edf7ea66ab56217f98d896d5868b787`:
+
+```bash
+cd gateway-pipeline
+nix build --no-link .#component-pipeline-v2
+```
+
+The validated output is
+`/nix/store/1jycyv3idc78rz9mn67z3ygv6a1gg6rd-dynamo-component-pipelines-b140462e2c`.
+The new branch's vCluster rollout and three-run aggregate mocker results for
+short, ISL4000, and Mooncake are recorded in
+[`results/2026-09-27-upstream-rebase/`](results/2026-09-27-upstream-rebase/README.md),
+with same-day old-bundle controls in
+[`results/2026-09-27-upstream-rebase-control/`](results/2026-09-27-upstream-rebase-control/README.md).
+The historical recipes and output paths below document the earlier campaign;
+do not silently substitute them for the new source pin. When the original
+`dynamo-component-store-stager` Pod has completed, create a fresh helper from
+`store-stager.yaml.tmpl` and set `NIX_STAGER_POD` for both staging and rollout.
+
 The preferred source-native build is `gateway-pipeline#component-pipeline-v2` in the
 `dynamo-nix-envs` repository, branch `feat/dynamo-component-pipeline-builds`
 (current validated package commit `7024cac`). It assembles the thin Dynamo facade, patched Agentgateway
