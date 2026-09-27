@@ -464,6 +464,14 @@ The retained evidence is organized as follows:
 - `results/2026-09-25-envoy-direct-threads/` records Envoy-direct parity after
   matching the module runtime thread budget; adjacent profile and channel
   probe directories retain the diagnostic evidence and failed hypotheses.
+- `results/2026-09-26-mocker-pd-aiperf-scale/`,
+  `results/2026-09-26-mocker-pd-decode-scale/`, and
+  `results/2026-09-26-mocker-pd-gateway-threads/` retain guarded ISL4000
+  load-generator, mock-decode, and AGW worker-thread scaling diagnostics.
+  Invalid client-window or co-located comparisons are identified in each report.
+- `results/2026-09-27-mocker-pd-downstream-scale/` contains an interleaved
+  single-AGW-gateway test with all four downstream mock components doubled,
+  including a placement-confounded run that is excluded from the comparison.
 - `results/2026-09-25-accf6af-mooncake-ceiling-fixed-reader/` and
   `results/2026-09-25-accf6af-mooncake-client-placement/` retain the later
   Mooncake capacity probes and their corrected replay-fidelity audits. Their
